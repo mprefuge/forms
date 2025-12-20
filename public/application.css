@@ -1,0 +1,222 @@
+/* Refuge Application Form - brand-aligned styles */
+:root {
+  --accent: #BD2135;
+  --accent-600: #9a1a2b;
+  --muted: #6b7280;
+  --text: #0b1720;
+  --surface: #ffffff;
+  --surface-muted: #f9fafb;
+  --border: #e5e7eb;
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.08);
+  --shadow-sm: 0 3px 10px rgba(0, 0, 0, 0.06);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+.ri-app * { box-sizing: border-box; }
+
+.ri-app {
+  max-width: 960px;
+  margin: 24px auto;
+  padding: 16px;
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+.ri-card {
+  background: linear-gradient(180deg, #ffffff 0%, #fafafa 100%);
+  border-radius: 16px;
+  border-top: 5px solid var(--accent);
+  box-shadow: var(--shadow-lg);
+  padding: 28px;
+  position: relative;
+}
+
+.ri-header {
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.ri-title {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+  margin: 0;
+  color: #1a1a1a;
+}
+
+.ri-subtitle {
+  margin-top: 6px;
+  color: var(--muted);
+}
+
+.ri-banner {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(189, 33, 53, 0.2);
+  background: #fff7f7;
+  color: var(--accent-600);
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+.ri-resume-box {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid var(--border);
+  background: var(--surface-muted);
+  padding: 10px 12px;
+  border-radius: 12px;
+  margin: 0 0 18px 0;
+}
+
+.ri-resume-box input {
+  flex: 1;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 2px solid var(--border);
+  font-size: 14px;
+}
+
+.ri-stepper {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 0 0 18px 0;
+}
+
+.ri-chip {
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.ri-chip.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(189, 33, 53, 0.06);
+  box-shadow: var(--shadow-sm);
+}
+
+form.ri-form {
+  display: grid;
+  gap: 18px;
+}
+
+.ri-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.ri-field label {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: #374151;
+  margin-bottom: 8px;
+}
+
+.ri-field input,
+.ri-field select,
+.ri-field textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 2px solid var(--border);
+  font-size: 14px;
+  background: #fff;
+  transition: 0.2s ease;
+}
+
+.ri-field textarea { min-height: 110px; resize: vertical; }
+
+.ri-field input:focus,
+.ri-field select:focus,
+.ri-field textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(189, 33, 53, 0.15);
+}
+
+.ri-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+}
+
+.ri-checkbox input { width: 18px; height: 18px; accent-color: var(--accent); }
+
+.ri-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.ri-btn {
+  padding: 12px 16px;
+  border-radius: 10px;
+  border: 0;
+  cursor: pointer;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ri-btn-primary {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-600) 100%);
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(189, 33, 53, 0.25);
+}
+
+.ri-btn-ghost {
+  background: #fff;
+  color: #111;
+  border: 2px solid var(--border);
+}
+
+.ri-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.ri-status { margin-top: 6px; }
+
+.ri-alert {
+  padding: 12px 14px;
+  border-radius: 12px;
+  font-weight: 600;
+  margin: 6px 0;
+  border: 1px solid transparent;
+}
+
+.ri-alert.error { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
+.ri-alert.success { background: #ecfdf5; color: #065f46; border-color: #a7f3d0; }
+
+.ri-loader {
+  width: 16px;
+  height: 16px;
+  border: 3px solid rgba(255, 255, 255, 0.5);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: ri-spin 0.8s linear infinite;
+}
+
+@keyframes ri-spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 640px) {
+  .ri-card { padding: 20px; }
+  .ri-actions { flex-direction: column; }
+  .ri-resume-box { flex-direction: column; align-items: stretch; }
+}
