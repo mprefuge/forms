@@ -4,9 +4,6 @@
 name: Build and deploy Node.js project to Azure Function App - rif
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 env:
@@ -78,4 +75,5 @@ jobs:
           app-name: 'rif'
           slot-name: 'Production'
           package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
+
           
