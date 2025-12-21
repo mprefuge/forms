@@ -236,17 +236,20 @@
 
   const saveProgress = async () => {
     const payload = {};
-    payload[fieldToSf.Step || 'Step'] = currentStep;
-    Object.entries(data).forEach(([k, v]) => {
+    const stepFields = (steps[currentStep] && steps[currentStep].fields) ? steps[currentStep].fields : Object.keys(data);
+
+    stepFields.forEach((k) => {
+      if (!(k in data)) return;
+      const v = data[k];
+      if (v === undefined || v === null) return;
+      if (typeof v === 'string' && v.trim() === '') return;
       const sfKey = fieldToSf[k] || k;
       payload[sfKey] = v;
     });
 
 
     if (formCode) {
-      payload['FormCode'] = formCode;
       payload['FormCode__c'] = formCode;
-      payload[fieldToSf.FormCode || 'FormCode__c'] = formCode;
     }
 
     const res = await fetch(ENDPOINT, {
