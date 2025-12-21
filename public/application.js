@@ -64,6 +64,48 @@
     Birthdate: { label: "Birthdate", type: "date" },
   };
 
+  // Mapping from UI field keys -> Salesforce API names
+  const fieldToSf = {
+    FirstName: 'FirstName__c',
+    LastName: 'LastName__c',
+    Email: 'Email__c',
+    Phone: 'Phone__c',
+    Salutation: 'Salutation__c',
+    Street: 'Street__c',
+    City: 'City__c',
+    State: 'State__c',
+    Zip: 'PostalCode__c',
+    Country: 'Country__c',
+    Gender: 'Gender__c',
+    MaritalStatus: 'MaritalStatus__c',
+    Birthdate: 'Birthdate__c',
+    CountryOfOrigin: 'Country_of_Origin__c',
+    PrimaryLanguage: 'Primary_Language__c',
+    LanguagesSpoken: 'Languages_Spoken__c',
+    Skills: 'Skills__c',
+    Church: 'Church__c',
+    ChurchServingDetails: 'Church_Serving_Details__c',
+    PastorSalutation: 'Pastor_Salutation__c',
+    PastorFirstName: 'Pastor_FirstName__c',
+    PastorLastName: 'Pastor_LastName__c',
+    PastorEmail: 'Pastor_Email__c',
+    EmergencyContactFirstName: 'Emergency_Contact_FirstName__c',
+    EmergencyContactLastName: 'Emergency_Contact_LastName__c',
+    EmergencyContactPhone: 'Emergency_Contact_Phone__c',
+    EmergencyContactRelationship: 'Emergency_Contact_Relationship__c',
+    GospelDetails: 'Gospel_Details__c',
+    TestimonyDetails: 'Testimony_Details__c',
+    ServingInterest: 'Serving_Interest__c',
+    PreferredServingArea: 'Preferred_Serving_Area__c',
+    Availability: 'Availability__c',
+    HowHeard: 'How_Heard__c',
+    RecentMinistrySafe: 'Recent_MinistrySafe__c',
+    WillPay: 'Will_Pay__c',
+    AdditionalNotes: 'Additional_Notes__c',
+    AffirmStatementOfFaith: 'Affirm_Statement_of_Faith__c',
+    FormCode: 'Form_Code__c'
+  };
+
   const data = {};
   let formCode = null;
   let currentStep = 0;
@@ -123,7 +165,16 @@
   };
 
   const saveProgress = async () => {
-    const payload = { ...data, FormCode: formCode || undefined, Step: currentStep };
+    // Translate frontend keys to Salesforce API names using fieldToSf mapping
+    const payload = {};
+    // include metadata fields using mapped names when available
+    payload[fieldToSf.FormCode || 'FormCode'] = formCode || undefined;
+    payload[fieldToSf.Step || 'Step'] = currentStep;
+    Object.entries(data).forEach(([k, v]) => {
+      const sfKey = fieldToSf[k] || k;
+      payload[sfKey] = v;
+    });
+
     const res = await fetch(ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
