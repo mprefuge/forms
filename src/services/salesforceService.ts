@@ -330,16 +330,40 @@ export class SalesforceService {
 
   /**
    * Retrieve a form by its FormCode__c field (GUID)
+   * @param formCode The FormCode__c value to search for
+   * @param fields Optional array of field names to retrieve. If not provided, defaults to a standard set.
    */
-  async getFormByCode(formCode: string): Promise<any> {
-    const query = `SELECT Id, FormCode__c, Name, FirstName__c, LastName__c, Email__c, Phone__c, CreatedDate FROM Form__c WHERE FormCode__c = '${formCode}'`;
-    const result: any = await this.connection.query(query);
-
-    if (result.records && result.records.length > 0) {
-      return result.records[0];
+  async getFormByCode(formCode: string, fields?: string[]): Promise<any> {
+    // Default fields if none specified
+    const defaultFields = ['Id', 'FormCode__c', 'Name', 'FirstName__c', 'LastName__c', 'Email__c', 'Phone__c', 'CreatedDate'];
+    
+    // Use provided fields or fall back to defaults
+    const fieldsToQuery = fields && fields.length > 0 ? fields : defaultFields;
+    
+    // Ensure Id is always included if not already present
+    if (!fieldsToQuery.includes('Id')) {
+      fieldsToQuery.unshift('Id');
     }
 
-    throw new Error(`Form not found with code: ${formCode}`);
+    // Build SELECT clause
+    const selectClause = fieldsToQuery.join(', ');
+    const query = `SELECT ${selectClause} FROM Form__c WHERE FormCode__c = '${formCode}'`;
+    
+    try {
+      const result: any = await this.connection.query(query);
+
+      if (result.records && result.records.length > 0) {
+        return result.records[0];
+      }
+
+      throw new Error(`Form not found with code: ${formCode}`);
+    } catch (error: any) {
+      // If it's a Salesforce field error, provide more context
+      if (error.message && error.message.includes('INVALID_FIELD')) {
+        throw new Error(`Invalid field in query: ${error.message}`);
+      }
+      throw error;
+    }
   }
 
   /**

@@ -96,6 +96,10 @@
   color: var(--muted);
   font-weight: 600;
   font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.3s ease;
 }
 
 .ri-chip.active {
@@ -103,6 +107,30 @@
   color: var(--accent);
   background: rgba(189, 33, 53, 0.06);
   box-shadow: var(--shadow-sm);
+}
+
+.ri-chip.completed {
+  border-color: #10b981;
+  background: rgba(16, 185, 129, 0.05);
+}
+
+.ri-chip.completed.active {
+  border-color: var(--accent);
+  background: rgba(189, 33, 53, 0.06);
+}
+
+.ri-checkmark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #10b981;
+  color: white;
+  font-size: 12px;
+  font-weight: bold;
+  flex-shrink: 0;
 }
 
 form.ri-form {
@@ -219,6 +247,23 @@ form.ri-form {
   .ri-card { padding: 20px; }
   .ri-actions { flex-direction: column; }
   .ri-resume-box { flex-direction: column; align-items: stretch; }
+  .ri-phase-indicator { 
+    flex-direction: column; 
+    gap: 8px;
+  }
+  .ri-phase-chip {
+    text-align: center;
+  }
+  .ri-modal-content {
+    padding: 24px;
+  }
+  .ri-modal-actions {
+    flex-direction: column;
+  }
+  .ri-banner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 
 /* Address lookup suggestions */
@@ -226,3 +271,202 @@ form.ri-form {
 .ri-address-suggestion { padding: 10px 12px; cursor: pointer; border-bottom: 1px solid #f3f4f6; }
 .ri-address-suggestion:hover { background: #f9fafb; color: var(--accent); }
 .ri-address-suggestion:last-child { border-bottom: none; }
+
+/* Landing Page */
+.ri-landing {
+  text-align: center;
+  padding: 40px 20px;
+}
+
+/* Multiselect box for friendly multi-selection */
+.ri-multiselect-box {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  padding: 10px;
+  border-radius: 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+  max-height: 240px;
+  overflow: auto;
+}
+.ri-multiselect-box .ri-checkbox { padding: 6px 8px; margin: 0; border-radius: 8px; display:flex; align-items:center; justify-content:space-between; position: relative; }
+.ri-multiselect-box .ri-muted { grid-column: 1 / -1; font-size: 12px; color: var(--muted); padding-top: 8px; }
+.ri-star { border: 0; background: transparent; font-size: 18px; cursor: pointer; color: #f59e0b; padding: 4px; border-radius: 6px; opacity: 0; transition: opacity 0.2s ease, background 0.2s ease; }
+.ri-star.ri-starred { opacity: 1; }
+.ri-checkbox:hover .ri-star { opacity: 1; }
+.ri-star:hover { background: rgba(245,158,11,0.12); }
+
+.ri-landing-title {
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  margin: 0 0 16px 0;
+  color: #1a1a1a;
+}
+
+.ri-landing-subtitle {
+  font-size: 16px;
+  color: var(--muted);
+  margin: 0 0 32px 0;
+  line-height: 1.6;
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.ri-landing-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.ri-landing-btn {
+  padding: 16px 24px;
+  font-size: 16px;
+  width: 100%;
+  justify-content: center;
+}
+
+.ri-step-title {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0 0 16px 0;
+  color: #1a1a1a;
+}
+
+/* Phase Indicator */
+.ri-phase-indicator {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin: 0 0 20px 0;
+  padding: 16px;
+  background: var(--surface-muted);
+  border-radius: 12px;
+}
+
+.ri-phase-chip {
+  padding: 10px 20px;
+  border-radius: 20px;
+  border: 2px solid var(--border);
+  background: #fff;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 14px;
+  transition: all 0.3s ease;
+}
+
+.ri-phase-chip.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(189, 33, 53, 0.06);
+  box-shadow: var(--shadow-sm);
+}
+
+.ri-phase-chip.completed {
+  border-color: #10b981;
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.06);
+}
+
+/* Modal */
+.ri-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ri-modal-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+}
+
+.ri-modal-content {
+  position: relative;
+  background: #fff;
+  border-radius: 16px;
+  padding: 32px;
+  max-width: 500px;
+  width: 90%;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  z-index: 1;
+}
+
+.ri-modal-title {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 0 0 16px 0;
+  color: #1a1a1a;
+}
+
+.ri-modal-subtitle {
+  font-size: 14px;
+  color: var(--muted);
+  margin: 16px 0 24px 0;
+}
+
+.ri-code-display {
+  background: var(--surface-muted);
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  text-align: center;
+  margin: 20px 0;
+}
+
+.ri-code-display code {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--accent);
+  font-family: 'Courier New', monospace;
+  letter-spacing: 2px;
+}
+
+.ri-modal-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+/* Button improvements */
+.ri-btn-sm {
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+.ri-banner {
+  display: none;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 2px solid rgba(189, 33, 53, 0.2);
+  background: linear-gradient(135deg, #fff7f7 0%, #fff 100%);
+  color: var(--accent-600);
+  font-weight: 600;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.ri-file-info {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 6px;
+  padding: 8px 12px;
+  background: var(--surface-muted);
+  border-radius: 8px;
+}

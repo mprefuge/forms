@@ -251,6 +251,30 @@ async function getFormHandler(request: HttpRequest, context: InvocationContext, 
       };
     }
 
+    // Get optional fields parameter (comma-separated or JSON array)
+    const fieldsParam = request.query.get('fields');
+    let requestedFields: string[] | undefined;
+
+    if (fieldsParam) {
+      try {
+        // Try to parse as JSON array first
+        if (fieldsParam.startsWith('[')) {
+          requestedFields = JSON.parse(fieldsParam);
+        } else {
+          // Parse as comma-separated values
+          requestedFields = fieldsParam.split(',').map(f => f.trim()).filter(f => f.length > 0);
+        }
+        logger.debug('Parsed requested fields', { fieldCount: requestedFields.length, fields: requestedFields });
+      } catch (error: any) {
+        logger.error('Invalid fields parameter format', error);
+        return {
+          status: 400,
+          body: JSON.stringify({ error: 'Invalid fields parameter: must be comma-separated values or JSON array' }),
+          headers: { 'Content-Type': 'application/json' },
+        };
+      }
+    }
+
     // Initialize Salesforce Service (credential validation is centralized in the service)
     const sfConfig = {
       loginUrl: process.env.SF_LOGIN_URL || 'https://login.salesforce.com',
@@ -265,9 +289,9 @@ async function getFormHandler(request: HttpRequest, context: InvocationContext, 
     await salesforceService.authenticate();
     logger.info('Successfully authenticated with Salesforce');
 
-    // Retrieve form by code
-    logger.info('Retrieving form by code', { formCode });
-    const formData = await salesforceService.getFormByCode(formCode);
+    // Retrieve form by code with optional dynamic fields
+    logger.info('Retrieving form by code', { formCode, fieldsRequested: requestedFields?.length || 'default' });
+    const formData = await salesforceService.getFormByCode(formCode, requestedFields);
     logger.info('Form retrieved successfully', { formId: formData.Id });
 
     // Return success response
