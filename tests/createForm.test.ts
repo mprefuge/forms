@@ -311,7 +311,7 @@ describe('createForm HTTP Function', () => {
       expect(body.FirstName__c).toBe('John');
 
       expect(mockSalesforceService.authenticate).toHaveBeenCalled();
-      expect(mockSalesforceService.getFormByCode).toHaveBeenCalledWith('abc12');
+      expect(mockSalesforceService.getFormByCode).toHaveBeenCalledWith('abc12', undefined);
     });
 
     it('should return 400 when code query parameter is missing', async () => {
