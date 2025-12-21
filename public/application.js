@@ -100,7 +100,7 @@
     WillPay: 'WillPay__c',
     AdditionalNotes: 'AdditionalNotes__c',
     AffirmStatementOfFaith: 'AffirmStatementOfFaith__c',
-    FormCode: 'Form_Code__c'
+    FormCode: 'FormCode__c'
   };
 
   // Inverted mapping: SF API name -> client field key (for loading responses)
@@ -255,7 +255,7 @@
 
 
     if (formCode) {
-      payload['Form_Code__c'] = formCode;
+      payload['FormCode__c'] = formCode;
     }
 
     const res = await fetch(ENDPOINT, {
@@ -271,7 +271,8 @@
   const loadByCode = async (code) => {
     // Try GET with different query param names, then fallback to POST with JSON body
     const tryUrls = [
-      `${ENDPOINT}?Form_Code__c=${encodeURIComponent(code)}`,
+      `${ENDPOINT}?FormCode=${encodeURIComponent(code)}`,
+      `${ENDPOINT}?FormCode__c=${encodeURIComponent(code)}`,
     ];
 
     const normalizeAndAssign = (json) => {
@@ -289,7 +290,7 @@
         if (res.ok) {
           normalizeAndAssign(json);
           firstPageSaved = true;
-          const returnedCode = json?.Form_Code__c || json?.FormCode || json?.formCode || json?.form_code || code;
+          const returnedCode = json?.FormCode || json?.Form_Code__c || json?.formCode || json?.form_code || code;
           formCode = returnedCode;
           if (formCode) showBanner(formCode);
           return json;
@@ -299,18 +300,18 @@
       }
     }
 
-    // Fallback: POST body with Form_Code__c
+    // Fallback: POST body with FormCode__c
     try {
       const res = await fetch(ENDPOINT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ Form_Code__c: code }),
+        body: JSON.stringify({ FormCode__c: code }),
       });
       const json = await res.json().catch(() => ({}));
       if (res.ok) {
         normalizeAndAssign(json);
         firstPageSaved = true;
-        const returnedCode = json?.Form_Code__c || json?.FormCode || json?.formCode || json?.form_code || code;
+        const returnedCode = json?.FormCode || json?.Form_Code__c || json?.formCode || json?.form_code || code;
         formCode = returnedCode;
         if (formCode) showBanner(formCode);
         return json;
