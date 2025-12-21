@@ -253,6 +253,12 @@
       payload[sfKey] = v;
     });
 
+    // If this is a create (no formCode yet), set the Record Type explicitly
+    if (!formCode) {
+      payload['RecordType__c'] = 'Volunteer Application';
+      payload['RecordType'] = 'Volunteer Application';
+      payload['RecordTypeName'] = 'Volunteer Application';
+    }
 
     if (formCode) {
       payload['FormCode__c'] = formCode;
