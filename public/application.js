@@ -99,7 +99,8 @@
     RecentMinistrySafe: 'RecentMinistrySafe__c',
     WillPay: 'WillPay__c',
     AdditionalNotes: 'AdditionalNotes__c',
-    AffirmStatementOfFaith: 'AffirmStatementOfFaith__c'
+    AffirmStatementOfFaith: 'AffirmStatementOfFaith__c',
+    FormCode: 'FormCode__c'
   };
 
   const data = {};
@@ -244,7 +245,8 @@
 
     if (formCode) {
       payload['FormCode'] = formCode;
-      payload[fieldToSf.FormCode || 'Form_Code__c'] = formCode;
+      payload['FormCode__c'] = formCode;
+      payload[fieldToSf.FormCode || 'FormCode__c'] = formCode;
     }
 
     const res = await fetch(ENDPOINT, {
