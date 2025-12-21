@@ -64,7 +64,6 @@
     Birthdate: { label: "Birthdate", type: "date" },
   };
 
-  // Mapping from UI field keys -> Salesforce API names
   const fieldToSf = {
     FirstName: 'FirstName__c',
     LastName: 'LastName__c',
@@ -79,31 +78,30 @@
     Gender: 'Gender__c',
     MaritalStatus: 'MaritalStatus__c',
     Birthdate: 'Birthdate__c',
-    CountryOfOrigin: 'Country_of_Origin__c',
-    PrimaryLanguage: 'Primary_Language__c',
-    LanguagesSpoken: 'Languages_Spoken__c',
+    CountryOfOrigin: 'CountryOfOrigin__c',
+    PrimaryLanguage: 'PrimaryLanguage__c',
+    LanguagesSpoken: 'LanguagesSpoken__c',
     Skills: 'Skills__c',
     Church: 'Church__c',
-    ChurchServingDetails: 'Church_Serving_Details__c',
-    PastorSalutation: 'Pastor_Salutation__c',
-    PastorFirstName: 'Pastor_FirstName__c',
-    PastorLastName: 'Pastor_LastName__c',
-    PastorEmail: 'Pastor_Email__c',
-    EmergencyContactFirstName: 'Emergency_Contact_FirstName__c',
-    EmergencyContactLastName: 'Emergency_Contact_LastName__c',
-    EmergencyContactPhone: 'Emergency_Contact_Phone__c',
-    EmergencyContactRelationship: 'Emergency_Contact_Relationship__c',
-    GospelDetails: 'Gospel_Details__c',
-    TestimonyDetails: 'Testimony_Details__c',
-    ServingInterest: 'Serving_Interest__c',
-    PreferredServingArea: 'Preferred_Serving_Area__c',
+    ChurchServingDetails: 'ChurchServingDetails__c',
+    PastorSalutation: 'PastorSalutation__c',
+    PastorFirstName: 'PastorFirstName__c',
+    PastorLastName: 'PastorLastName__c',
+    PastorEmail: 'PastorEmail__c',
+    EmergencyContactFirstName: 'EmergencyContactFirstName__c',
+    EmergencyContactLastName: 'EmergencyContactLastName__c',
+    EmergencyContactPhone: 'EmergencyContactPhone__c',
+    EmergencyContactRelationship: 'EmergencyContactRelationship__c',
+    GospelDetails: 'GospelDetails__c',
+    TestimonyDetails: 'TestimonyDetails__c',
+    ServingInterest: 'ServingInterest__c',
+    PreferredServingArea: 'PreferredServingArea__c',
     Availability: 'Availability__c',
-    HowHeard: 'How_Heard__c',
-    RecentMinistrySafe: 'Recent_MinistrySafe__c',
-    WillPay: 'Will_Pay__c',
-    AdditionalNotes: 'Additional_Notes__c',
-    AffirmStatementOfFaith: 'Affirm_Statement_of_Faith__c',
-    FormCode: 'Form_Code__c'
+    HowHeard: 'HowHeard__c',
+    RecentMinistrySafe: 'RecentMinistrySafe__c',
+    WillPay: 'WillPay__c',
+    AdditionalNotes: 'AdditionalNotes__c',
+    AffirmStatementOfFaith: 'AffirmStatementOfFaith__c'
   };
 
   const data = {};
@@ -115,6 +113,29 @@
     statusEl.innerHTML = "";
     if (!msg) return;
     statusEl.append(h("div", { class: `ri-alert ${kind}` }, msg));
+  };
+
+  // Show a persistent banner with the resume code, copy and dismiss controls
+  const showBanner = (code) => {
+    if (!bannerEl) return;
+    bannerEl.innerHTML = '';
+    const text = h('div', { text: 'Need to take a break? Resume your progress by entering in your code:' });
+    const codeSpan = h('strong', { text: ` ${code}` });
+    const copyBtn = h('button', { class: 'ri-btn ri-btn-ghost', type: 'button', text: 'Copy' });
+    copyBtn.onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(code);
+        const prev = copyBtn.textContent;
+        copyBtn.textContent = 'Copied!';
+        setTimeout(() => copyBtn.textContent = prev, 1400);
+      } catch (e) {
+        setStatus('Unable to copy to clipboard', 'error');
+      }
+    };
+    const dismiss = h('button', { class: 'ri-btn', type: 'button', text: 'Dismiss' });
+    dismiss.onclick = () => { bannerEl.style.display = 'none'; };
+    bannerEl.append(text, codeSpan, copyBtn, dismiss);
+    bannerEl.style.display = 'flex';
   };
 
   const fieldFor = (name) => {
@@ -202,10 +223,11 @@
     submitBtn.innerHTML = '<span class="ri-loader"></span>';
     try {
       const res = await saveProgress();
-      formCode = res.FormCode || formCode;
-      if (formCode) {
-        bannerEl.style.display = "flex";
-        bannerEl.textContent = `Need to pause? Your code: ${formCode}`;
+      // accept a variety of server response keys for the code
+      const returnedCode = res?.FormCode || res?.Form_Code__c || res?.formCode || res?.form_code || res?.Form_Code || res?.form_code__c;
+      if (returnedCode) {
+        formCode = returnedCode;
+        showBanner(formCode);
       }
       setStatus("Progress saved.", "success");
       if (!stay && currentStep < steps.length - 1) {
@@ -249,8 +271,7 @@
       try {
         await loadByCode(code);
         renderForm();
-        bannerEl.style.display = "flex";
-        bannerEl.textContent = `Need to pause? Your code: ${formCode}`;
+        if (formCode) showBanner(formCode);
         setStatus("Draft loaded.", "success");
       } catch (e) {
         setStatus(e.message, "error");
