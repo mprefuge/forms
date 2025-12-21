@@ -71,7 +71,7 @@
     Street: 'Street__c',
     City: 'City__c',
     State: 'State__c',
-    Zip: 'PostalCode__c',
+    Zip: 'Zip__c',
     Country: 'Country__c',
     Gender: 'Gender__c',
     MaritalStatus: 'MaritalStatus__c',
@@ -100,8 +100,14 @@
     WillPay: 'WillPay__c',
     AdditionalNotes: 'AdditionalNotes__c',
     AffirmStatementOfFaith: 'AffirmStatementOfFaith__c',
-    FormCode: 'FormCode__c'
+    FormCode: 'Form_Code__c'
   };
+
+  // Inverted mapping: SF API name -> client field key (for loading responses)
+  const sfToField = Object.entries(fieldToSf).reduce((acc, [k, v]) => {
+    acc[v] = k;
+    return acc;
+  }, {});
 
   const data = {};
   let formCode = null;
@@ -249,7 +255,7 @@
 
 
     if (formCode) {
-      payload['FormCode__c'] = formCode;
+      payload['Form_Code__c'] = formCode;
     }
 
     const res = await fetch(ENDPOINT, {
@@ -263,15 +269,56 @@
   };
 
   const loadByCode = async (code) => {
-    const res = await fetch(`${ENDPOINT}?FormCode=${encodeURIComponent(code)}`);
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(json.message || res.statusText || "Not found");
-    Object.assign(data, json);
-    // mark first page as completed so users can navigate to other steps
-    firstPageSaved = true;
-    const returnedCode = json?.FormCode || json?.Form_Code__c || json?.formCode || json?.form_code || code;
-    formCode = returnedCode;
-    if (formCode) showBanner(formCode);
+    // Try GET with different query param names, then fallback to POST with JSON body
+    const tryUrls = [
+      `${ENDPOINT}?Form_Code__c=${encodeURIComponent(code)}`,
+    ];
+
+    const normalizeAndAssign = (json) => {
+      // Convert SF field names to client keys when possible
+      Object.entries(json).forEach(([k, v]) => {
+        if (sfToField[k]) data[sfToField[k]] = v;
+        else data[k] = v;
+      });
+    };
+
+    for (const url of tryUrls) {
+      try {
+        const res = await fetch(url);
+        const json = await res.json().catch(() => ({}));
+        if (res.ok) {
+          normalizeAndAssign(json);
+          firstPageSaved = true;
+          const returnedCode = json?.Form_Code__c || json?.FormCode || json?.formCode || json?.form_code || code;
+          formCode = returnedCode;
+          if (formCode) showBanner(formCode);
+          return json;
+        }
+      } catch (e) {
+        // continue to next attempt
+      }
+    }
+
+    // Fallback: POST body with Form_Code__c
+    try {
+      const res = await fetch(ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ Form_Code__c: code }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok) {
+        normalizeAndAssign(json);
+        firstPageSaved = true;
+        const returnedCode = json?.Form_Code__c || json?.FormCode || json?.formCode || json?.form_code || code;
+        formCode = returnedCode;
+        if (formCode) showBanner(formCode);
+        return json;
+      }
+      throw new Error(json.message || res.statusText || 'Not found');
+    } catch (e) {
+      throw e;
+    }
   };
 
   const doSubmit = async (stay = false) => {
