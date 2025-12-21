@@ -290,9 +290,17 @@
         // Flatten nested objects to a flat map of candidate fields
         const flat = {};
         const walk = (obj, depth = 0) => {
-          if (!obj || typeof obj !== 'object' || depth > 4) return;
+          if (!obj || typeof obj !== 'object' || depth > 6) return;
           for (const [k, v] of Object.entries(obj)) {
             if (v === null || v === undefined) continue;
+
+            // If this is a field wrapper like { value: 'x' } or { displayValue: 'x' }
+            if (typeof v === 'object' && (('value' in v && (typeof v.value === 'string' || typeof v.value === 'number' || typeof v.value === 'boolean')) || ('displayValue' in v && (typeof v.displayValue === 'string' || typeof v.displayValue === 'number')))) {
+              const val = ('value' in v) ? v.value : v.displayValue;
+              flat[k] = val;
+              continue;
+            }
+
             if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
               flat[k] = v;
             } else if (Array.isArray(v)) {
@@ -302,9 +310,11 @@
               } else if (v.length === 1 && typeof v[0] === 'object') {
                 walk(v[0], depth + 1);
               } else {
-                // skip complex arrays
+                // try to walk array items
+                v.forEach(item => { if (typeof item === 'object') walk(item, depth + 1); });
               }
             } else if (typeof v === 'object') {
+              // normal object - descend
               walk(v, depth + 1);
             }
           }
@@ -351,6 +361,8 @@
           const returnedCode = json?.FormCode || json?.Form_Code__c || json?.formCode || json?.form_code || code;
           formCode = returnedCode;
           if (formCode) showBanner(formCode);
+          // ensure UI reflects loaded data
+          try { renderForm(); } catch (e) {}
           return json;
         }
       } catch (e) {
@@ -372,6 +384,7 @@
         const returnedCode = json?.FormCode || json?.Form_Code__c || json?.formCode || json?.form_code || code;
         formCode = returnedCode;
         if (formCode) showBanner(formCode);
+        try { renderForm(); } catch (e) {}
         return json;
       }
       throw new Error(json.message || res.statusText || 'Not found');
