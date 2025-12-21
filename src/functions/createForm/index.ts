@@ -262,9 +262,11 @@ async function getFormHandler(request: HttpRequest, context: InvocationContext, 
           requestedFields = JSON.parse(fieldsParam);
         } else {
           // Parse as comma-separated values
-          requestedFields = fieldsParam.split(',').map(f => f.trim()).filter(f => f.length > 0);
+          requestedFields = fieldsParam.split(',').map((f: string) => f.trim()).filter((f: string) => f.length > 0);
         }
-        logger.debug('Parsed requested fields', { fieldCount: requestedFields.length, fields: requestedFields });
+        if (requestedFields) {
+          logger.debug('Parsed requested fields', { fieldCount: requestedFields.length, fields: requestedFields });
+        }
       } catch (error: any) {
         logger.error('Invalid fields parameter format', error);
         return {
@@ -290,7 +292,7 @@ async function getFormHandler(request: HttpRequest, context: InvocationContext, 
     logger.info('Successfully authenticated with Salesforce');
 
     // Retrieve form by code with optional dynamic fields
-    logger.info('Retrieving form by code', { formCode, fieldsRequested: requestedFields?.length || 'default' });
+    logger.info('Retrieving form by code', { formCode, fieldsRequested: requestedFields ? requestedFields.length : 'default' });
     const formData = await salesforceService.getFormByCode(formCode, requestedFields);
     logger.info('Form retrieved successfully', { formId: formData.Id });
 
