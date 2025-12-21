@@ -264,9 +264,7 @@ async function getFormHandler(request: HttpRequest, context: InvocationContext, 
           // Parse as comma-separated values
           requestedFields = fieldsParam.split(',').map((f: string) => f.trim()).filter((f: string) => f.length > 0);
         }
-        if (requestedFields) {
-          logger.debug('Parsed requested fields', { fieldCount: requestedFields.length, fields: requestedFields });
-        }
+        logger.debug('Parsed requested fields', { fieldCount: (requestedFields ?? []).length, fields: requestedFields });
       } catch (error: any) {
         logger.error('Invalid fields parameter format', error);
         return {

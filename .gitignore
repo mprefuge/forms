@@ -1,0 +1,44 @@
+# Node.js
+node_modules/
+npm-debug.log
+npm-debug.log.*
+yarn-error.log
+package-lock.json
+
+# TypeScript
+dist/
+*.js
+!scripts/*.js
+!jest.config.js
+*.js.map
+*.d.ts
+
+# Azure Functions
+.funcignore
+local.settings.json
+extensions.csproj
+bin/
+obj/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+coverage/
+.nyc_output/
+
+# Build artifacts
+build/
