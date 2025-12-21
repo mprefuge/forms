@@ -338,7 +338,17 @@ export class SalesforceService {
     const defaultFields = ['Id', 'FormCode__c', 'Name', 'FirstName__c', 'LastName__c', 'Email__c', 'Phone__c', 'CreatedDate'];
     
     // Use provided fields or fall back to defaults
-    const fieldsToQuery = fields && fields.length > 0 ? fields : defaultFields;
+    let fieldsToQuery = fields && fields.length > 0 ? [...fields] : [...defaultFields];
+    
+    // Validate fields against Salesforce schema
+    const desc: any = await this.connection.sobject('Form__c').describe();
+    if (desc && desc.fields) {
+      const validFields = new Set(desc.fields.map((f: any) => f.name));
+      fieldsToQuery = fieldsToQuery.filter(f => validFields.has(f));
+      if (fieldsToQuery.length === 1) { // only Id remains
+        fieldsToQuery = [...defaultFields];
+      }
+    }
     
     // Ensure Id is always included if not already present
     if (!fieldsToQuery.includes('Id')) {
