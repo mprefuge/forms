@@ -259,7 +259,7 @@ async function getFormHandler(request: HttpRequest, context: InvocationContext, 
       try {
         // Try to parse as JSON array first
         if (fieldsParam.startsWith('[')) {
-          requestedFields = JSON.parse(fieldsParam);
+          requestedFields = JSON.parse(fieldsParam) as string[];
         } else {
           // Parse as comma-separated values
           requestedFields = fieldsParam.split(',').map((f: string) => f.trim()).filter((f: string) => f.length > 0);
