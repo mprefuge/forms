@@ -19,7 +19,6 @@
   };
   injectCSS();
 
-  // Utility to create elements
   const h = (tag, attrs = {}, ...kids) => {
     const el = document.createElement(tag);
     Object.entries(attrs).forEach(([k, v]) => {
@@ -117,7 +116,6 @@
     statusEl.append(h("div", { class: `ri-alert ${kind}` }, msg));
   };
 
-  // Show a persistent banner with the resume code, copy and dismiss controls
   const showBanner = (code) => {
     if (!bannerEl) return;
     bannerEl.innerHTML = '';
@@ -186,7 +184,6 @@
     });
   };
 
-  // small debounce helper
   const debounce = (fn, wait = 300) => {
     let t;
     return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), wait); };
@@ -237,15 +234,18 @@
   };
 
   const saveProgress = async () => {
-    // Translate frontend keys to Salesforce API names using fieldToSf mapping
     const payload = {};
-    // include metadata fields using mapped names when available
-    payload[fieldToSf.FormCode || 'FormCode'] = formCode || undefined;
     payload[fieldToSf.Step || 'Step'] = currentStep;
     Object.entries(data).forEach(([k, v]) => {
       const sfKey = fieldToSf[k] || k;
       payload[sfKey] = v;
     });
+
+
+    if (formCode) {
+      payload['FormCode'] = formCode;
+      payload[fieldToSf.FormCode || 'Form_Code__c'] = formCode;
+    }
 
     const res = await fetch(ENDPOINT, {
       method: "POST",
@@ -283,8 +283,8 @@
       if (returnedCode) {
         formCode = returnedCode;
         showBanner(formCode);
+        if (currentStep === 0) firstPageSaved = true;
       }
-      if (currentStep === 0) firstPageSaved = true;
       setStatus("Progress saved.", "success");
       if (!stay && currentStep < steps.length - 1) {
         currentStep += 1;
@@ -308,19 +308,18 @@
     let grid;
     if (step.title === 'Address') {
       // Address lookup + manual fields
-      const searchInput = h('input', { placeholder: 'Search address (type 3+ chars)...', value: data.__addressSearch || '', oninput: debounce(async (e) => {
+      const searchInput = h('input', { id: 'Street', placeholder: 'Search address (type 3+ chars)...', value: data.Street || '', oninput: debounce(async (e) => {
         const q = e.target.value;
-        data.__addressSearch = q;
+        data.Street = q;
         const items = await searchAddress(q);
         renderAddressSuggestions(items, addressSuggestionsEl);
       }) });
       addressSuggestionsEl = h('div', { class: 'ri-address-suggestions' });
       const manualBtn = h('button', { class: 'ri-btn ri-btn-ghost', type: 'button', text: manualAddressMode ? 'Hide Manual' : 'Enter Manually' });
       manualBtn.onclick = () => { manualAddressMode = !manualAddressMode; renderForm(); };
-      grid = h('div', { class: 'ri-grid' }, h('div', { class: 'ri-field' }, h('label', { text: 'Address' }), searchInput, addressSuggestionsEl, manualBtn));
-      // show manual fields if toggled or if any address data exists
-      if (manualAddressMode || data.Street || data.City || data.State || data.Zip || data.Country) {
-        ['Street','City','State','Zip','Country'].forEach(n => grid.append(fieldFor(n)));
+      grid = h('div', { class: 'ri-grid' }, h('div', { class: 'ri-field' }, h('label', { text: 'Street / Address' }), searchInput, addressSuggestionsEl, manualBtn));
+      if (manualAddressMode || data.City || data.State || data.Zip || data.Country) {
+        ['City','State','Zip','Country'].forEach(n => grid.append(fieldFor(n)));
       }
     } else {
       grid = h("div", { class: "ri-grid" }, step.fields.map(fieldFor));
