@@ -276,10 +276,29 @@
     ];
 
     const normalizeAndAssign = (json) => {
-      // Convert SF field names to client keys when possible
-      Object.entries(json).forEach(([k, v]) => {
-        if (sfToField[k]) data[sfToField[k]] = v;
-        else data[k] = v;
+      if (Array.isArray(json) && json.length === 1 && typeof json[0] === 'object') json = json[0];
+      if (json && typeof json === 'object' && json.records && Array.isArray(json.records) && json.records.length > 0) {
+        json = json.records[0];
+      }
+
+      const sfLowerMap = Object.keys(sfToField).reduce((acc, k) => { acc[k.toLowerCase()] = sfToField[k]; return acc; }, {});
+      const clientLowerMap = Object.keys(fieldToSf).reduce((acc, k) => { acc[k.toLowerCase()] = k; return acc; }, {});
+
+      const normKey = (s) => String(s || '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+
+      Object.entries(json || {}).forEach(([k, v]) => {
+        if (sfToField[k]) { data[sfToField[k]] = v; return; }
+        if (sfLowerMap[k.toLowerCase()]) { data[sfLowerMap[k.toLowerCase()]] = v; return; }
+        if (k in fieldToSf) { data[k] = v; return; }
+        if (clientLowerMap[k.toLowerCase()]) { data[clientLowerMap[k.toLowerCase()]] = v; return; }
+        const nk = normKey(k);
+        for (const sf of Object.keys(sfToField)) {
+          if (normKey(sf) === nk) { data[sfToField[sf]] = v; return; }
+        }
+        for (const ck of Object.keys(fieldToSf)) {
+          if (normKey(ck) === nk) { data[ck] = v; return; }
+        }
+        data[k] = v;
       });
     };
 
