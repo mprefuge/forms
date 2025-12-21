@@ -1,8 +1,7 @@
 (() => {
-  const ENDPOINT = "https://rif-hhh8e6e7cbc2hvdw.eastus-01.azurewebsites.net/api/form"; // TODO: replace with real endpoint
-  const HOST_ID = "volunteer-app"; // optional host div id; falls back to body
+  const ENDPOINT = "https://rif-hhh8e6e7cbc2hvdw.eastus-01.azurewebsites.net/api/form";
+  const HOST_ID = "volunteer-app";
 
-  // Attempt to inject CSS from the same folder as this script
   const injectCSS = () => {
     try {
       const scriptEl = document.currentScript;
@@ -108,6 +107,9 @@
   let formCode = null;
   let currentStep = 0;
   let statusEl, bannerEl, stepperEl, formEl;
+  let manualAddressMode = false;
+  let firstPageSaved = false;
+  let addressSuggestionsEl = null;
 
   const setStatus = (msg, kind = "") => {
     statusEl.innerHTML = "";
@@ -170,7 +172,56 @@
     stepperEl.innerHTML = "";
     steps.forEach((s, idx) => {
       const chip = h("div", { class: `ri-chip ${idx === currentStep ? "active" : ""}` }, `${idx + 1}. ${s.title}`);
+      chip.style.cursor = 'pointer';
+      chip.onclick = () => {
+        if (idx === currentStep) return;
+        if (idx > 0 && !firstPageSaved) {
+          setStatus('Complete the first page (Name & Email) to access other stages.', 'error');
+          return;
+        }
+        currentStep = idx;
+        renderForm();
+      };
       stepperEl.append(chip);
+    });
+  };
+
+  // small debounce helper
+  const debounce = (fn, wait = 300) => {
+    let t;
+    return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), wait); };
+  };
+
+  const searchAddress = async (q) => {
+    if (!q || q.length < 3) return [];
+    const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&q=${encodeURIComponent(q)}`;
+    const res = await fetch(url);
+    const json = await res.json().catch(() => []);
+    return Array.isArray(json) ? json : [];
+  };
+
+  const fillAddressFromNominatim = (item) => {
+    if (!item) return;
+    const addr = item.address || {};
+    const street = [addr.house_number, addr.road].filter(Boolean).join(' ');
+    data.Street = street || (addr.road || '');
+    data.City = addr.city || addr.town || addr.village || addr.county || '';
+    data.State = addr.state || '';
+    data.Zip = addr.postcode || '';
+    data.Country = addr.country || '';
+    manualAddressMode = true;
+    renderForm();
+  };
+
+  const renderAddressSuggestions = (items, container) => {
+    if (!container) return;
+    container.innerHTML = '';
+    if (!items || items.length === 0) return;
+    items.forEach(it => {
+      const label = it.display_name || [it.address?.road, it.address?.city, it.address?.state].filter(Boolean).join(', ');
+      const node = h('div', { class: 'ri-address-suggestion', text: label });
+      node.onclick = () => { fillAddressFromNominatim(it); };
+      container.append(node);
     });
   };
 
@@ -211,7 +262,11 @@
     const json = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(json.message || res.statusText || "Not found");
     Object.assign(data, json);
-    formCode = json.FormCode || code;
+    // mark first page as completed so users can navigate to other steps
+    firstPageSaved = true;
+    const returnedCode = json?.FormCode || json?.Form_Code__c || json?.formCode || json?.form_code || code;
+    formCode = returnedCode;
+    if (formCode) showBanner(formCode);
   };
 
   const doSubmit = async (stay = false) => {
@@ -229,6 +284,7 @@
         formCode = returnedCode;
         showBanner(formCode);
       }
+      if (currentStep === 0) firstPageSaved = true;
       setStatus("Progress saved.", "success");
       if (!stay && currentStep < steps.length - 1) {
         currentStep += 1;
@@ -249,7 +305,26 @@
     const step = steps[currentStep];
     formEl.innerHTML = "";
     formEl.append(h("h3", { text: step.title, class: "ri-step-title" }));
-    const grid = h("div", { class: "ri-grid" }, step.fields.map(fieldFor));
+    let grid;
+    if (step.title === 'Address') {
+      // Address lookup + manual fields
+      const searchInput = h('input', { placeholder: 'Search address (type 3+ chars)...', value: data.__addressSearch || '', oninput: debounce(async (e) => {
+        const q = e.target.value;
+        data.__addressSearch = q;
+        const items = await searchAddress(q);
+        renderAddressSuggestions(items, addressSuggestionsEl);
+      }) });
+      addressSuggestionsEl = h('div', { class: 'ri-address-suggestions' });
+      const manualBtn = h('button', { class: 'ri-btn ri-btn-ghost', type: 'button', text: manualAddressMode ? 'Hide Manual' : 'Enter Manually' });
+      manualBtn.onclick = () => { manualAddressMode = !manualAddressMode; renderForm(); };
+      grid = h('div', { class: 'ri-grid' }, h('div', { class: 'ri-field' }, h('label', { text: 'Address' }), searchInput, addressSuggestionsEl, manualBtn));
+      // show manual fields if toggled or if any address data exists
+      if (manualAddressMode || data.Street || data.City || data.State || data.Zip || data.Country) {
+        ['Street','City','State','Zip','Country'].forEach(n => grid.append(fieldFor(n)));
+      }
+    } else {
+      grid = h("div", { class: "ri-grid" }, step.fields.map(fieldFor));
+    }
     const actions = h("div", { class: "ri-actions" },
       h("button", { class: "ri-btn ri-btn-ghost", type: "button", disabled: currentStep === 0, onclick: () => { currentStep = Math.max(0, currentStep - 1); renderForm(); } }, "Back"),
       h("div", { style: "display:flex; gap:8px;" },
