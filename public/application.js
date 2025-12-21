@@ -269,113 +269,54 @@
   };
 
   const loadByCode = async (code) => {
-    // Try GET with different query param names, then fallback to POST with JSON body
     const tryUrls = [
+      `${ENDPOINT}?code=${encodeURIComponent(code)}`,
       `${ENDPOINT}?FormCode=${encodeURIComponent(code)}`,
       `${ENDPOINT}?FormCode__c=${encodeURIComponent(code)}`,
     ];
 
     const normalizeAndAssign = (json) => {
-      try {
-        // Unwrap common wrappers
-        if (Array.isArray(json) && json.length === 1 && typeof json[0] === 'object') json = json[0];
-        const wrappers = ['records','data','fields','result','response','record','payload'];
-        for (const w of wrappers) {
-          if (json && typeof json === 'object' && w in json && json[w]) {
-            json = json[w];
-            if (Array.isArray(json) && json.length === 1) json = json[0];
-          }
+      Object.entries(json).forEach(([k, v]) => {
+        let clientKey = sfToField[k];
+        if (!clientKey) {
+          const alt = k.replace(/__c$/i, '');
+          const found = Object.keys(fieldMeta).find(f => f.toLowerCase() === alt.toLowerCase());
+          if (found) clientKey = found;
         }
-
-        // Flatten nested objects to a flat map of candidate fields
-        const flat = {};
-        const walk = (obj, depth = 0) => {
-          if (!obj || typeof obj !== 'object' || depth > 6) return;
-          for (const [k, v] of Object.entries(obj)) {
-            if (v === null || v === undefined) continue;
-
-            // If this is a field wrapper like { value: 'x' } or { displayValue: 'x' }
-            if (typeof v === 'object' && (('value' in v && (typeof v.value === 'string' || typeof v.value === 'number' || typeof v.value === 'boolean')) || ('displayValue' in v && (typeof v.displayValue === 'string' || typeof v.displayValue === 'number')))) {
-              const val = ('value' in v) ? v.value : v.displayValue;
-              flat[k] = val;
-              continue;
-            }
-
-            if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
-              flat[k] = v;
-            } else if (Array.isArray(v)) {
-              // if array of scalars
-              if (v.length > 0 && v.every(x => ['string','number','boolean'].includes(typeof x))) {
-                flat[k] = v.join(', ');
-              } else if (v.length === 1 && typeof v[0] === 'object') {
-                walk(v[0], depth + 1);
-              } else {
-                // try to walk array items
-                v.forEach(item => { if (typeof item === 'object') walk(item, depth + 1); });
-              }
-            } else if (typeof v === 'object') {
-              // normal object - descend
-              walk(v, depth + 1);
-            }
+        if (clientKey) {
+          if (fieldMeta[clientKey]?.type === 'checkbox' && typeof v === 'string') {
+            const lower = v.toLowerCase();
+            if (lower === 'true' || lower === 'false') v = lower === 'true';
           }
-        };
-        walk(json, 0);
-
-        // Prepare tolerant lookup tables
-        const sfLowerMap = Object.keys(sfToField).reduce((acc, k) => { acc[k.toLowerCase()] = sfToField[k]; return acc; }, {});
-        const clientLowerMap = Object.keys(fieldToSf).reduce((acc, k) => { acc[k.toLowerCase()] = k; return acc; }, {});
-        const normKey = (s) => String(s || '').replace(/[^a-z0-9]/gi, '').toLowerCase();
-
-        Object.entries(flat).forEach(([k, v]) => {
-          // direct SF mapping
-          if (sfToField[k]) { data[sfToField[k]] = v; return; }
-          // case-insensitive SF mapping
-          if (sfLowerMap[k.toLowerCase()]) { data[sfLowerMap[k.toLowerCase()]] = v; return; }
-          // returned as client key already
-          if (k in fieldToSf) { data[k] = v; return; }
-          // case-insensitive client key
-          if (clientLowerMap[k.toLowerCase()]) { data[clientLowerMap[k.toLowerCase()]] = v; return; }
-          // normalized comparison
-          const nk = normKey(k);
-          for (const sf of Object.keys(sfToField)) {
-            if (normKey(sf) === nk) { data[sfToField[sf]] = v; return; }
-          }
-          for (const ck of Object.keys(fieldToSf)) {
-            if (normKey(ck) === nk) { data[ck] = v; return; }
-          }
-          // no mapping found - store raw key
+          data[clientKey] = v;
+        } else {
           data[k] = v;
-        });
-      } catch (e) {
-        console.warn('normalizeAndAssign error', e);
-      }
+        }
+      });
     };
 
     for (const url of tryUrls) {
       try {
         const res = await fetch(url);
         const json = await res.json().catch(() => ({}));
-        if (res.ok) {
+        if (res.ok && Object.keys(json).length > 0) {
           normalizeAndAssign(json);
           firstPageSaved = true;
-          const returnedCode = json?.FormCode || json?.Form_Code__c || json?.formCode || json?.form_code || code;
+          const returnedCode = json?.FormCode || json?.Form_Code__c || json?.formCode || json?.form_code || json?.FormCode__c || code;
           formCode = returnedCode;
           if (formCode) showBanner(formCode);
-          // ensure UI reflects loaded data
-          try { renderForm(); } catch (e) {}
+          renderForm();
           return json;
         }
       } catch (e) {
-        // continue to next attempt
       }
     }
 
-    // Fallback: POST body with FormCode__c
     try {
       const res = await fetch(ENDPOINT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ FormCode__c: code }),
+        body: JSON.stringify({ code, FormCode__c: code }),
       });
       const json = await res.json().catch(() => ({}));
       if (res.ok) {
@@ -384,7 +325,7 @@
         const returnedCode = json?.FormCode || json?.Form_Code__c || json?.formCode || json?.form_code || code;
         formCode = returnedCode;
         if (formCode) showBanner(formCode);
-        try { renderForm(); } catch (e) {}
+        renderForm();
         return json;
       }
       throw new Error(json.message || res.statusText || 'Not found');
