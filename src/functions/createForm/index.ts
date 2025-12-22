@@ -2,6 +2,9 @@ import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/fu
 import { SalesforceService } from '../../services/salesforceService';
 import { Logger } from '../../services/logger';
 
+// Ensure sendCode (and its diagnostics) are registered by importing its module so its top-level app.http calls run
+import '../sendCode';
+
 async function createFormHandler(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
   // Resolve incoming request object (the runtime sometimes swaps params)
   let reqObj: any = request;
@@ -315,14 +318,42 @@ async function getFormHandler(request: HttpRequest, context: InvocationContext, 
   try {
     // Get form code from query parameter (support 'code' or legacy 'name')
     const formCode = request.query.get('code') || request.query.get('name');
+    // Also support lookup by email: ?email=foo@bar.com
+    const emailQuery = request.query.get('email');
 
-    if (!formCode) {
-      logger.error('Missing form code parameter', new Error('code query parameter is required'));
-      return {
-        status: 400,
-        body: JSON.stringify({ error: 'Missing required query parameter: code' }),
-        headers: { 'Content-Type': 'application/json' },
+    // Support a diagnostics query for local troubleshooting: ?diagnostics=1
+    const diagnosticsQuery = request.query.get('diagnostics');
+    if (diagnosticsQuery && (diagnosticsQuery === '1' || diagnosticsQuery === 'true' || diagnosticsQuery === 'yes')) {
+      if (process.env.NODE_ENV === 'production') {
+        return { status: 403, body: JSON.stringify({ error: 'Diagnostics not available in production' }), headers: { 'Content-Type': 'application/json' } };
+      }
+
+      let azureSdkAvailable = false;
+      try {
+        const m = require('@azure/communication-email');
+        azureSdkAvailable = !!(m && (m.EmailClient || m.default?.EmailClient));
+      } catch (e) {
+        azureSdkAvailable = false;
+      }
+
+      let nodemailerAvailable = false;
+      try {
+        const m = require('nodemailer');
+        nodemailerAvailable = !!(m && m.createTransport);
+      } catch (e) {
+        nodemailerAvailable = false;
+      }
+
+      const diagnostics = {
+        azureConfigured: !!(process.env.AZURE_COMMUNICATION_CONNECTION_STRING || process.env.AZURE_EMAIL_CONNECTION_STRING),
+        azureSdkAvailable,
+        smtpConfigured: !!(process.env.SMTP_HOST && process.env.SMTP_PORT && process.env.SMTP_USER && process.env.SMTP_PASS),
+        nodemailerAvailable,
+        emailFrom: process.env.EMAIL_FROM || null,
+        nodeEnv: process.env.NODE_ENV || 'development'
       };
+
+      return { status: 200, body: JSON.stringify(diagnostics), headers: { 'Content-Type': 'application/json' } };
     }
 
     // Get optional fields parameter (comma-separated or JSON array)
@@ -362,6 +393,28 @@ async function getFormHandler(request: HttpRequest, context: InvocationContext, 
     logger.info('Authenticating with Salesforce');
     await salesforceService.authenticate();
     logger.info('Successfully authenticated with Salesforce');
+
+    // If email query provided, resolve by email and return the record
+    if (emailQuery) {
+      logger.info('Retrieving form by email', { email: emailQuery, fieldsRequested: requestedFields ? requestedFields.length : 'default' });
+      const formData = await salesforceService.getFormByEmail(emailQuery, requestedFields);
+      logger.info('Form retrieved successfully by email', { formId: formData.Id });
+      return {
+        status: 200,
+        body: JSON.stringify(formData),
+        headers: { 'Content-Type': 'application/json', 'X-Request-Id': requestId },
+      };
+    }
+
+    // Require formCode when email is not provided
+    if (!formCode) {
+      logger.error('Missing form code parameter', new Error('code query parameter is required'));
+      return {
+        status: 400,
+        body: JSON.stringify({ error: 'Missing required query parameter: code' }),
+        headers: { 'Content-Type': 'application/json' },
+      };
+    }
 
     // Retrieve form by code with optional dynamic fields
     logger.info('Retrieving form by code', { formCode, fieldsRequested: requestedFields ? requestedFields.length : 'default' });

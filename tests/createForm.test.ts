@@ -31,6 +31,14 @@ describe('createForm HTTP Function', () => {
         Email__c: 'john@example.com',
         Phone__c: '555-1234',
       }),
+      // new method to support lookup by email
+      getFormByEmail: jest.fn().mockResolvedValue({
+        Id: 'form-id-12345',
+        FormCode__c: 'abc12',
+        FirstName__c: 'John',
+        LastName__c: 'Doe',
+        Email__c: 'john@example.com',
+      }),
       getRecordTypeId: jest.fn().mockResolvedValue('record-type-id-123'),
       createAttachments: jest.fn().mockResolvedValue([]),
       createNotes: jest.fn().mockResolvedValue([]),
@@ -331,6 +339,42 @@ describe('createForm HTTP Function', () => {
       expect(response.status).toBe(400);
       const body = JSON.parse(response.body);
       expect(body.error).toContain('code');
+    });
+
+    it('should retrieve a form successfully by email', async () => {
+      mockRequest = {
+        method: 'GET',
+        headers: {
+          get: (header: string) => {
+            if (header === 'X-Request-Id') return 'get-request-id-456';
+            return null;
+          },
+        },
+        query: new Map([['email', 'john@example.com']]),
+      };
+
+      process.env.SF_CLIENT_ID = 'test-client-id';
+      process.env.SF_CLIENT_SECRET = 'test-client-secret';
+
+      const response = await createForm(mockRequest, mockContext);
+
+      expect(response.status).toBe(200);
+      expect(response.headers?.['X-Request-Id']).toBe('get-request-id-456');
+
+      const body = JSON.parse(response.body);
+      expect(body.Id).toBe('form-id-12345');
+      expect(body.FormCode__c).toBe('abc12');
+      expect(body.Email__c).toBe('john@example.com');
+
+      expect(mockSalesforceService.authenticate).toHaveBeenCalled();
+      expect(mockSalesforceService.getFormByEmail).toHaveBeenCalledWith('john@example.com', undefined);
+    });
+
+    it('should request emailing the code rather than auto-load (send-code endpoint)', async () => {
+      // This just ensures the client flow uses POST /send-code; we test handler separately in sendCode.test
+      // Here we assert that the sendCode function exists and is wired up by invoking it in the test suite (sanity check)
+      const sendCodeModule = await import('../src/functions/sendCode');
+      expect(typeof sendCodeModule.default).toBe('function');
     });
 
     it('should return 404 when form is not found', async () => {

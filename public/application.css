@@ -588,6 +588,16 @@ form.ri-form {
   justify-content: center;
 }
 
+/* Small helper link for the landing 'forgot code' flow */
+.ri-forgot-link {
+  display: inline-block;
+  color: var(--accent-600);
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+.ri-forgot-link:hover { text-decoration: underline; }
+
 .ri-step-title {
   font-size: 20px;
   font-weight: 700;

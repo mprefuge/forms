@@ -487,6 +487,48 @@ export class SalesforceService {
   }
 
   /**
+   * Retrieve a form by the applicant's email address. Returns the first matching record.
+   * @param email Applicant email to search on (matches Email__c)
+   * @param fields Optional array of field names to retrieve
+   */
+  async getFormByEmail(email: string, fields?: string[]): Promise<any> {
+    if (!email || typeof email !== 'string') throw new Error('Invalid email parameter');
+
+    // Default fields if none specified
+    const defaultFields = ['Id', 'FormCode__c', 'Name', 'FirstName__c', 'LastName__c', 'Email__c', 'Phone__c', 'CreatedDate'];
+    let fieldsToQuery = fields && fields.length > 0 ? [...fields] : [...defaultFields];
+
+    // Validate fields against Salesforce schema
+    const desc: any = await this.connection.sobject('Form__c').describe();
+    if (desc && desc.fields) {
+      const validFields = new Set(desc.fields.map((f: any) => f.name));
+      fieldsToQuery = fieldsToQuery.filter(f => validFields.has(f));
+      if (fieldsToQuery.length === 1) {
+        fieldsToQuery = [...defaultFields];
+      }
+    }
+
+    if (!fieldsToQuery.includes('Id')) fieldsToQuery.unshift('Id');
+
+    const selectClause = fieldsToQuery.join(', ');
+    const safeEmail = email.replace(/'/g, "\\'");
+    const query = `SELECT ${selectClause} FROM Form__c WHERE Email__c = '${safeEmail}' LIMIT 1`;
+
+    try {
+      const result: any = await this.connection.query(query);
+      if (result.records && result.records.length > 0) {
+        return result.records[0];
+      }
+      throw new Error(`Form not found with email: ${email}`);
+    } catch (error: any) {
+      if (error.message && error.message.includes('INVALID_FIELD')) {
+        throw new Error(`Invalid field in query: ${error.message}`);
+      }
+      throw error;
+    }
+  }
+
+  /**
    * Update an existing Form__c record
    * Dynamically determines which fields are updateable from Salesforce schema
    */

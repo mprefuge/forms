@@ -130,6 +130,30 @@ describe('SalesforceService - default RecordType behavior', () => {
     expect((sf as any).connection.sobject).toHaveBeenCalledWith('Note');
   });
 
+  it('retrieves a form by email successfully', async () => {
+    const sf = new SalesforceService({ loginUrl: 'https://login.salesforce.com', clientId: 'id', clientSecret: 'secret' });
+
+    (sf as any).connection = {
+      sobject: jest.fn().mockReturnValue({ describe: jest.fn().mockResolvedValue({ fields: [] }) }),
+      query: jest.fn().mockResolvedValue({ records: [{ Id: 'form-email-1', FormCode__c: 'eee11', Email__c: 'joe@example.com' }] }),
+    } as any;
+
+    const rec = await (sf as any).getFormByEmail('joe@example.com');
+    expect(rec).toBeDefined();
+    expect(rec.FormCode__c).toBe('eee11');
+  });
+
+  it('throws when no form found for email', async () => {
+    const sf = new SalesforceService({ loginUrl: 'https://login.salesforce.com', clientId: 'id', clientSecret: 'secret' });
+
+    (sf as any).connection = {
+      sobject: jest.fn().mockReturnValue({ describe: jest.fn().mockResolvedValue({ fields: [] }) }),
+      query: jest.fn().mockResolvedValue({ records: [] }),
+    } as any;
+
+    await expect((sf as any).getFormByEmail('missing@example.com')).rejects.toThrow('Form not found with email: missing@example.com');
+  });
+
   it('normalizes multipicklist values (pipes -> semicolons) when creating forms', async () => {
     const sf = new SalesforceService({ loginUrl: 'https://login.salesforce.com', clientId: 'id', clientSecret: 'secret' });
 

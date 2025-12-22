@@ -18,7 +18,7 @@ npm install
 
 ### 2. Configure Environment Variables
 
-Create or update `.env.local` with your Salesforce Connected App credentials:
+Create or update `.env.local` or `local.settings.json` with your Salesforce Connected App credentials and any email provider configuration you plan to use (Azure Communication Services or SMTP):
 
 ```
 FUNCTIONS_WORKER_RUNTIME=node
@@ -26,9 +26,20 @@ WEBSITE_NODE_DEFAULT_VERSION=18.x
 SF_LOGIN_URL=https://login.salesforce.com
 SF_CLIENT_ID=your_connected_app_consumer_key
 SF_CLIENT_SECRET=your_connected_app_consumer_secret
+# Optional: Azure Communication Services (preferred for email)
+AZURE_COMMUNICATION_CONNECTION_STRING=endpoint=https://<your-resource>.communication.azure.com/;accesskey=...
+# Optional alias supported by the code
+AZURE_EMAIL_CONNECTION_STRING=endpoint=https://<your-resource>.communication.azure.com/;accesskey=...
+# The email address that will appear in the From field (must be a verified ACS sender)
+EMAIL_FROM=no-reply@yourdomain.com
+# Optional SMTP fallback (if not using ACS)
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_USER=smtp-user
+SMTP_PASS=smtp-pass
 ```
 
-**Note:** Use Client Credentials flow (not JWT). Obtain credentials from your Salesforce Connected App settings.
+**Note:** Use Client Credentials flow for Salesforce (not JWT). Obtain credentials from your Salesforce Connected App settings. For detailed instructions on setting up **Azure Communication Services (Email)**, see `docs/azure-communication-setup.md`.
 
 ### 3. Build
 

@@ -1,5 +1,5 @@
 (() => {
-  const ENDPOINT = "https://rif-hhh8e6e7cbc2hvdw.eastus-01.azurewebsites.net/api/form";
+  const ENDPOINT = "http://localhost:7071/api/form"; //"https://rif-hhh8e6e7cbc2hvdw.eastus-01.azurewebsites.net/api/form";
   const HOST_ID = "volunteer-app";
   // Public link to the Statement of Faith (opened in a new tab)
   const STATEMENT_URL = "https://static1.squarespace.com/static/5af0bc3a96d45593d7d7e55b/t/675251913102604777fd712c/1733448082026/Refuge+International+Statement+Of+Faith-Rev.+9_25_23.pdf";
@@ -1520,6 +1520,70 @@
       // Make the input full-width and position action buttons inline
       input.setAttribute('style', 'width:100%; padding: 12px 14px; border-radius: 10px; border: 2px solid var(--border);');
       const inputWrapper = h('div', { style: 'margin: 16px 0;' }, input);
+
+      // "Forgot your code?" link
+      const forgotLink = h('a', { href: '#', class: 'ri-forgot-link', text: 'Forgot your code?' });
+      forgotLink.onclick = (e) => {
+        e.preventDefault();
+        // Render the email lookup UI
+        const emailInput = h('input', { placeholder: 'Enter the email used on your application', id: 'forgot-email-input', style: 'width:100%; padding: 12px 14px; border-radius: 10px; border: 2px solid var(--border);' });
+        const findBtn = h('button', { class: 'ri-btn ri-btn-primary', type: 'button', text: 'Find Code' });
+        const backToCodeBtn = h('button', { class: 'ri-btn ri-btn-ghost ri-btn-sm', type: 'button', html: '&#8592; Back' });
+        backToCodeBtn.onclick = () => { renderLanding(); setTimeout(() => { try { input.focus(); } catch (err) {} }, 80); };
+
+        findBtn.onclick = async () => {
+          const email = (emailInput.value || '').trim();
+          if (!email) return setStatus('Please enter an email address.', 'error');
+          findBtn.disabled = true;
+          findBtn.innerHTML = '<span class="ri-loader"></span>';
+          setStatus('Requesting that we email your application code...', '');
+          try {
+            const url = `${ENDPOINT}/send-code`;
+            const res = await fetch(url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email }),
+            });
+            const json = await res.json().catch(() => ({}));
+            if (!res.ok) {
+              const errMsg = (json.error || 'Unable to send application code') + (json.detail ? (': ' + json.detail) : '');
+              throw new Error(errMsg);
+            }
+
+            // Inform the user that we've sent the code and instruct them to check their email
+            setStatus(`We've sent the application code to ${email}. Please check your email and use the code to continue.`, 'success');
+
+            // Replace the lookup UI with the original resume input so they can enter the code when it arrives
+            setTimeout(() => {
+              renderLanding();
+              // Move back to the continue->enter code UI so they can paste the code when they receive it
+              const continueBtn = Array.from(landingEl.querySelectorAll('.ri-btn')).find(b => b.textContent && b.textContent.includes('Continue Existing'));
+              if (continueBtn) continueBtn.click();
+              // Focus the resume input so they can paste when ready
+              setTimeout(() => { try { const resumeInput = document.getElementById('resume-code-input'); if (resumeInput && typeof resumeInput.focus === 'function') { try { resumeInput.focus(); } catch (e) {} } } catch (e) {} }, 200);
+            }, 1200);
+
+          } catch (err) {
+            setStatus(err.message || 'Unable to send application code by email', 'error');
+          } finally {
+            findBtn.disabled = false;
+            findBtn.textContent = 'Find Code';
+          }
+        };
+
+        const emailRow = h('div', { style: 'display:flex; gap:12px; align-items:center; margin-top: 16px;' }, backToCodeBtn, h('div', { style: 'flex:1' }, findBtn));
+        const emailWrapper = h('div', { style: 'max-width:720px; margin: 0 auto; text-align: left;' },
+          h('h3', { text: 'Find Your Application', class: 'ri-step-title' }),
+          h('p', { text: 'Enter the email address that you used on your application.', class: 'ri-step-description' }),
+          h('div', { style: 'margin: 16px 0;' }, emailInput),
+          emailRow
+        );
+
+        landingEl.innerHTML = '';
+        landingEl.append(emailWrapper);
+        setTimeout(() => { try { emailInput.focus(); } catch (e) {} }, 80);
+      };
+
       loadBtn.className = 'ri-btn ri-btn-primary ri-landing-btn';
 
       const actionRow = h('div', { style: 'display:flex; gap:12px; align-items:center; margin-top: 16px;' },
@@ -1527,7 +1591,9 @@
         h('div', { style: 'flex:1' }, loadBtn)
       );
 
-      const wrapper = h('div', { style: 'max-width:720px; margin: 0 auto; text-align: left;' }, resumeTitle, resumeSubtitle, inputWrapper, actionRow);
+      const helperRow = h('div', { style: 'margin-top:8px; text-align:left;' }, forgotLink);
+
+      const wrapper = h('div', { style: 'max-width:720px; margin: 0 auto; text-align: left;' }, resumeTitle, resumeSubtitle, inputWrapper, actionRow, helperRow);
 
       landingEl.append(wrapper);
 
