@@ -1,5 +1,5 @@
 (() => {
-  const ENDPOINT = "https://rif-hhh8e6e7cbc2hvdw.eastus-01.azurewebsites.net/api/form";
+  const ENDPOINT = "http://localhost:7071/api/form" //"https://rif-hhh8e6e7cbc2hvdw.eastus-01.azurewebsites.net/api/form";
   const HOST_ID = "volunteer-app";
 
   const injectCSS = () => {

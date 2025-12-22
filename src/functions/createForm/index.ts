@@ -101,67 +101,42 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
     try {
       const contentType = ((request.headers as any)?.get?.('content-type') || (request.headers as any)?.['content-type'] || '').toString().toLowerCase();
       
-      if (contentType.includes('multipart/form-data')) {
-        // Handle multipart form data with file uploads
-        logger.debug('Parsing multipart form data');
-        const boundary = contentType.match(/boundary=([^;]+)/)?.[1];
-        
-        if (!boundary) {
-          throw new Error('Invalid multipart form data: missing boundary');
-        }
+      if (contentType.includes('multipart/form-data') && typeof (request as any).formData === 'function') {
+        // Handle multipart form data using Web API formData()
+        logger.debug('Parsing multipart form data via formData()');
+        const fd: any = await (request as any).formData();
 
-        let bodyText = '';
-        if (typeof request.body === 'string') {
-          bodyText = request.body;
-        } else if (request.body instanceof ArrayBuffer || (request.body && typeof request.body === 'object' && 'toString' in request.body)) {
-          bodyText = Buffer.from(request.body as any).toString('utf-8');
-        } else {
-          bodyText = String(request.body || '');
-        }
+        // Iterate all entries in FormData
+        for (const [fieldName, value] of fd.entries()) {
+          try {
+            // Files are Blob/File objects with arrayBuffer()
+            const isFileObject = value && typeof value === 'object' && typeof (value as any).arrayBuffer === 'function';
+            if (isFileObject) {
+              const fileObj: any = value;
+              const fileName: string = fileObj.name || fieldName;
+              const mimeType: string = fileObj.type || 'application/octet-stream';
+              const ab = await fileObj.arrayBuffer();
+              const base64Content = Buffer.from(ab as ArrayBuffer).toString('base64');
 
-        const parts = bodyText.split(`--${boundary}`);
-        
-        for (const part of parts) {
-          if (!part.trim() || part === '--\r\n' || part === '--') continue;
-          
-          const [headerSection, ...contentParts] = part.split('\r\n\r\n');
-          const contentSection = contentParts.join('\r\n\r\n').replace(/\r\n$/, '');
-          
-          const nameMatch = headerSection.match(/name="([^"]+)"/);
-          const filenameMatch = headerSection.match(/filename="([^"]+)"/);
-          const contentTypeMatch = headerSection.match(/Content-Type:\s*([^\r\n]+)/);
-          
-          if (nameMatch && nameMatch[1]) {
-            const fieldName = nameMatch[1];
-            
-            if (filenameMatch && filenameMatch[1]) {
-              // This is a file upload
-              const fileName = filenameMatch[1];
-              const mimeType = contentTypeMatch ? contentTypeMatch[1].trim() : 'application/octet-stream';
-              const base64Content = Buffer.from(contentSection, 'binary').toString('base64');
-              
               uploadedFiles[fieldName] = {
                 fileName,
                 contentType: mimeType,
-                base64: base64Content
+                base64: base64Content,
               };
               logger.debug('Parsed file upload', { fieldName, fileName, contentType: mimeType });
-            } else if (fieldName === 'data') {
-              // This is the JSON data field
-              try {
-                formData = JSON.parse(contentSection.trim());
-              } catch (e: any) {
-                logger.error('Failed to parse JSON data field', e);
-                formData = {};
-              }
-            } else {
-              // Regular form field
+            } else if (fieldName === 'data' && typeof value === 'string') {
+              // Nested JSON payload
+              formData = JSON.parse(value);
+            } else if (typeof value === 'string') {
+              // Regular simple field
               if (!formData) formData = {};
-              formData[fieldName] = contentSection.trim();
+              (formData as any)[fieldName] = value;
             }
+          } catch (e: any) {
+            logger.error('Failed to parse formData entry', e, { fieldName });
           }
         }
-        
+
         if (!formData) formData = {};
         logger.debug('Multipart form data parsed', { formDataKeys: Object.keys(formData || {}), uploadedFiles: Object.keys(uploadedFiles) });
       } else {
