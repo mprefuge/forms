@@ -10,24 +10,24 @@
       Zip: "Postal Code",
       State: "State/Province",
       Country: "Country/Region",
-      ChurchServingDetails: "Church Involvement",
-      GospelDetails: "Share the Gospel (in your own words)",
-      TestimonyDetails: "Your Faith Story",
+      ChurchServingDetails: "How are you involved in your church?",
+      GospelDetails: "Briefly Share the Gospel",
+      TestimonyDetails: "Briefly Share Your Testimony",
       ServingInterest: "Areas of Interest",
       PreferredServingArea: "Primary Area of Interest",
     },
     stepTitles: {
       "Basic Information": "Contact Information",
-      "Church & Ministry": "Church & Service",
+      "Church & Ministry": "Church Information",
       "What You'd Like to Do": "Areas to Serve",
-      "Your Faith Journey": "Faith Story",
+      "Your Faith Journey": "Your Beliefs",
       "Commitments & Agreement": "Agreements",
-      "Pastor Contact Information": "Pastoral Reference",
     },
     phaseNames: {
       initial: "Volunteer Application",
-      supplemental: "Document Review (Admin)",
-      placement: "Placement (Admin)"
+      supplemental: "Supplemental Documents",
+      review: "Review",
+      placement: "Placement"
     }
   };
 
@@ -77,12 +77,11 @@
       steps: [
         { title: "Basic Information", description: "Your name and contact details", fields: ["Salutation","FirstName","LastName","Email","Phone"] },
         { title: "Personal Details", description: "Background and language preferences", fields: ["Birthdate","Street","City","State","Zip","Country","LanguagesSpoken","CountryOfOrigin","Gender","MaritalStatus"] },
-        { title: "Church & Ministry", description: "Your faith community and experience", fields: ["Church","ChurchServingDetails","Skills","HowHeard"] },
+        { title: "Church Information", description: "Tell us about your church", fields: ["Church","ChurchServingDetails","PastorSalutation","PastorFirstName","PastorLastName","PastorEmail"] },
         { title: "Emergency Contact", description: "Who to reach in case of emergency", fields: ["EmergencyContactFirstName","EmergencyContactLastName","EmergencyContactRelationship","EmergencyContactPhone"] },
-        { title: "What You'd Like to Do", description: "Your serving interests and availability", fields: ["ServingInterest","PreferredServingArea","Availability"] },
+        { title: "What You'd Like to Do", description: "Your serving interests and availability", fields: ["ServingInterest","PreferredServingArea","Skills","Availability"] },
         { title: "Your Faith Journey", description: "Tell us about your faith", fields: ["GospelDetails","TestimonyDetails"] },
-        { title: "Commitments & Agreement", description: "Confirmations and next steps", fields: ["AffirmStatementOfFaith","WillPay","MinistrySafeCompleted","AdditionalNotes"] },
-        { title: "Pastor Contact Information", description: "For faith reference verification", fields: ["PastorFirstName","PastorLastName","PastorEmail","PastorSalutation"] },
+        { title: "Commitments & Agreement", description: "Confirmations and next steps", fields: ["AffirmStatementOfFaith","WillPay","MinistrySafeCompleted","AdditionalNotes","HowHeard"] },
       ]
     },
     supplemental: {
@@ -133,10 +132,10 @@
     AffirmStatementOfFaith: { label: "I affirm the Statement of Faith", type: "checkbox", required: true },
     WillPay: { label: "I am able to pay the application fee", type: "checkbox", required: false },
     Birthdate: { label: "Birthdate", type: "date", required: true },
-    PastorSalutation: { label: "Pastor Salutation", type: "select", options: [], required: false },
-    PastorFirstName: { label: "Pastor First Name", type: "text", required: true },
-    PastorLastName: { label: "Pastor Last Name", type: "text", required: true },
-    PastorEmail: { label: "Pastor Email", type: "email", required: true },
+    PastorSalutation: { label: "Salutation", type: "select", options: [], required: false },
+    PastorFirstName: { label: "First Name", type: "text", required: true },
+    PastorLastName: { label: "Last Name", type: "text", required: true },
+    PastorEmail: { label: "Email", type: "email", required: true },
     EmergencyContactFirstName: { label: "First Name", type: "text", required: true },
     EmergencyContactLastName: { label: "Last Name", type: "text", required: true },
     EmergencyContactPhone: { label: "Phone", type: "tel", required: true },
@@ -503,7 +502,7 @@
         }});
         const lab = h("label", { for: idOpt, text: txt });
         const isStarred = (primary === val);
-        const star = h('button', { type: 'button', class: isStarred ? 'ri-star ri-starred' : 'ri-star', title: 'Mark as primary' });
+        const star = h('button', { type: 'button', class: isStarred ? 'ri-star ri-starred' : 'ri-star', title: 'Mark as primary area of interest' });
         star.innerHTML = isStarred ? '&#9733;' : '&#9734;';
         star.onclick = (e) => {
           e.preventDefault();
@@ -527,8 +526,8 @@
         };
         container.append(h("div", { class: "ri-checkbox" }, chk, lab, star));
       });
-      container.append(h('div', { class: 'ri-muted', text: "Tap items to select; click the star to mark the primary." }));
-      wrapper.append(label, container);
+      const helper = h('div', { class: 'ri-field-note', text: 'Click the star to indicate your primary area of interest.' });
+      wrapper.append(label, helper, container);
       return wrapper;
     }
 
@@ -648,6 +647,7 @@
       wrapper.append(label, control);
     } else if (meta.type === "multiselect") {
       const container = h("div", { class: "ri-multiselect-box" });
+      const helper = h('div', { class: 'ri-field-note', text: "Tap the items you want to select - multiple selections are allowed." });
       const opts = meta.options || [];
       const curVals = Array.isArray(value) ? value : (typeof value === 'string' ? value.split('|').map(s => s.trim()).filter(Boolean) : []);
       if ((opts || []).length === 0) {
@@ -674,8 +674,7 @@
         const lab = h("label", { for: idOpt, text: txt });
         container.append(h("div", { class: "ri-checkbox" }, chk, lab));
       });
-      container.append(h('div', { class: 'ri-muted', text: "Tap the items you want to select — multiple selections are allowed." }));
-      wrapper.append(label, container);
+      wrapper.append(label, helper, container);
     } else {
       control = h("input", { id: name, type: meta.type || "text", placeholder: meta.placeholder || "", value, oninput: e => { 
         data[name] = e.target.value;
@@ -809,15 +808,15 @@
     const step = currentSteps[currentStep];
     
     // Define required fields by step title
+    const churchStepTitle = orgTerms.stepTitles['Church & Ministry'] || 'Church & Ministry';
     const requiredByStep = {
       "Basic Information": ["FirstName", "LastName", "Email", "Phone"],
       "Personal Details": ["Gender", "Street", "City", "State"],
-      "Church & Ministry": ["Church"],
+      [churchStepTitle]: ["Church", "PastorFirstName", "PastorLastName", "PastorEmail"],
       "Emergency Contact": ["EmergencyContactFirstName", "EmergencyContactLastName", "EmergencyContactPhone"],
       "What You'd Like to Do": ["ServingInterest"],
       "Your Faith Journey": ["GospelDetails", "TestimonyDetails"],
       "Commitments & Agreement": ["AffirmStatementOfFaith"],
-      "Pastor Contact Information": ["PastorFirstName", "PastorLastName", "PastorEmail"],
     };
     
     const required = requiredByStep[step.title] || [];
@@ -1141,6 +1140,30 @@
       const addressRow = h('div', { class: 'ri-address-row' }, streetWrapper, addressSubgrid);
 
       grid = h('div', { class: 'ri-grid ri-grid--personal-details' }, left, right, addressRow);
+
+    } else if (step.title === (orgTerms.stepTitles['Church & Ministry'] || 'Church & Ministry')) {
+      // Top row: two evenly split fields (Church name and Church involvement)
+      const churchTop = h('div', { class: 'ri-church-top', style: 'grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;' },
+        h('div', { class: 'ri-church-col ri-church-col--half' }, fieldFor('Church')),
+        h('div', { class: 'ri-church-col ri-church-col--half' }, fieldFor('ChurchServingDetails'))
+      );
+
+      // Pastor subsection: Pastoral Reference (title + note) and pastor row
+      const pastorRow = h('div', { class: 'ri-church-pastor-row', style: 'display:flex; gap:10px; align-items:center; flex-wrap:nowrap;' },
+        h('div', { class: 'ri-pastor-salutation' }, fieldFor('PastorSalutation')),
+        h('div', { class: 'ri-pastor-first' }, fieldFor('PastorFirstName')),
+        h('div', { class: 'ri-pastor-last' }, fieldFor('PastorLastName')),
+        h('div', { class: 'ri-pastor-email' }, fieldFor('PastorEmail'))
+      );
+
+      const pastoralSection = h('div', { class: 'ri-church-pastoral-section', style: 'grid-column: 1 / -1; margin-top: 12px;' },
+        h('h4', { class: 'ri-section-title', text: 'Pastoral Reference' }),
+        h('div', { class: 'ri-section-note', text: 'We will reach out to your pastoral reference on your behalf as part of the application process.' }),
+        pastorRow
+      );
+
+      grid = h('div', { class: 'ri-grid ri-grid--church-info' }, churchTop, pastoralSection);
+
     } else {
       grid = h("div", { class: "ri-grid" }, step.fields.map(fieldFor));
     }

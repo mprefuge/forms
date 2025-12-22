@@ -218,6 +218,31 @@ form.ri-form {
 /* Ensure suggestions under street field don't introduce horizontal scroll */
 .ri-address-suggestions { max-width: 100%; overflow-x: hidden; }
 
+/* Church & Ministry specific layout */
+.ri-grid--church-info { grid-template-columns: 1fr; }
+/* Force the top church block to span the grid (prevents other grid items from appearing beside it) */
+.ri-grid--church-info > .ri-church-top { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.ri-grid--church-info .ri-church-row { display: flex; gap: 10px; align-items: flex-start; }
+/* top row columns split evenly */
+.ri-grid--church-info .ri-church-col--half { flex: 1 1 0; }
+/* Pastor row: flex layout to keep fields on one line */
+.ri-grid--church-info .ri-church-pastor-row { display: flex; gap: 10px; align-items: center; margin-top: 8px; flex-wrap: nowrap; grid-column: 1 / -1; }
+.ri-grid--church-info .ri-church-pastor-row > div { min-width: 0; }
+.ri-grid--church-info .ri-pastor-salutation { flex: 0 0 120px; max-width: 120px; }
+.ri-grid--church-info .ri-pastor-first { flex: 1 1 120px; min-width: 0; }
+.ri-grid--church-info .ri-pastor-last { flex: 1 1 120px; min-width: 0; }
+.ri-grid--church-info .ri-pastor-email { flex: 1.2 1 140px; min-width: 0; }
+.ri-grid--church-info .ri-church-pastor-row .ri-field { margin: 0; }
+
+/* Pastoral Reference subsection */
+.ri-church-pastoral-section { grid-column: 1 / -1; margin-top: 12px; }
+.ri-church-pastoral-section .ri-section-title { margin: 0 0 6px; font-size: 0.95rem; font-weight: 700; }
+.ri-church-pastoral-section .ri-section-note { margin: 0 0 10px; font-size: 0.9rem; color: #666; }
+@media (max-width: 960px) {
+  .ri-grid--church-info .ri-church-row { flex-direction: column; }
+  .ri-grid--church-info .ri-basic-row { flex-direction: column; }
+}
+
 @media (max-width: 960px) {
   .ri-grid--personal-details { grid-template-columns: 1fr; }
   .ri-personal-right { order: 2; height: auto; }
