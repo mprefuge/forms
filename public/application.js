@@ -1,6 +1,8 @@
 (() => {
   const ENDPOINT = "https://rif-hhh8e6e7cbc2hvdw.eastus-01.azurewebsites.net/api/form";
   const HOST_ID = "volunteer-app";
+  // Public link to the Statement of Faith (opened in a new tab)
+  const STATEMENT_URL = "https://static1.squarespace.com/static/5af0bc3a96d45593d7d7e55b/t/675251913102604777fd712c/1733448082026/Refuge+International+Statement+Of+Faith-Rev.+9_25_23.pdf";
 
 
   // Organization terminology (labels/titles). Terms are static and defined here
@@ -13,7 +15,6 @@
       ChurchServingDetails: "How are you involved in your church?",
       GospelDetails: "Briefly Share the Gospel",
       TestimonyDetails: "Briefly Share Your Testimony",
-      ServingInterest: "Areas of Interest",
       PreferredServingArea: "Primary Area of Interest",
     },
     stepTitles: {
@@ -78,7 +79,7 @@
         { title: "Basic Information", description: "Your name and contact details", fields: ["Salutation","FirstName","LastName","Email","Phone"] },
         { title: "Personal Details", description: "Background and language preferences", fields: ["Birthdate","Street","City","State","Zip","Country","LanguagesSpoken","CountryOfOrigin","Gender","MaritalStatus"] },
         { title: "Church Information", description: "Tell us about your church", fields: ["Church","ChurchServingDetails","PastorSalutation","PastorFirstName","PastorLastName","PastorEmail"] },
-        { title: "Emergency Contact", description: "Who to reach in case of emergency", fields: ["EmergencyContactFirstName","EmergencyContactLastName","EmergencyContactRelationship","EmergencyContactPhone"] },
+        { title: "Emergency Contact", description: "Who should we reach out to in case of an emergency?", fields: ["EmergencyContactFirstName","EmergencyContactLastName","EmergencyContactRelationship","EmergencyContactPhone"] },
         { title: "What You'd Like to Do", description: "Your serving interests and availability", fields: ["ServingInterest","PreferredServingArea","Skills","Availability"] },
         { title: "Your Faith Journey", description: "Tell us about your faith", fields: ["GospelDetails","TestimonyDetails"] },
         { title: "Commitments & Agreement", description: "Confirmations and next steps", fields: ["AffirmStatementOfFaith","WillPay","MinistrySafeCompleted","AdditionalNotes","HowHeard"] },
@@ -119,17 +120,17 @@
     CountryOfOrigin: { label: "Country of Origin", type: "select", options: [], required: true },
     PrimaryLanguage: { label: "Primary Language", type: "select", options: [], required: false },
     LanguagesSpoken: { label: "Languages Spoken", type: "multiselect", options: [], required: true },
-    Skills: { label: "Skills", type: "multiselect", options: [], required: false },
+    Skills: { label: "What gifts/skills do you have?", type: "multiselect", options: [], required: false },
     Church: { label: "Church Name", type: "text", required: true },
     ChurchServingDetails: { label: "Church Involvement", type: "textarea", required: false },
     HowHeard: { label: "How did you hear about Refuge International?", type: "select", options: [], required: false },
-    ServingInterest: { label: "Areas of Interest", type: "multiselect", options: [], required: true },
+    ServingInterest: { label: "Which areas are you interested in serving?", type: "multiselect", options: [], required: true },
     PreferredServingArea: { label: "Primary Area of Interest", type: "select", options: [], required: false },
     GospelDetails: { label: "Share the Gospel (in your own words)", type: "textarea", required: true },
     TestimonyDetails: { label: "Your Faith Story", type: "textarea", required: true },
     AdditionalNotes: { label: "Additional Notes", type: "textarea", required: false },
-    Availability: { label: "Availability", type: "multiselect", options: [], required: false },
-    AffirmStatementOfFaith: { label: "I affirm the Statement of Faith", type: "checkbox", required: true },
+    Availability: { label: "What is your general availability?", type: "multiselect", options: [], required: false },
+    AffirmStatementOfFaith: { label: "I affirm Refuge International's Statement of Faith", type: "checkbox", required: true },
     WillPay: { label: "I am able to pay the application fee", type: "checkbox", required: false },
     Birthdate: { label: "Birthdate", type: "date", required: true },
     PastorSalutation: { label: "Salutation", type: "select", options: [], required: false },
@@ -150,7 +151,6 @@
     BackgroundCheckDate: { label: "Completion Date", type: "date", required: false },
     BackgroundCheckNotes: { label: "Notes", type: "textarea", required: false },
     MinistrySafeCompleted: { label: "I have completed MinistrySafe training in the past 5 years", type: "checkbox", required: false },
-    MinistrySafeCompletionDate: { label: "Completion Date", type: "date", required: false },
     MinistrySafeCertificate: { label: "Upload Certificate", type: "file", accept: ".pdf,.jpg,.jpeg,.png", required: false },
     AdditionalDocumentsNotes: { label: "Additional Documents Notes", type: "textarea", required: false },
     PlacementArea: { label: "Placement Area", type: "text", required: false },
@@ -287,6 +287,42 @@
 
   const getStepTitle = (title) => orgTerms.stepTitles[title] || title;
   const getPhaseName = (phaseKey) => orgTerms.phaseNames[phaseKey] || (phases[phaseKey]?.name || '');
+
+  const formatValue = (key, val) => {
+    if (val === undefined || val === null) return '';
+    if (Array.isArray(val)) return val.join(', ');
+    if (typeof val === 'boolean') return val ? 'Yes' : 'No';
+    return String(val);
+  };
+
+  const buildReviewSummary = () => {
+    const wrap = h('div', { class: 'ri-review' });
+    const currentStepsDef = phases[currentPhase].steps || [];
+    const stepsForReview = currentStepsDef.slice(0, Math.max(0, currentStepsDef.length - 1));
+
+    stepsForReview.forEach(step => {
+      const section = h('div', { class: 'ri-review-section' });
+      section.append(h('h4', { class: 'ri-review-title', text: getStepTitle(step.title) }));
+      const grid = h('div', { class: 'ri-review-grid' });
+      (step.fields || []).forEach(field => {
+        const val = data[field];
+        const hasVal = Array.isArray(val) ? val.length > 0 : (val !== undefined && val !== null && String(val).trim() !== '');
+        if (!hasVal) return;
+        const label = getLabel(field);
+        const display = formatValue(field, val);
+        const item = h('div', { class: 'ri-review-item' },
+          h('div', { class: 'ri-review-label', text: label }),
+          h('div', { class: 'ri-review-value', text: display })
+        );
+        grid.append(item);
+      });
+      if (grid.children.length > 0) {
+        section.append(grid);
+        wrap.append(section);
+      }
+    });
+    return wrap;
+  };
 
   const saveToLocalStorage = () => {
     try {
@@ -433,7 +469,7 @@
         autoSave();
         if (name === "MinistrySafeCompleted" || name === "WillPay") {
           if (name === 'MinistrySafeCompleted' && !e.target.checked) {
-            delete data.MinistrySafeCompletionDate;
+            // Remove uploaded certificate if training is unchecked
             delete data.MinistrySafeCertificate;
             if (fileUploads && fileUploads.MinistrySafeCertificate) delete fileUploads.MinistrySafeCertificate;
             autoSave();
@@ -445,20 +481,68 @@
       if (name === 'WillPay') {
         const hasCertificate = !!(data.MinistrySafeCertificate || (fileUploads && fileUploads.MinistrySafeCertificate));
         const price = hasCertificate ? 15 : 20;
-        const labelEl = buildLabel(getLabel(name));
+        // Build label as: "I am able to pay the $XX application fee"
+        const raw = getLabel(name) || '';
+        const feePhrase = /application fee/i;
+        let left = raw;
+        let right = '';
+        if (feePhrase.test(raw)) {
+          left = raw.replace(feePhrase, '').trim();
+          right = 'application fee';
+        }
+        const labelEl = h('label', { for: name });
+        const leftSpan = h('span', { text: left + (left ? ' ' : '') });
         const badge = h('span', { class: 'ri-fee-badge', text: `$${price}` });
-        labelEl.append(badge);
+        const rightSpan = h('span', { text: (right ? ' ' + right : '') });
+        labelEl.append(leftSpan, badge, rightSpan);
         const row = h("div", { class: "ri-checkbox" }, input, labelEl);
         wrapper.append(row);
+      } else if (name === 'AffirmStatementOfFaith') {
+        // Statement of Faith: require opening the statement before the checkbox becomes enabled
+        input.disabled = !(data._AffirmStatement_Read || value);
+        const topRow = h('div', { class: 'ri-statement-top' });
+        topRow.append(h('span', { text: getLabel(name) }), h('span', { class: 'ri-required', text: ' *' }));
+        const link = h('a', { href: STATEMENT_URL, target: '_blank', rel: 'noopener noreferrer', class: 'ri-statement-link', text: 'Read the Statement of Faith' });
+        // Clicking the link enables the checkbox so users can affirm
+        link.onclick = (e) => { try { input.disabled = false; input.focus(); } catch (err) {} data._AffirmStatement_Read = true; helper.style.display = 'none'; };
+        link.onkeydown = (e) => { if (e.key === 'Enter') link.click(); };
+        const labelEl = h('label', { for: name });
+        labelEl.append(topRow, link);
+        const helper = h('div', { class: 'ri-field-note ri-field-note--hidden', text: 'Please read the full Statement of Faith before affirming. Opens in a new tab.' });
+        const row = h('div', { class: 'ri-checkbox ri-checkbox--statement', tabindex: 0 }, input, labelEl);
+        // If the user tries to click or press Enter/Space on the disabled checkbox/area, reveal the helper text
+        row.onclick = (e) => {
+          if (input.disabled) {
+            helper.style.display = 'block';
+            helper.classList.add('ri-field-note--pulse');
+            setTimeout(() => helper.classList.remove('ri-field-note--pulse'), 900);
+          }
+        };
+        row.onkeydown = (e) => {
+          if ((e.key === 'Enter' || e.key === ' ') && input.disabled) {
+            e.preventDefault();
+            helper.style.display = 'block';
+            helper.classList.add('ri-field-note--pulse');
+            setTimeout(() => helper.classList.remove('ri-field-note--pulse'), 900);
+          }
+        };
+        wrapper.append(row, helper);
       } else {
         const row = h("div", { class: "ri-checkbox" }, input, buildLabel(getLabel(name)));
         wrapper.append(row);
       }
       
+      // Always show a short, visible note under the MinistrySafe training checkbox (with info icon)
+      if (name === 'MinistrySafeCompleted') {
+        const infoIcon = h('span', { class: 'ri-info-icon', html: '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm.88 6.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM11 11h2v6h-2v-6z"/></svg>' });
+        const textEl = h('div', { class: 'ri-note-text', text: "Optional - If you have a MinistrySafe certificate you may upload it now. If you haven't completed training, part of the application process includes completing the MinistrySafe training." });
+        const minNote = h('div', { class: 'ri-file-note ri-ministry-note' }, infoIcon, textEl);
+        wrapper.append(minNote);
+      }
+
       if (name === "MinistrySafeCompleted" && value) {
         const certField = fieldFor("MinistrySafeCertificate");
-        const dateField = fieldFor("MinistrySafeCompletionDate");
-        wrapper.append(dateField, certField);
+        wrapper.append(certField);
       }
       return wrapper;
     }
@@ -1178,12 +1262,37 @@
 
       grid = h('div', { class: 'ri-grid ri-grid--areas-to-serve' }, areasTop, availabilityWrapper);
 
+    } else if (step.title === 'Commitments & Agreement') {
+      // Review summary full-width, then agreements checkboxes left, notes right
+      const review = buildReviewSummary();
+      review.className = 'ri-review--full';
+      
+      // Agreements section with clean checkboxes
+      const agreementsSection = h('div', { class: 'ri-agreements-section' },
+        h('h4', { class: 'ri-agreements-title', text: 'Please Confirm the Following:' }),
+        h('div', { class: 'ri-agreements-list' },
+          fieldFor('AffirmStatementOfFaith'),
+          fieldFor('MinistrySafeCompleted'),
+          fieldFor('WillPay')
+        )
+      );
+      
+      // Right column: Additional info card
+      const infoCard = h('div', { class: 'ri-info-card' },
+        fieldFor('AdditionalNotes'),
+        fieldFor('HowHeard')
+      );
+      
+      const layoutRow = h('div', { class: 'ri-agreements-layout' }, agreementsSection, infoCard);
+      grid = h('div', { class: 'ri-grid ri-grid--agreements' }, review, layoutRow);
     } else {
       grid = h("div", { class: "ri-grid" }, step.fields.map(fieldFor));
     }
+    const isLast = currentStep === currentSteps.length - 1;
+    const submitText = isLast && currentPhase === 'initial' ? 'Submit Application' : (isLast ? 'Complete Phase' : 'Next');
     const actions = h("div", { class: "ri-actions" },
       h("button", { class: "ri-btn ri-btn-ghost", type: "button", disabled: currentStep === 0, onclick: () => { currentStep = Math.max(0, currentStep - 1); renderForm(); } }, "Back"),
-      h("button", { class: "ri-btn ri-btn-primary", type: "submit" }, currentStep === currentSteps.length - 1 ? "Complete Phase" : "Next")
+      h("button", { class: "ri-btn ri-btn-primary", type: "submit" }, submitText)
     );
     formEl.append(grid, actions);
   };
