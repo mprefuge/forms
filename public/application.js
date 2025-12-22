@@ -1,5 +1,5 @@
 (() => {
-  const ENDPOINT = "http://localhost:7071/api/form"; //"https://rif-hhh8e6e7cbc2hvdw.eastus-01.azurewebsites.net/api/form";
+  const ENDPOINT = "https://rif-hhh8e6e7cbc2hvdw.eastus-01.azurewebsites.net/api/form";
   const HOST_ID = "volunteer-app";
   // Public link to the Statement of Faith (opened in a new tab)
   const STATEMENT_URL = "https://static1.squarespace.com/static/5af0bc3a96d45593d7d7e55b/t/675251913102604777fd712c/1733448082026/Refuge+International+Statement+Of+Faith-Rev.+9_25_23.pdf";
