@@ -138,6 +138,11 @@ export class SalesforceService {
     throw new Error(`Unable to generate unique FormCode__c after ${maxAttempts} attempts`);
   }
 
+  // Encode picklist tokens by replacing spaces with underscores to match Salesforce API requirements
+  private encodePicklistToken(token: string): string {
+    return token.replace(/\s+/g, '_').trim();
+  }
+
   async createForm(formData: FormData, requestId: string): Promise<{ id: string; formCode: string }> {
     const allowedFields = [
       'AdditionalNotes__c',
@@ -197,10 +202,33 @@ export class SalesforceService {
     recordTypeRecord.FormCode__c = await this.generateUniqueFormCode();
 
     // Map allowed fields, but do NOT copy client-supplied Name or FormCode__c (we always generate the code)
+    // Coerce multipicklist values: accept arrays, '|' delimited strings, or ';' delimited strings; Salesforce expects semicolon-separated values for multipicklists.
+    const describedFields = await this.describeFormFields();
+    const fieldMetaMap = new Map(describedFields.map(f => [f.name, f]));
+
     for (const field of allowedFields) {
       if (field === 'RecordTypeId' || field === 'Name' || field === 'FormCode__c') continue;
       if (formData[field] !== undefined) {
-        recordTypeRecord[field] = formData[field];
+        let val: any = formData[field];
+        const meta: any = fieldMetaMap.get(field);
+        if (meta && (meta.type || '').toLowerCase() === 'multipicklist') {
+          if (Array.isArray(val)) {
+            // normalize and encode each part
+            val = val.map((s: string) => this.encodePicklistToken(String(s))).join(';');
+          } else if (typeof val === 'string') {
+            // Accept '|' as legacy separator and normalize to ';'
+            if (val.includes('|')) {
+              val = val.split('|').map((s: string) => this.encodePicklistToken(s.trim())).join(';');
+            } else {
+              // single string value for multipicklist - split by ';' in case client already used it
+              val = String(val).split(';').map((s: string) => this.encodePicklistToken(s.trim())).filter(Boolean).join(';');
+            }
+          }
+        } else if (meta && (((meta.type || '').toLowerCase() === 'picklist') || (meta.picklistValues || []).length > 0) && typeof val === 'string') {
+          // For single-select picklists, encode spaces to underscores
+          val = this.encodePicklistToken(val);
+        }
+        recordTypeRecord[field] = val;
       }
     }
 
@@ -396,10 +424,28 @@ export class SalesforceService {
       Id: formId,
     };
 
+    // Build a lookup of field metadata to support special handling (e.g., multipicklists)
+    const fieldMetaMap = new Map((desc.fields || []).map((f: any) => [f.name, f]));
+
     // Map provided fields that are updateable
     for (const [key, value] of Object.entries(formData)) {
       if (updateableFields.includes(key) && value !== undefined) {
-        updateRecord[key] = value;
+        let val: any = value;
+        const meta: any = fieldMetaMap.get(key);
+        if (meta && (meta.type || '').toLowerCase() === 'multipicklist') {
+          if (Array.isArray(val)) {
+            val = val.map((s: string) => this.encodePicklistToken(String(s))).join(';');
+          } else if (typeof val === 'string') {
+            if (val.includes('|')) {
+              val = val.split('|').map((s: string) => this.encodePicklistToken(s.trim())).join(';');
+            } else {
+              val = String(val).split(';').map((s: string) => this.encodePicklistToken(s.trim())).filter(Boolean).join(';');
+            }
+          }
+        } else if (meta && (((meta.type || '').toLowerCase() === 'picklist') || (meta.picklistValues || []).length > 0) && typeof val === 'string') {
+          val = this.encodePicklistToken(val);
+        }
+        updateRecord[key] = val;
       }
     }
 

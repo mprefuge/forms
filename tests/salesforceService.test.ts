@@ -12,6 +12,7 @@ describe('SalesforceService - default RecordType behavior', () => {
     (sf as any).connection = {
       sobject: jest.fn().mockReturnValue({
         create: createMock,
+        describe: jest.fn().mockResolvedValue({ fields: [] }),
       }),
       query: jest.fn().mockResolvedValue({ records: [] }),
     };
@@ -37,6 +38,7 @@ describe('SalesforceService - default RecordType behavior', () => {
     (sf as any).connection = {
       sobject: jest.fn().mockReturnValue({
         create: createMock,
+        describe: jest.fn().mockResolvedValue({ fields: [] }),
       }),
       query: jest.fn().mockResolvedValue({ records: [] }),
     } as any;
@@ -57,7 +59,7 @@ describe('SalesforceService - default RecordType behavior', () => {
     const createMock = jest.fn().mockResolvedValue({ success: true, id: 'form789' });
 
     (sf as any).connection = {
-      sobject: jest.fn().mockReturnValue({ create: createMock }),
+      sobject: jest.fn().mockReturnValue({ create: createMock, describe: jest.fn().mockResolvedValue({ fields: [] }) }),
       query: jest.fn().mockImplementation((q: string) => {
         // simulate a collision for first generated value 'dup01' then no collision for 'dup02'
         if (q.includes("dup01")) return Promise.resolve({ records: [{ Id: 'existing' }] });
@@ -127,4 +129,127 @@ describe('SalesforceService - default RecordType behavior', () => {
     expect(ids).toEqual(['note1']);
     expect((sf as any).connection.sobject).toHaveBeenCalledWith('Note');
   });
+
+  it('normalizes multipicklist values (pipes -> semicolons) when creating forms', async () => {
+    const sf = new SalesforceService({ loginUrl: 'https://login.salesforce.com', clientId: 'id', clientSecret: 'secret' });
+
+    jest.spyOn(sf as any, 'getRecordTypeId').mockResolvedValue('rt-general-id');
+
+    // Simulate describeFormFields returning LanguagesSpoken__c as multipicklist
+    jest.spyOn(sf as any, 'describeFormFields').mockResolvedValue([
+      { name: 'LanguagesSpoken__c', type: 'multipicklist', picklistValues: ['English', 'American Sign Language'] }
+    ] as any);
+
+    const createMock = jest.fn().mockResolvedValue({ success: true, id: 'form-mp' });
+    (sf as any).connection = {
+      sobject: jest.fn().mockReturnValue({ create: createMock }),
+      query: jest.fn().mockResolvedValue({ records: [] }),
+    } as any;
+
+    const result = await (sf as any).createForm({ LanguagesSpoken__c: 'English|American Sign Language' }, 'req-mp');
+
+    expect(createMock).toHaveBeenCalled();
+    const createdObj = createMock.mock.calls[0][0];
+    expect(createdObj.LanguagesSpoken__c).toBe('English;American_Sign_Language');
+    expect(result.id).toBe('form-mp');
+  });
+
+  it('normalizes multipicklist values on update (array and pipes)', async () => {
+    const sf = new SalesforceService({ loginUrl: 'https://login.salesforce.com', clientId: 'id', clientSecret: 'secret' });
+
+    // Prepare describe() result with an updateable multipicklist
+    const desc = {
+      fields: [
+        { name: 'LanguagesSpoken__c', type: 'multipicklist', updateable: true },
+      ],
+    } as any;
+
+    const updateMock = jest.fn().mockResolvedValue({ success: true });
+    (sf as any).connection = {
+      sobject: jest.fn().mockImplementation((name: string) => {
+        if (name === 'Form__c') return { describe: jest.fn().mockResolvedValue(desc), update: updateMock };
+        return { create: jest.fn() };
+      }),
+    } as any;
+
+    // Test with array input
+    await (sf as any).updateForm('form-1', { LanguagesSpoken__c: ['English', 'American Sign Language'] }, 'req-mp-update');
+
+    expect(updateMock).toHaveBeenCalled();
+    expect(updateMock).toHaveBeenCalledWith(expect.objectContaining({ Id: 'form-1', LanguagesSpoken__c: 'English;American_Sign_Language' }));
+
+    // Reset calls and test with pipe-delimited input
+    updateMock.mockClear();
+    await (sf as any).updateForm('form-1', { LanguagesSpoken__c: 'English|American Sign Language' }, 'req-mp-update-2');
+    expect(updateMock).toHaveBeenCalledWith(expect.objectContaining({ Id: 'form-1', LanguagesSpoken__c: 'English;American_Sign_Language' }));
+  });
+
+  it('encodes spaces to underscores for picklist values when creating forms', async () => {
+    const sf = new SalesforceService({ loginUrl: 'https://login.salesforce.com', clientId: 'id', clientSecret: 'secret' });
+    jest.spyOn(sf as any, 'getRecordTypeId').mockResolvedValue('rt-general-id');
+
+    // Simulate a single-select picklist field
+    jest.spyOn(sf as any, 'describeFormFields').mockResolvedValue([
+      { name: 'ServingAreasInterest__c', type: 'picklist', picklistValues: ['ESL_Network', 'Other'] }
+    ] as any);
+
+    const createMock = jest.fn().mockResolvedValue({ success: true, id: 'form-pick' });
+    (sf as any).connection = {
+      sobject: jest.fn().mockReturnValue({ create: createMock }),
+      query: jest.fn().mockResolvedValue({ records: [] }),
+    } as any;
+
+    const result = await (sf as any).createForm({ ServingAreasInterest__c: 'ESL Network' }, 'req-pick');
+
+    expect(createMock).toHaveBeenCalled();
+    const createdObj = createMock.mock.calls[0][0];
+    expect(createdObj.ServingAreasInterest__c).toBe('ESL_Network');
+    expect(result.id).toBe('form-pick');
+  });
+
+  it('encodes spaces to underscores for picklist values on update', async () => {
+    const sf = new SalesforceService({ loginUrl: 'https://login.salesforce.com', clientId: 'id', clientSecret: 'secret' });
+
+    const desc = {
+      fields: [
+        { name: 'ServingAreasInterest__c', type: 'picklist', updateable: true },
+      ],
+    } as any;
+
+    const updateMock = jest.fn().mockResolvedValue({ success: true });
+    (sf as any).connection = {
+      sobject: jest.fn().mockImplementation((name: string) => {
+        if (name === 'Form__c') return { describe: jest.fn().mockResolvedValue(desc), update: updateMock };
+        return { create: jest.fn() };
+      }),
+    } as any;
+
+    await (sf as any).updateForm('form-1', { ServingAreasInterest__c: 'ESL Network' }, 'req-update-pick');
+
+    expect(updateMock).toHaveBeenCalledWith(expect.objectContaining({ Id: 'form-1', ServingAreasInterest__c: 'ESL_Network' }));
+  });
+
+  it('encodes spaces to underscores for multipicklist values when creating forms', async () => {
+    const sf = new SalesforceService({ loginUrl: 'https://login.salesforce.com', clientId: 'id', clientSecret: 'secret' });
+    jest.spyOn(sf as any, 'getRecordTypeId').mockResolvedValue('rt-general-id');
+
+    // Simulate multipicklist with expected encoded picklist values
+    jest.spyOn(sf as any, 'describeFormFields').mockResolvedValue([
+      { name: 'LanguagesSpoken__c', type: 'multipicklist', picklistValues: ['English', 'American_Sign_Language'] }
+    ] as any);
+
+    const createMock = jest.fn().mockResolvedValue({ success: true, id: 'form-mp-enc' });
+    (sf as any).connection = {
+      sobject: jest.fn().mockReturnValue({ create: createMock }),
+      query: jest.fn().mockResolvedValue({ records: [] }),
+    } as any;
+
+    const result = await (sf as any).createForm({ LanguagesSpoken__c: 'English|American Sign Language' }, 'req-mp-enc');
+
+    expect(createMock).toHaveBeenCalled();
+    const createdObj = createMock.mock.calls[0][0];
+    expect(createdObj.LanguagesSpoken__c).toBe('English;American_Sign_Language');
+    expect(result.id).toBe('form-mp-enc');
+  });
+
 });

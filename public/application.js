@@ -26,6 +26,10 @@
       else if (k === "text") el.textContent = v;
       else if (k === "html") el.innerHTML = v;
       else if (k.startsWith("on")) el[k] = v;
+      else if (k === "for") el.htmlFor = v;
+      else if (k === "checked") el.checked = !!v;
+      else if (k === "value") el.value = v;
+      else if (k === "disabled") el.disabled = !!v;
       else el.setAttribute(k, v);
     });
     kids.flat().forEach(k => { if (k !== null && k !== undefined) el.append(k); });
@@ -148,8 +152,8 @@
     EmergencyContactRelationship: 'EmergencyContactRelationship__c',
     GospelDetails: 'GospelDetails__c',
     TestimonyDetails: 'TestimonyDetails__c',
-    ServingInterest: 'ServingInterest__c',
-    PreferredServingArea: 'PreferredServingArea__c',
+    ServingInterest: 'ServingAreasInterest__c',
+    PreferredServingArea: 'ServingAreaPrimaryInterest__c',
     Availability: 'Availability__c',
     HowHeard: 'HowHeard__c',
     RecentMinistrySafe: 'RecentMinistrySafe__c',
@@ -398,13 +402,18 @@
       const primary = data.PreferredServingArea || '';
       const container = h('div', { class: 'ri-multiselect-box' });
       if (opts.length === 0) container.append(h('div', { class: 'ri-muted', text: 'No options available' }));
-      opts.forEach((opt, i) => {
+      const visibleOpts = (opts || []).map(opt => {
         const val = (opt && typeof opt === 'object') ? (opt.value ?? opt.text ?? '') : opt;
         const txt = (opt && typeof opt === 'object') ? (opt.text ?? opt.value ?? '') : opt;
         const txtNorm = (txt || '').toString().trim().toLowerCase();
-        if (!val || txtNorm === '' || txtNorm.startsWith('select')) return;
+        if (!val || txtNorm === '' || txtNorm.startsWith('select')) return null;
+        return { val, txt };
+      }).filter(Boolean);
+      visibleOpts.forEach((optObj, i) => {
+        const val = optObj.val;
+        const txt = optObj.txt;
         const idOpt = `${name}__${i}`;
-        const chk = h("input", { type: "checkbox", id: idOpt, checked: curVals.includes(val), onchange: e => {
+        const chk = h("input", { type: "checkbox", id: idOpt, checked: Array.isArray(curVals) && curVals.includes(val), onchange: e => {
           const prev = Array.isArray(data[name]) ? Array.from(data[name]) : [];
           const set = new Set(prev);
           if (e.target.checked) set.add(val); else set.delete(val);
@@ -423,6 +432,8 @@
           e.preventDefault();
           if (!Array.isArray(data[name])) data[name] = [];
           if (!data[name].includes(val)) data[name].push(val);
+          // Ensure the corresponding checkbox is checked when starred
+          try { if (chk && !chk.checked) { chk.checked = true; chk.dispatchEvent(new Event('change', { bubbles: true })); } } catch (err) {}
           // Toggle primary: unset if already set
           if (data.PreferredServingArea === val) {
             data.PreferredServingArea = '';
@@ -433,9 +444,8 @@
           // Update all stars in this container without re-rendering entire form
           const allStars = container.querySelectorAll('.ri-star');
           allStars.forEach((s, idx) => {
-            const starVal = opts[idx] && typeof opts[idx] === 'object' ? (opts[idx].value ?? opts[idx].text ?? '') : opts[idx];
-            const starTxtNorm = (opts[idx] && typeof opts[idx] === 'object' ? (opts[idx].text ?? opts[idx].value ?? '') : opts[idx]).toString().trim().toLowerCase();
-            if (!starVal || starTxtNorm === '' || starTxtNorm.startsWith('select')) return;
+            const starVal = visibleOpts[idx] && visibleOpts[idx].val;
+            if (!starVal) return;
             const isNowStarred = (data.PreferredServingArea === starVal);
             s.innerHTML = isNowStarred ? '&#9733;' : '&#9734;';
             if (isNowStarred) s.classList.add('ri-starred'); else s.classList.remove('ri-starred');
@@ -455,13 +465,18 @@
       const primary = data.PrimaryLanguage || '';
       const container = h('div', { class: 'ri-multiselect-box' });
       if (opts.length === 0) container.append(h('div', { class: 'ri-muted', text: 'No options available' }));
-      opts.forEach((opt, i) => {
+      const visibleOpts = (opts || []).map(opt => {
         const val = (opt && typeof opt === 'object') ? (opt.value ?? opt.text ?? '') : opt;
         const txt = (opt && typeof opt === 'object') ? (opt.text ?? opt.value ?? '') : opt;
         const txtNorm = (txt || '').toString().trim().toLowerCase();
-        if (!val || txtNorm === '' || txtNorm.startsWith('select')) return;
+        if (!val || txtNorm === '' || txtNorm.startsWith('select')) return null;
+        return { val, txt };
+      }).filter(Boolean);
+      visibleOpts.forEach((optObj, i) => {
+        const val = optObj.val;
+        const txt = optObj.txt;
         const idOpt = `PrimaryLanguage__${i}`;
-        const chk = h("input", { type: "checkbox", id: idOpt, checked: curVals.includes(val), onchange: e => {
+        const chk = h("input", { type: "checkbox", id: idOpt, checked: Array.isArray(curVals) && curVals.includes(val), onchange: e => {
           const prev = Array.isArray(data.LanguagesSpoken) ? Array.from(data.LanguagesSpoken) : [];
           const set = new Set(prev);
           if (e.target.checked) set.add(val); else set.delete(val);
@@ -480,6 +495,8 @@
           e.preventDefault();
           if (!Array.isArray(data.LanguagesSpoken)) data.LanguagesSpoken = [];
           if (!data.LanguagesSpoken.includes(val)) data.LanguagesSpoken.push(val);
+          // Ensure the corresponding checkbox is checked when starred
+          try { if (chk && !chk.checked) { chk.checked = true; chk.dispatchEvent(new Event('change', { bubbles: true })); } } catch (err) {}
           // Toggle primary language
           if (data.PrimaryLanguage === val) {
             data.PrimaryLanguage = '';
@@ -490,9 +507,8 @@
           // Update all stars in this container without re-rendering entire form
           const allStars = container.querySelectorAll('.ri-star');
           allStars.forEach((s, idx) => {
-            const starVal = opts[idx] && typeof opts[idx] === 'object' ? (opts[idx].value ?? opts[idx].text ?? '') : opts[idx];
-            const starTxtNorm = (opts[idx] && typeof opts[idx] === 'object' ? (opts[idx].text ?? opts[idx].value ?? '') : opts[idx]).toString().trim().toLowerCase();
-            if (!starVal || starTxtNorm === '' || starTxtNorm.startsWith('select')) return;
+            const starVal = visibleOpts[idx] && visibleOpts[idx].val;
+            if (!starVal) return;
             const isNowStarred = (data.PrimaryLanguage === starVal);
             s.innerHTML = isNowStarred ? '&#9733;' : '&#9734;';
             if (isNowStarred) s.classList.add('ri-starred'); else s.classList.remove('ri-starred');
@@ -555,14 +571,18 @@
       if ((opts || []).length === 0) {
         container.append(h('div', { class: 'ri-muted', text: 'No options available' }));
       }
-      opts.forEach((opt, i) => {
+      const visibleOpts = (opts || []).map(opt => {
         const val = (opt && typeof opt === 'object') ? (opt.value ?? opt.text ?? '') : opt;
         const txt = (opt && typeof opt === 'object') ? (opt.text ?? opt.value ?? '') : opt;
         const txtNorm = (txt || '').toString().trim().toLowerCase();
-        // Skip placeholder/blank options
-        if (!val || txtNorm === '' || txtNorm.startsWith('select')) return;
+        if (!val || txtNorm === '' || txtNorm.startsWith('select')) return null;
+        return { val, txt };
+      }).filter(Boolean);
+      visibleOpts.forEach((optObj, i) => {
+        const val = optObj.val;
+        const txt = optObj.txt;
         const idOpt = `${name}__${i}`;
-        const chk = h("input", { type: "checkbox", id: idOpt, checked: curVals.includes(val), onchange: e => {
+        const chk = h("input", { type: "checkbox", id: idOpt, checked: Array.isArray(curVals) && curVals.includes(val), onchange: e => {
           const prev = Array.isArray(data[name]) ? Array.from(data[name]) : Array.from(curVals);
           const set = new Set(prev);
           if (e.target.checked) set.add(val); else set.delete(val);
