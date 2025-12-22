@@ -297,6 +297,52 @@ describe('SalesforceService - default RecordType behavior', () => {
     expect(updateMock).toHaveBeenCalledWith(expect.objectContaining({ Id: 'form-1', ServingAreasInterest__c: 'ESL_Network' }));
   });
 
+  it('handles picklist metadata returned as objects on update', async () => {
+    const sf = new SalesforceService({ loginUrl: 'https://login.salesforce.com', clientId: 'id', clientSecret: 'secret' });
+
+    // jsforce describe() returns picklistValues as objects with 'value' property; ensure we support that shape
+    const desc = {
+      fields: [
+        { name: 'ServingAreasInterest__c', type: 'picklist', updateable: true, picklistValues: [{ value: 'ESL_Network' }, { value: 'Other' }] },
+      ],
+    } as any;
+
+    const updateMock = jest.fn().mockResolvedValue({ success: true });
+    (sf as any).connection = {
+      sobject: jest.fn().mockImplementation((name: string) => {
+        if (name === 'Form__c') return { describe: jest.fn().mockResolvedValue(desc), update: updateMock };
+        return { create: jest.fn() };
+      }),
+    } as any;
+
+    await (sf as any).updateForm('form-1', { ServingAreasInterest__c: 'ESL Network' }, 'req-update-pick-obj');
+
+    expect(updateMock).toHaveBeenCalledWith(expect.objectContaining({ Id: 'form-1', ServingAreasInterest__c: 'ESL_Network' }));
+  });
+
+  it('tries encoded form (spaces/hyphens -> _) when original token does not match', async () => {
+    const sf = new SalesforceService({ loginUrl: 'https://login.salesforce.com', clientId: 'id', clientSecret: 'secret' });
+
+    // Allowed values only include underscore variant; incoming token has spaces and should match after encoding
+    jest.spyOn(sf as any, 'getRecordTypeId').mockResolvedValue('rt-general-id');
+    jest.spyOn(sf as any, 'describeFormFields').mockResolvedValue([
+      { name: 'ServingAreasInterest__c', type: 'picklist', picklistValues: ['ESL_Network', 'Other'] }
+    ] as any);
+
+    const createMock = jest.fn().mockResolvedValue({ success: true, id: 'form-try-encoded' });
+    (sf as any).connection = {
+      sobject: jest.fn().mockReturnValue({ create: createMock }),
+      query: jest.fn().mockResolvedValue({ records: [] }),
+    } as any;
+
+    const result = await (sf as any).createForm({ ServingAreasInterest__c: 'ESL Network' }, 'req-try-enc');
+
+    expect(createMock).toHaveBeenCalled();
+    const createdObj = createMock.mock.calls[0][0];
+    expect(createdObj.ServingAreasInterest__c).toBe('ESL_Network');
+    expect(result.id).toBe('form-try-encoded');
+  });
+
   it('encodes spaces to underscores for multipicklist values when creating forms', async () => {
     const sf = new SalesforceService({ loginUrl: 'https://login.salesforce.com', clientId: 'id', clientSecret: 'secret' });
     jest.spyOn(sf as any, 'getRecordTypeId').mockResolvedValue('rt-general-id');

@@ -153,25 +153,44 @@ export class SalesforceService {
   private resolvePicklistToken(token: string, allowedValues?: string[]): string {
     const t = String(token).trim();
 
-    if (!allowedValues || allowedValues.length === 0) {
+    // Coerce allowedValues (which may be strings or objects from jsforce describe) into strings
+    const allowed = (allowedValues || []).reduce((acc: string[], a: any) => {
+      if (a === null || a === undefined) return acc;
+      const val = (typeof a === 'string' ? a : (a && (a as any).value !== undefined ? (a as any).value : a));
+      if (val === null || val === undefined) return acc;
+      acc.push(String(val));
+      return acc;
+    }, []);
+
+    if (allowed.length === 0) {
       // No metadata: keep previous behavior (encode spaces to underscores)
       return this.encodePicklistToken(t);
     }
 
     // Prefer exact match (case-sensitive)
-    for (const a of allowedValues) {
+    for (const a of allowed) {
       if (a === t) return this.encodePicklistToken(a);
     }
 
     // Then prefer case-insensitive exact match
-    for (const a of allowedValues) {
-      if ((a || '').toLowerCase() === t.toLowerCase()) return this.encodePicklistToken(a);
+    for (const a of allowed) {
+      if (a.toLowerCase() === t.toLowerCase()) return this.encodePicklistToken(a);
+    }
+
+    // If exact/case-insensitive fails, try encoding the provided token (spaces/hyphens -> underscores)
+    // This supports cases where Salesforce canonical uses underscores but incoming data uses spaces or hyphens.
+    const encodedToken = this.encodePicklistToken(t);
+    for (const a of allowed) {
+      if (a === encodedToken) return this.encodePicklistToken(a);
+    }
+    for (const a of allowed) {
+      if (a.toLowerCase() === encodedToken.toLowerCase()) return this.encodePicklistToken(a);
     }
 
     // Use normalized matching (collapse spaces/underscores/hyphens)
     const normToken = this.normalizeForCompare(t);
     const normalizedMap = new Map<string, string[]>();
-    for (const a of allowedValues) {
+    for (const a of allowed) {
       const key = this.normalizeForCompare(a);
       const list = normalizedMap.get(key) || [];
       list.push(a);
