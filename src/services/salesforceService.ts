@@ -167,24 +167,24 @@ export class SalesforceService {
       return this.encodePicklistToken(t);
     }
 
-    // Prefer exact match (case-sensitive)
+    // Prefer exact match (case-sensitive) — return the allowed value AS IS (preserve spaces/hyphens if that's canonical)
     for (const a of allowed) {
-      if (a === t) return this.encodePicklistToken(a);
+      if (a === t) return a;
     }
 
-    // Then prefer case-insensitive exact match
+    // Then prefer case-insensitive exact match — return allowed value AS IS
     for (const a of allowed) {
-      if (a.toLowerCase() === t.toLowerCase()) return this.encodePicklistToken(a);
+      if (a.toLowerCase() === t.toLowerCase()) return a;
     }
 
     // If exact/case-insensitive fails, try encoding the provided token (spaces/hyphens -> underscores)
     // This supports cases where Salesforce canonical uses underscores but incoming data uses spaces or hyphens.
     const encodedToken = this.encodePicklistToken(t);
     for (const a of allowed) {
-      if (a === encodedToken) return this.encodePicklistToken(a);
+      if (a === encodedToken) return a;
     }
     for (const a of allowed) {
-      if (a.toLowerCase() === encodedToken.toLowerCase()) return this.encodePicklistToken(a);
+      if (a.toLowerCase() === encodedToken.toLowerCase()) return a;
     }
 
     // Use normalized matching (collapse spaces/underscores/hyphens)
