@@ -12,6 +12,12 @@
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 
+/* Hide header brand when removed by user request */
+.ri-brand-title {
+  display: none !important;
+}
+
+
 .ri-app * { box-sizing: border-box; }
 
 .ri-app {
@@ -27,10 +33,12 @@
   display: flex;
   align-items: center;
   gap: 12px;
+  justify-content: space-between;
   padding-bottom: 8px; /* slightly reduced for tighter layout */
   border-bottom: none; /* removed divider under the red top border */
   margin-bottom: 12px;
 }
+.ri-header-exit { margin-left: 12px; }
 .ri-brand-title { font-size: 18px; font-weight: 900; color: var(--accent-600); }
 
 .ri-card {
@@ -235,9 +243,21 @@ form.ri-form {
 .ri-grid--church-info .ri-church-pastor-row .ri-field { margin: 0; }
 
 /* Pastoral Reference subsection */
-.ri-church-pastoral-section { grid-column: 1 / -1; margin-top: 12px; }
-.ri-church-pastoral-section .ri-section-title { margin: 0 0 6px; font-size: 0.95rem; font-weight: 700; }
-.ri-church-pastoral-section .ri-section-note { margin: 0 0 10px; font-size: 0.9rem; color: #666; }
+.ri-church-pastoral-section { grid-column: 1 / -1; margin-top: 12px; padding: 14px; border: 1px solid var(--border); background: #fff; border-radius: 12px; }
+.ri-church-pastoral-section .ri-section-title { margin: 0 0 8px; font-size: 0.95rem; font-weight: 800; color: var(--accent-600); }
+.ri-church-pastoral-section .ri-section-note { margin: 0 0 12px; font-size: 0.92rem; color: #666; }
+
+/* Generic section block used for serving areas and availability */
+.ri-section-block { grid-column: 1 / -1; margin-top: 16px; padding: 14px; border: 1px solid var(--border); background: #fff; border-radius: 12px; }
+
+/* Unify section title/note styles so headers match across sections */
+.ri-section-title { margin: 0 0 8px; font-size: 0.95rem; font-weight: 800; color: var(--accent-600); }
+.ri-section-note { margin: 0 0 12px; font-size: 0.92rem; color: #666; }
+
+/* Slight spacing for the areas grid inside the section */
+.ri-areas-top { gap: 12px; }
+.ri-availability-grid { margin-top: 10px; padding-top: 6px; }
+
 @media (max-width: 960px) {
   .ri-grid--church-info .ri-church-row { flex-direction: column; }
   .ri-grid--church-info .ri-basic-row { flex-direction: column; }
@@ -674,6 +694,44 @@ form.ri-form {
   letter-spacing: 2px;
 }
 
+.ri-success-modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: #fff;
+  border-radius: 16px;
+  padding: 40px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  z-index: 1001;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  max-width: 400px;
+}
+
+.ri-success-icon {
+  width: 60px;
+  height: 60px;
+  background: #ecfdf5;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36px;
+  color: #065f46;
+  font-weight: 700;
+}
+
+.ri-success-modal p {
+  margin: 0;
+  font-size: 16px;
+  color: #065f46;
+  font-weight: 600;
+}
+
 .ri-modal-actions {
   display: flex;
   gap: 12px;
@@ -823,16 +881,7 @@ form.ri-form {
 }
 .ri-signature strong { display: block; font-size: 15px; color: var(--text); margin-bottom: 2px; }
 
-/* Phase info and progress */
-.ri-phase-info {
-  display: grid;
-  gap: 8px;
-  margin-bottom: 16px;
-  padding: 14px;
-  background: linear-gradient(135deg, rgba(189,33,53,0.04), rgba(189,33,53,0.02));
-  border-left: 4px solid var(--accent);
-  border-radius: 8px;
-}
+
 
 .ri-phase-title {
   font-size: 16px;

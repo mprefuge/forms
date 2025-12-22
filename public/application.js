@@ -21,8 +21,9 @@
       "Basic Information": "Contact Information",
       "Church & Ministry": "Church Information",
       "What You'd Like to Do": "Areas to Serve",
+      "Emergency & Serving": "Serving with Refuge",
       "Your Faith Journey": "Your Beliefs",
-      "Commitments & Agreement": "Agreements",
+      "Commitments & Agreement": "Review and Submit",
     },
     phaseNames: {
       initial: "Volunteer Application",
@@ -78,10 +79,8 @@
       steps: [
         { title: "Basic Information", description: "Your name and contact details", fields: ["Salutation","FirstName","LastName","Email","Phone"] },
         { title: "Personal Details", description: "Background and language preferences", fields: ["Birthdate","Street","City","State","Zip","Country","LanguagesSpoken","CountryOfOrigin","Gender","MaritalStatus"] },
-        { title: "Church Information", description: "Tell us about your church", fields: ["Church","ChurchServingDetails","PastorSalutation","PastorFirstName","PastorLastName","PastorEmail"] },
-        { title: "Emergency Contact", description: "Who should we reach out to in case of an emergency?", fields: ["EmergencyContactFirstName","EmergencyContactLastName","EmergencyContactRelationship","EmergencyContactPhone"] },
-        { title: "What You'd Like to Do", description: "Your serving interests and availability", fields: ["ServingInterest","PreferredServingArea","Skills","Availability"] },
-        { title: "Your Faith Journey", description: "Tell us about your faith", fields: ["GospelDetails","TestimonyDetails"] },
+        { title: "What You Believe", description: "Your church info and beliefs", fields: ["Church","ChurchServingDetails","PastorSalutation","PastorFirstName","PastorLastName","PastorEmail","GospelDetails","TestimonyDetails"] },
+        { title: "Emergency & Serving", description: "Emergency contact and serving preferences", fields: ["EmergencyContactFirstName","EmergencyContactLastName","EmergencyContactRelationship","EmergencyContactPhone","ServingInterest","PreferredServingArea","Skills","Availability"] },
         { title: "Commitments & Agreement", description: "Confirmations and next steps", fields: ["AffirmStatementOfFaith","WillPay","MinistrySafeCompleted","AdditionalNotes","HowHeard"] },
       ]
     },
@@ -222,7 +221,7 @@
   const completedSteps = new Set();
   let formCode = null;
   let currentStep = 0;
-  let statusEl, bannerEl, stepperEl, formEl, landingEl, phaseIndicatorEl; 
+  let statusEl, bannerEl, stepperEl, formEl, landingEl, phaseIndicatorEl, headerExitBtn, bannerTimeoutId; 
   let manualAddressMode = false;
   let firstPageSaved = false;
   let addressSuggestionsEl = null;
@@ -381,18 +380,40 @@
   const setStatus = (msg, kind = "") => {
     statusEl.innerHTML = "";
     if (!msg) return;
-    statusEl.append(h("div", { class: `ri-alert ${kind}` }, msg));
+    if (kind === "success" && msg === "Application loaded successfully.") {
+      showSuccessModal(msg);
+    } else {
+      statusEl.append(h("div", { class: `ri-alert ${kind}` }, msg));
+    }
+  };
+
+  const showSuccessModal = (msg) => {
+    const overlay = h('div', { class: 'ri-modal-overlay' });
+    const modal = h('div', { class: 'ri-success-modal' },
+      h('div', { class: 'ri-success-icon', html: '&#10003;' }),
+      h('p', { text: msg })
+    );
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    setTimeout(() => {
+      if (document.body.contains(overlay)) {
+        document.body.removeChild(overlay);
+      }
+    }, 3000);
   };
 
   const showBanner = (code) => {
     if (!bannerEl) return;
+    // clear any existing timeout so it doesn't hide unexpectedly
+    if (bannerTimeoutId) { clearTimeout(bannerTimeoutId); bannerTimeoutId = null; }
     bannerEl.innerHTML = '';
+    const displayCode = (code || '').toUpperCase();
     const text = h('div', { text: 'Your application code:' });
-    const codeSpan = h('strong', { text: ` ${code}` });
+    const codeSpan = h('strong', { text: ` ${displayCode}` });
     const copyBtn = h('button', { class: 'ri-btn ri-btn-ghost ri-btn-sm', type: 'button', text: 'Copy' });
     copyBtn.onclick = async () => {
       try {
-        await navigator.clipboard.writeText(code);
+        await navigator.clipboard.writeText(displayCode);
         const prev = copyBtn.textContent;
         copyBtn.textContent = 'Copied!';
         setTimeout(() => copyBtn.textContent = prev, 1400);
@@ -401,27 +422,33 @@
       }
     };
     const exitBtn = h('button', { class: 'ri-btn ri-btn-ghost ri-btn-sm', type: 'button', text: 'Exit & Resume Later' });
-    exitBtn.onclick = () => { showExitModal(code); };
+    exitBtn.onclick = () => { showExitModal(displayCode); };
     const dismiss = h('button', { class: 'ri-btn ri-btn-ghost ri-btn-sm', type: 'button' });
     dismiss.innerHTML = '&times;';
-    dismiss.onclick = () => { bannerEl.style.display = 'none'; };
+    dismiss.onclick = () => { bannerEl.style.display = 'none'; if (bannerTimeoutId) { clearTimeout(bannerTimeoutId); bannerTimeoutId = null; } };
     bannerEl.append(text, codeSpan, copyBtn, exitBtn, dismiss);
     bannerEl.style.display = 'flex';
-  };
+    // Auto-dismiss after a few seconds
+    bannerTimeoutId = setTimeout(() => {
+      if (bannerEl) { bannerEl.style.display = 'none'; bannerEl.innerHTML = ''; }
+      bannerTimeoutId = null;
+    }, 4000);
+  }; 
 
   const showExitModal = (code) => {
+    const displayCode = (code || '').toUpperCase();
     const modal = h('div', { class: 'ri-modal' });
     const overlay = h('div', { class: 'ri-modal-overlay' });
     const content = h('div', { class: 'ri-modal-content' },
       h('h3', { text: 'Save Your Application Code', class: 'ri-modal-title' }),
       h('p', { text: 'Please save this code to resume your application later:' }),
-      h('div', { class: 'ri-code-display' }, h('code', { text: code })),
+      h('div', { class: 'ri-code-display' }, h('code', { text: displayCode })),
       h('p', { class: 'ri-modal-subtitle', text: 'You can continue your application anytime by entering this code on the home page.' })
     );
     const copyBtn = h('button', { class: 'ri-btn ri-btn-ghost', type: 'button', text: 'Copy Code' });
     copyBtn.onclick = async () => {
       try {
-        await navigator.clipboard.writeText(code);
+        await navigator.clipboard.writeText(displayCode);
         copyBtn.textContent = 'Copied!';
         setTimeout(() => copyBtn.textContent = 'Copy Code', 1400);
       } catch (e) {
@@ -438,8 +465,9 @@
       formEl.style.display = 'none';
       if (phaseIndicatorEl) phaseIndicatorEl.style.display = 'none';
       if (bannerEl) { bannerEl.style.display = 'none'; bannerEl.innerHTML = ''; }
+      if (bannerTimeoutId) { clearTimeout(bannerTimeoutId); bannerTimeoutId = null; }
       renderLanding();
-    };
+    }; 
     const btnGroup = h('div', { class: 'ri-modal-actions' }, copyBtn, closeBtn);
     content.append(btnGroup);
     modal.append(overlay, content);
@@ -798,21 +826,14 @@
     const currentSteps = phases[currentPhase].steps;
     const phaseInfo = phases[currentPhase];
     
-    // Phase info bar
-    const infoBar = h("div", { class: "ri-phase-info" });
-    const phaseTitle = h("div", { class: "ri-phase-title", text: getPhaseName(currentPhase) || phaseInfo.name });
-    const phaseDesc = h("div", { class: "ri-phase-desc", text: phaseInfo.description });
-    const timeEst = h("div", { class: "ri-phase-time", text: `Est. ${phaseInfo.estimatedTime} min` });
-    infoBar.append(phaseTitle, phaseDesc, timeEst);
-    
-    // Progress bar
+    // Progress bar (phase info header removed by request)
     const progress = calculateProgress();
     const progressBar = h("div", { class: "ri-progress-wrapper" });
     const progressFill = h("div", { class: "ri-progress-fill", style: `width: ${progress.percent}%` });
     const progressText = h("div", { class: "ri-progress-text", text: `Step ${currentStep + 1} of ${currentSteps.length}` });
     progressBar.append(progressFill, progressText);
-    
-    stepperEl.append(infoBar, progressBar);
+
+    stepperEl.append(progressBar);
     
     const chipContainer = h("div", { class: "ri-chip-container" });
     currentSteps.forEach((s, idx) => {
@@ -896,10 +917,8 @@
     const requiredByStep = {
       "Basic Information": ["FirstName", "LastName", "Email", "Phone"],
       "Personal Details": ["Gender", "Street", "City", "State"],
-      [churchStepTitle]: ["Church", "PastorFirstName", "PastorLastName", "PastorEmail"],
-      "Emergency Contact": ["EmergencyContactFirstName", "EmergencyContactLastName", "EmergencyContactPhone"],
-      "What You'd Like to Do": ["ServingInterest"],
-      "Your Faith Journey": ["GospelDetails", "TestimonyDetails"],
+      "What You Believe": ["Church", "PastorFirstName", "PastorLastName", "PastorEmail", "GospelDetails", "TestimonyDetails"],
+      "Emergency & Serving": ["EmergencyContactFirstName", "EmergencyContactLastName", "EmergencyContactPhone", "ServingInterest"],
       "Commitments & Agreement": ["AffirmStatementOfFaith"],
     };
     
@@ -1002,16 +1021,43 @@
       }
     });
     
-    // Reconstruct completed steps across all phases based on filled data
+    // Reconstruct completed steps across all phases based on filled data and required fields
+    // Mark a step as completed only when its required fields are satisfied. For steps with no
+    // explicit required fields, treat the step as completed if any of its fields contain data.
     completedSteps.clear();
+    const getRequiredByStep = (stepTitle) => {
+      const requiredByStep = {
+        "Basic Information": ["FirstName", "LastName", "Email", "Phone"],
+        "Personal Details": ["Gender", "Street", "City", "State"],
+        "What You Believe": ["Church", "PastorFirstName", "PastorLastName", "PastorEmail", "GospelDetails", "TestimonyDetails"],
+        "Emergency & Serving": ["EmergencyContactFirstName","EmergencyContactLastName","EmergencyContactPhone","ServingInterest"],
+        "Commitments & Agreement": ["AffirmStatementOfFaith"],
+      };
+      return requiredByStep[stepTitle] || [];
+    };
+
     Object.entries(phases).forEach(([phaseKey, phaseDef]) => {
       (phaseDef.steps || []).forEach((step, idx) => {
-        const hasData = step.fields.some(field => {
+        const required = getRequiredByStep(step.title);
+
+        // Helper to test whether a single field is present/valid
+        const fieldHasValue = (field) => {
           const val = data[field];
           if (Array.isArray(val)) return val.length > 0;
-          return val !== undefined && val !== null && val !== '';
-        });
-        if (hasData) completedSteps.add(`${phaseKey}-${idx}`);
+          if (fieldMeta[field]?.type === 'checkbox') return !!val;
+          return val !== undefined && val !== null && String(val).trim() !== '';
+        };
+
+        let shouldMarkComplete = false;
+        if (required.length > 0) {
+          // Mark complete only if all required fields are present/valid
+          shouldMarkComplete = required.every(f => fieldHasValue(f));
+        } else {
+          // If there are no explicit required fields for this step, mark complete if any field has data
+          shouldMarkComplete = (step.fields || []).some(f => fieldHasValue(f));
+        }
+
+        if (shouldMarkComplete) completedSteps.add(`${phaseKey}-${idx}`);
       });
     });
 
@@ -1225,14 +1271,14 @@
 
       grid = h('div', { class: 'ri-grid ri-grid--personal-details' }, left, right, addressRow);
 
-    } else if (step.title === (orgTerms.stepTitles['Church & Ministry'] || 'Church & Ministry')) {
+    } else if (step.title === 'What You Believe') {
       // Top row: two evenly split fields (Church name and Church involvement)
       const churchTop = h('div', { class: 'ri-church-top', style: 'grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;' },
         h('div', { class: 'ri-church-col ri-church-col--half' }, fieldFor('Church')),
         h('div', { class: 'ri-church-col ri-church-col--half' }, fieldFor('ChurchServingDetails'))
       );
 
-      // Pastor subsection: Pastoral Reference (title + note) and pastor row
+      // Pastoral Reference subsection (matches styling in screenshot)
       const pastorRow = h('div', { class: 'ri-church-pastor-row', style: 'display:flex; gap:10px; align-items:center; flex-wrap:nowrap;' },
         h('div', { class: 'ri-pastor-salutation' }, fieldFor('PastorSalutation')),
         h('div', { class: 'ri-pastor-first' }, fieldFor('PastorFirstName')),
@@ -1246,7 +1292,56 @@
         pastorRow
       );
 
-      grid = h('div', { class: 'ri-grid ri-grid--church-info' }, churchTop, pastoralSection);
+      // Beliefs subsection: Gospel + Testimony side-by-side
+      const beliefsRow = h('div', { class: 'ri-church-row', style: 'display:flex; gap:10px; align-items:flex-start;' },
+        h('div', { class: 'ri-church-col ri-church-col--half' }, fieldFor('GospelDetails')),
+        h('div', { class: 'ri-church-col ri-church-col--half' }, fieldFor('TestimonyDetails'))
+      );
+      const beliefsSection = h('div', { class: 'ri-church-pastoral-section', style: 'grid-column: 1 / -1; margin-top: 12px;' },
+        h('h4', { class: 'ri-section-title', text: 'Beliefs' }),
+        h('div', { class: 'ri-section-note', text: 'Share the Gospel and your faith story.' }),
+        beliefsRow
+      );
+
+      grid = h('div', { class: 'ri-grid ri-grid--church-info' }, churchTop, pastoralSection, beliefsSection);
+
+    } else if (step.title === 'Emergency & Serving') {
+      // Emergency Contact subsection styled like the Pastoral Reference section
+      const ecRow = h('div', { class: 'ri-church-pastor-row', style: 'display:flex; gap:10px; align-items:center; flex-wrap:nowrap;' },
+        h('div', { style: 'flex:1 1 120px; min-width:0;' }, fieldFor('EmergencyContactFirstName')),
+        h('div', { style: 'flex:1 1 120px; min-width:0;' }, fieldFor('EmergencyContactLastName')),
+        h('div', { style: 'flex:1 1 120px; min-width:0;' }, fieldFor('EmergencyContactRelationship')),
+        h('div', { style: 'flex:1.2 1 140px; min-width:0;' }, fieldFor('EmergencyContactPhone'))
+      );
+
+      const emergencySection = h('div', { class: 'ri-church-pastoral-section', style: 'grid-column: 1 / -1; margin-top: 12px;' },
+        h('h4', { class: 'ri-section-title', text: 'Emergency Contact' }),
+        h('div', { class: 'ri-section-note', text: 'Please provide a contact we can reach in case of an emergency.' }),
+        ecRow
+      );
+
+      // Serving Areas block: visually separated and titled
+      const areasTop = h('div', { class: 'ri-areas-top', style: 'display: grid; grid-template-columns: 1fr 1fr; gap: 10px;' },
+        fieldFor('ServingInterest'),
+        fieldFor('Skills')
+      );
+
+      const availabilityWrapper = fieldFor('Availability');
+      availabilityWrapper.classList.add('ri-availability-grid');
+
+      const servingSection = h('div', { class: 'ri-section-block', style: 'grid-column: 1 / -1; margin-top: 12px;' },
+        h('h4', { class: 'ri-section-title', text: 'Serving Areas' }),
+        h('div', { class: 'ri-section-note', text: 'Select areas and skills you are interested in.' }),
+        areasTop
+      );
+
+      const availabilitySection = h('div', { class: 'ri-church-pastoral-section', style: 'grid-column: 1 / -1; margin-top: 12px;' },
+        h('h4', { class: 'ri-section-title', text: 'General Availability' }),
+        h('div', { class: 'ri-section-note', text: 'Tap the items you want to select - multiple selections are allowed.' }),
+        availabilityWrapper
+      );
+
+      grid = h('div', { class: 'ri-grid ri-grid--areas-to-serve' }, servingSection, availabilitySection, emergencySection);
 
     } else if (step.title === "What You'd Like to Do") {
       // Areas to Serve: top row with Areas of Interest and Skills side-by-side
@@ -1290,11 +1385,11 @@
     }
     const isLast = currentStep === currentSteps.length - 1;
     const submitText = isLast && currentPhase === 'initial' ? 'Submit Application' : (isLast ? 'Complete Phase' : 'Next');
-    const actions = h("div", { class: "ri-actions" },
-      h("button", { class: "ri-btn ri-btn-ghost", type: "button", disabled: currentStep === 0, onclick: () => { currentStep = Math.max(0, currentStep - 1); renderForm(); } }, "Back"),
-      h("button", { class: "ri-btn ri-btn-primary", type: "submit" }, submitText)
-    );
+    const backBtn = currentStep === 0 ? null : h("button", { class: "ri-btn ri-btn-ghost", type: "button", onclick: () => { currentStep = Math.max(0, currentStep - 1); renderForm(); } }, "Back");
+    const actions = h("div", { class: "ri-actions" }, backBtn, h("button", { class: "ri-btn ri-btn-primary", type: "submit" }, submitText));
     formEl.append(grid, actions);
+    // show header exit button when the form is visible
+    if (headerExitBtn) headerExitBtn.style.display = 'inline-flex';
   };
 
   const renderLanding = () => {
@@ -1303,7 +1398,9 @@
     if (bannerEl) {
       bannerEl.style.display = 'none';
       bannerEl.innerHTML = '';
+      if (bannerTimeoutId) { clearTimeout(bannerTimeoutId); bannerTimeoutId = null; }
     }
+    if (headerExitBtn) headerExitBtn.style.display = 'none';
     
     const hasSession = loadFromLocalStorage();
     
@@ -1334,14 +1431,14 @@
           currentPhase = 'initial';
           currentStep = 0;
           firstPageSaved = false;
-                    if (bannerEl) { bannerEl.style.display = 'none'; bannerEl.innerHTML = ''; }
+                    if (bannerEl) { bannerEl.style.display = 'none'; bannerEl.innerHTML = ''; if (bannerTimeoutId) { clearTimeout(bannerTimeoutId); bannerTimeoutId = null; } }
           renderLanding();
         }
       };
       
       const codeInfo = h("div", { class: "ri-code-reminder", style: "margin: 20px 0; padding: 12px; background: #f5f5f5; border-radius: 4px; text-align: center;" }, 
         h("p", { text: "Your application code: ", style: "margin: 0; display: inline;" }),
-        h("strong", { text: formCode, style: "font-size: 1.1em;" })
+        h("strong", { text: formCode ? formCode.toUpperCase() : '', style: "font-size: 1.1em;" })
       );
       
       const btnContainer = h("div", { class: "ri-landing-actions" }, resumeBtn, startNewBtn);
@@ -1373,7 +1470,7 @@
     const newBtn = h("button", { class: "ri-btn ri-btn-primary ri-landing-btn", type: "button", text: "Start New Application" });
     newBtn.onclick = () => {
       appState = 'new';
-        if (bannerEl) { bannerEl.style.display = 'none'; bannerEl.innerHTML = ''; }
+        if (bannerEl) { bannerEl.style.display = 'none'; bannerEl.innerHTML = ''; if (bannerTimeoutId) { clearTimeout(bannerTimeoutId); bannerTimeoutId = null; } }
       currentPhase = 'initial';
       currentStep = 0;
       completedSteps.clear();
@@ -1389,11 +1486,14 @@
     continueBtn.onclick = () => {
       appState = 'continue';
       landingEl.innerHTML = "";
-      const backBtn = h("button", { class: "ri-btn ri-btn-ghost", type: "button", text: "← Back" });
+
+      const backBtn = h("button", { class: "ri-btn ri-btn-ghost ri-btn-sm", type: "button", html: "&#8592; Back" });
       backBtn.onclick = () => { appState = 'landing'; renderLanding(); };
+
       const resumeTitle = h("h3", { text: "Continue Your Application", class: "ri-step-title" });
-      const resumeSubtitle = h("p", { text: "Enter your application code to resume where you left off." });
-      const input = h("input", { placeholder: "Enter your application code", style: "margin: 16px 0;" });
+      const resumeSubtitle = h("p", { text: "Enter your application code to resume where you left off.", class: 'ri-step-description' });
+
+      const input = h("input", { placeholder: "Enter your application code", id: 'resume-code-input', style: "" });
       const loadBtn = h("button", { class: "ri-btn ri-btn-primary", type: "button", text: "Load Application" });
       loadBtn.onclick = async () => {
         const code = (input.value || "").trim();
@@ -1409,7 +1509,6 @@
           stepperEl.style.display = 'flex';
           formEl.style.display = 'block';
           renderForm();
-          if (formCode) showBanner(formCode);
           setStatus("Application loaded successfully.", "success");
         } catch (e) {
           setStatus(e.message, "error");
@@ -1417,7 +1516,23 @@
           loadBtn.textContent = "Load Application";
         }
       };
-      landingEl.append(backBtn, resumeTitle, resumeSubtitle, input, loadBtn);
+
+      // Make the input full-width and position action buttons inline
+      input.setAttribute('style', 'width:100%; padding: 12px 14px; border-radius: 10px; border: 2px solid var(--border);');
+      const inputWrapper = h('div', { style: 'margin: 16px 0;' }, input);
+      loadBtn.className = 'ri-btn ri-btn-primary ri-landing-btn';
+
+      const actionRow = h('div', { style: 'display:flex; gap:12px; align-items:center; margin-top: 16px;' },
+        backBtn,
+        h('div', { style: 'flex:1' }, loadBtn)
+      );
+
+      const wrapper = h('div', { style: 'max-width:720px; margin: 0 auto; text-align: left;' }, resumeTitle, resumeSubtitle, inputWrapper, actionRow);
+
+      landingEl.append(wrapper);
+
+      // Focus input for convenience
+      setTimeout(() => { try { input.focus(); } catch (e) {} }, 80);
     };
     const btnContainer = h("div", { class: "ri-landing-actions" }, newBtn, continueBtn);
     landingEl.append(welcome, infoBox, btnContainer);
@@ -1428,8 +1543,9 @@
     h("div", { class: "ri-card" },
       // Header
       h("div", { class: "ri-header-wrapper" },
-        h("div", { class: "ri-header" }, 
-
+        h("div", { class: "ri-header" },
+          h("div", { class: "ri-header-left" }, h("span", { class: "ri-brand-title", text: orgTerms.orgName })),
+          headerExitBtn = h("button", { class: "ri-btn ri-btn-ghost ri-btn-sm ri-header-exit", type: "button", text: "Save Progress and Exit", title: "Save Progress and Exit", onclick: () => { if (formCode) { showBanner(formCode); showExitModal(formCode); } else { setStatus('No application code available. Please save progress first.', 'error'); } }, style: "display:none;" })
         )
       ),
       bannerEl = h("div", { class: "ri-banner", style: "display:none;" }),
