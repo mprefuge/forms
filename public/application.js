@@ -2,6 +2,39 @@
   const ENDPOINT = "https://rif-hhh8e6e7cbc2hvdw.eastus-01.azurewebsites.net/api/form";
   const HOST_ID = "volunteer-app";
 
+
+  // Organization terminology (labels/titles). Terms are static and defined here
+  let orgTerms = {
+    orgName: "Refuge International",
+    labels: {
+      Zip: "Postal Code",
+      State: "State/Province",
+      Country: "Country/Region",
+      ChurchServingDetails: "Church Involvement",
+      GospelDetails: "Share the Gospel (in your own words)",
+      TestimonyDetails: "Your Faith Story",
+      ServingInterest: "Areas of Interest",
+      PreferredServingArea: "Primary Area of Interest",
+    },
+    stepTitles: {
+      "Basic Information": "Contact Information",
+      "Church & Ministry": "Church & Service",
+      "What You'd Like to Do": "Areas to Serve",
+      "Your Faith Journey": "Faith Story",
+      "Commitments & Agreement": "Agreements",
+      "Pastor Contact Information": "Pastoral Reference",
+    },
+    phaseNames: {
+      initial: "Volunteer Application",
+      supplemental: "Document Review (Admin)",
+      placement: "Placement (Admin)"
+    }
+  };
+
+  // Organization terminology is static (defined in `orgTerms`) and not fetched from the backend.
+
+
+
   const injectCSS = () => {
     try {
       const scriptEl = document.currentScript;
@@ -39,30 +72,35 @@
   const phases = {
     initial: {
       name: "Application",
+      description: "Tell us about yourself and your interest in serving",
+      estimatedTime: 15, // minutes
       steps: [
-        { title: "Basic Information", fields: ["Salutation","FirstName","LastName","Email","Phone","Birthdate"] },
-        { title: "Personal Details", fields: ["Gender","MaritalStatus","CountryOfOrigin","PrimaryLanguage","LanguagesSpoken"] },
-        { title: "Address", fields: ["Street","City","State","Zip","Country"] },
-        { title: "Church & Ministry", fields: ["Church","ChurchServingDetails","Skills","HowHeard"] },
-        { title: "Emergency Contact", fields: ["EmergencyContactFirstName","EmergencyContactLastName","EmergencyContactPhone","EmergencyContactRelationship"] },
-        { title: "What You'd Like to Do", fields: ["ServingInterest","PreferredServingArea","Availability"] },
-        { title: "Your Faith Journey", fields: ["GospelDetails","TestimonyDetails"] },
-        { title: "Commitments & Agreement", fields: ["AffirmStatementOfFaith","WillPay","MinistrySafeCompleted","AdditionalNotes"] },
-        { title: "Pastor Contact Information", fields: ["PastorSalutation","PastorFirstName","PastorLastName","PastorEmail"] },
+        { title: "Basic Information", description: "Your name and contact details", fields: ["Salutation","FirstName","LastName","Email","Phone"] },
+        { title: "Personal Details", description: "Background and language preferences", fields: ["Birthdate","Street","City","State","Zip","Country","LanguagesSpoken","CountryOfOrigin","Gender","MaritalStatus"] },
+        { title: "Church & Ministry", description: "Your faith community and experience", fields: ["Church","ChurchServingDetails","Skills","HowHeard"] },
+        { title: "Emergency Contact", description: "Who to reach in case of emergency", fields: ["EmergencyContactFirstName","EmergencyContactLastName","EmergencyContactRelationship","EmergencyContactPhone"] },
+        { title: "What You'd Like to Do", description: "Your serving interests and availability", fields: ["ServingInterest","PreferredServingArea","Availability"] },
+        { title: "Your Faith Journey", description: "Tell us about your faith", fields: ["GospelDetails","TestimonyDetails"] },
+        { title: "Commitments & Agreement", description: "Confirmations and next steps", fields: ["AffirmStatementOfFaith","WillPay","MinistrySafeCompleted","AdditionalNotes"] },
+        { title: "Pastor Contact Information", description: "For faith reference verification", fields: ["PastorFirstName","PastorLastName","PastorEmail","PastorSalutation"] },
       ]
     },
     supplemental: {
       name: "Document Review (Admin)",
+      description: "Review and verification documents",
+      estimatedTime: 10,
       steps: [
-        { title: "Pastoral Reference Review", fields: ["PastoralReferenceStatus","PastoralReferenceNotes"] },
-        { title: "Background Check", fields: ["BackgroundCheckStatus","BackgroundCheckDate","BackgroundCheckNotes"] },
-        { title: "Additional Documents", fields: ["AdditionalDocumentsNotes"] },
+        { title: "Pastoral Reference Review", description: "Status and notes from pastoral reference", fields: ["PastoralReferenceStatus","PastoralReferenceNotes"] },
+        { title: "Background Check", description: "Background screening results", fields: ["BackgroundCheckStatus","BackgroundCheckDate","BackgroundCheckNotes"] },
+        { title: "Additional Documents", description: "Any other relevant information", fields: ["AdditionalDocumentsNotes"] },
       ]
     },
     placement: {
       name: "Placement (Admin)",
+      description: "Volunteer placement details",
+      estimatedTime: 5,
       steps: [
-        { title: "Placement Details", fields: ["PlacementArea","PlacementStartDate","PlacementNotes"] },
+        { title: "Placement Details", description: "Assignment and start date", fields: ["PlacementArea","PlacementStartDate","PlacementNotes"] },
       ]
     }
   };
@@ -71,54 +109,54 @@
   const steps = phases[currentPhase].steps;
 
   const fieldMeta = {
-    Salutation: { label: "Salutation", type: "select", options: [] },
-    FirstName: { label: "First Name", type: "text" },
-    LastName: { label: "Last Name", type: "text" },
-    Email: { label: "Email", type: "email" },
-    Phone: { label: "Phone", type: "tel" },
-    Gender: { label: "Gender", type: "select", options: ["Male","Female","Other","Prefer not to say"] },
-    MaritalStatus: { label: "Marital Status", type: "select", options: [] },
-    Country: { label: "Country", type: "select", options: [] },
-    CountryOfOrigin: { label: "Country of Origin", type: "select", options: [] },
-    PrimaryLanguage: { label: "Primary Language", type: "select", options: [] },
-    LanguagesSpoken: { label: "Languages Spoken", type: "multiselect", options: [] },
-    Skills: { label: "Skills", type: "multiselect", options: [] },
-    Church: { label: "Church Name", type: "text" },
-    ChurchServingDetails: { label: "Church Serving Details", type: "textarea" },
-    HowHeard: { label: "How did you hear about us?", type: "select", options: [] },
-    ServingInterest: { label: "Serving Interest", type: "multiselect", options: [] },
-    PreferredServingArea: { label: "Preferred Serving Area", type: "select", options: [] },
-    GospelDetails: { label: "Please share the Gospel", type: "textarea" },
-    TestimonyDetails: { label: "Your Testimony", type: "textarea" },
-    AdditionalNotes: { label: "Additional Notes", type: "textarea" },
-    Availability: { label: "Availability", type: "multiselect", options: [] },
-    AffirmStatementOfFaith: { label: "I affirm the Statement of Faith", type: "checkbox" },
-    WillPay: { label: "I am able to pay the application fee", type: "checkbox" },
-    Birthdate: { label: "Birthdate", type: "date" },
-    PastorSalutation: { label: "Pastor Salutation", type: "select", options: [] },
-    PastorFirstName: { label: "Pastor First Name", type: "text" },
-    PastorLastName: { label: "Pastor Last Name", type: "text" },
-    PastorEmail: { label: "Pastor Email", type: "email" },
-    EmergencyContactFirstName: { label: "First Name", type: "text" },
-    EmergencyContactLastName: { label: "Last Name", type: "text" },
-    EmergencyContactPhone: { label: "Phone", type: "tel" },
-    EmergencyContactRelationship: { label: "Relationship", type: "select", options: [] },
-    Street: { label: "Street", type: "text" },
-    City: { label: "City", type: "text" },
-    State: { label: "State", type: "select", options: [] },
-    Zip: { label: "Zip Code", type: "text" },
-    PastoralReferenceStatus: { label: "Status", type: "select", options: ["Pending","Submitted","Approved","Declined"] },
-    PastoralReferenceNotes: { label: "Notes", type: "textarea" },
-    BackgroundCheckStatus: { label: "Status", type: "select", options: ["Not Started","In Progress","Completed","Approved","Issues"] },
-    BackgroundCheckDate: { label: "Completion Date", type: "date" },
-    BackgroundCheckNotes: { label: "Notes", type: "textarea" },
-    MinistrySafeCompleted: { label: "I have completed MinistrySafe training in the past 5 years", type: "checkbox" },
-    MinistrySafeCompletionDate: { label: "Completion Date", type: "date" },
-    MinistrySafeCertificate: { label: "Upload Certificate", type: "file", accept: ".pdf,.jpg,.jpeg,.png" },
-    AdditionalDocumentsNotes: { label: "Additional Documents Notes", type: "textarea" },
-    PlacementArea: { label: "Placement Area", type: "text" },
-    PlacementStartDate: { label: "Start Date", type: "date" },
-    PlacementNotes: { label: "Placement Notes", type: "textarea" },
+    Salutation: { label: "Salutation", type: "select", options: [], required: false },
+    FirstName: { label: "First Name", type: "text", required: true },
+    LastName: { label: "Last Name", type: "text", required: true },
+    Email: { label: "Email", type: "email", required: true },
+    Phone: { label: "Phone", type: "tel", required: true },
+    Gender: { label: "Gender", type: "select", options: ["Male","Female"], required: true },
+    MaritalStatus: { label: "Marital Status", type: "select", options: [], required: false },
+    Country: { label: "Country/Region", type: "select", options: [], required: true },
+    CountryOfOrigin: { label: "Country of Origin", type: "select", options: [], required: true },
+    PrimaryLanguage: { label: "Primary Language", type: "select", options: [], required: false },
+    LanguagesSpoken: { label: "Languages Spoken", type: "multiselect", options: [], required: true },
+    Skills: { label: "Skills", type: "multiselect", options: [], required: false },
+    Church: { label: "Church Name", type: "text", required: true },
+    ChurchServingDetails: { label: "Church Involvement", type: "textarea", required: false },
+    HowHeard: { label: "How did you hear about Refuge International?", type: "select", options: [], required: false },
+    ServingInterest: { label: "Areas of Interest", type: "multiselect", options: [], required: true },
+    PreferredServingArea: { label: "Primary Area of Interest", type: "select", options: [], required: false },
+    GospelDetails: { label: "Share the Gospel (in your own words)", type: "textarea", required: true },
+    TestimonyDetails: { label: "Your Faith Story", type: "textarea", required: true },
+    AdditionalNotes: { label: "Additional Notes", type: "textarea", required: false },
+    Availability: { label: "Availability", type: "multiselect", options: [], required: false },
+    AffirmStatementOfFaith: { label: "I affirm the Statement of Faith", type: "checkbox", required: true },
+    WillPay: { label: "I am able to pay the application fee", type: "checkbox", required: false },
+    Birthdate: { label: "Birthdate", type: "date", required: true },
+    PastorSalutation: { label: "Pastor Salutation", type: "select", options: [], required: false },
+    PastorFirstName: { label: "Pastor First Name", type: "text", required: true },
+    PastorLastName: { label: "Pastor Last Name", type: "text", required: true },
+    PastorEmail: { label: "Pastor Email", type: "email", required: true },
+    EmergencyContactFirstName: { label: "First Name", type: "text", required: true },
+    EmergencyContactLastName: { label: "Last Name", type: "text", required: true },
+    EmergencyContactPhone: { label: "Phone", type: "tel", required: true },
+    EmergencyContactRelationship: { label: "Relationship", type: "select", options: [], required: true },
+    Street: { label: "Address", type: "text", required: true },
+    City: { label: "City", type: "text", required: true },
+    State: { label: "State/Province", type: "select", options: [], required: true },
+    Zip: { label: "Postal Code", type: "text", required: true },
+    PastoralReferenceStatus: { label: "Status", type: "select", options: ["Pending","Submitted","Approved","Declined"], required: false },
+    PastoralReferenceNotes: { label: "Notes", type: "textarea", required: false },
+    BackgroundCheckStatus: { label: "Status", type: "select", options: ["Not Started","In Progress","Completed","Approved","Issues"], required: false },
+    BackgroundCheckDate: { label: "Completion Date", type: "date", required: false },
+    BackgroundCheckNotes: { label: "Notes", type: "textarea", required: false },
+    MinistrySafeCompleted: { label: "I have completed MinistrySafe training in the past 5 years", type: "checkbox", required: false },
+    MinistrySafeCompletionDate: { label: "Completion Date", type: "date", required: false },
+    MinistrySafeCertificate: { label: "Upload Certificate", type: "file", accept: ".pdf,.jpg,.jpeg,.png", required: false },
+    AdditionalDocumentsNotes: { label: "Additional Documents Notes", type: "textarea", required: false },
+    PlacementArea: { label: "Placement Area", type: "text", required: false },
+    PlacementStartDate: { label: "Start Date", type: "date", required: false },
+    PlacementNotes: { label: "Placement Notes", type: "textarea", required: false },
   };
 
   const fieldToSf = {
@@ -185,7 +223,7 @@
   const completedSteps = new Set();
   let formCode = null;
   let currentStep = 0;
-  let statusEl, bannerEl, stepperEl, formEl, landingEl, phaseIndicatorEl;
+  let statusEl, bannerEl, stepperEl, formEl, landingEl, phaseIndicatorEl; 
   let manualAddressMode = false;
   let firstPageSaved = false;
   let addressSuggestionsEl = null;
@@ -234,6 +272,22 @@
       }
     });
   };
+
+  const isUS = () => {
+    const c = (data.Country || '').toString().toLowerCase();
+    return c === 'united states' || c === 'united states of america' || c === 'usa' || c === 'us' || c === 'u.s.' || c === 'u.s.a.';
+  };
+
+  const getLabel = (name) => {
+    if (name === 'State') return isUS() ? 'State' : (orgTerms.labels.State || 'State/Province');
+    if (name === 'Zip') return isUS() ? 'ZIP Code' : (orgTerms.labels.Zip || 'Postal Code');
+    if (name === 'Country') return orgTerms.labels.Country || (fieldMeta[name]?.label || name);
+    if (name === 'HowHeard') return `How did you hear about ${orgTerms.orgName}?`;
+    return orgTerms.labels[name] || (fieldMeta[name]?.label || name);
+  };
+
+  const getStepTitle = (title) => orgTerms.stepTitles[title] || title;
+  const getPhaseName = (phaseKey) => orgTerms.phaseNames[phaseKey] || (phases[phaseKey]?.name || '');
 
   const saveToLocalStorage = () => {
     try {
@@ -359,17 +413,26 @@
   };
 
   const fieldFor = (name) => {
-    const meta = fieldMeta[name] || { label: name, type: "text" };
+    const meta = fieldMeta[name] || { label: name, type: "text", required: false };
     const value = data[name] ?? "";
     const wrapper = h("div", { class: "ri-field" });
+    
+    // Build label with required indicator
+    const buildLabel = (labelText) => {
+      const labelEl = h("label", { for: name });
+      labelEl.append(h("span", { text: labelText }));
+      if (meta.required) {
+        labelEl.append(h("span", { class: "ri-required", text: " *" }));
+      }
+
+      return labelEl;
+    };
 
     if (meta.type === "checkbox") {
       const input = h("input", { type: "checkbox", id: name, checked: !!value, onchange: e => { 
         data[name] = e.target.checked;
         autoSave();
-        // If the checkbox affects displayed fields or fee label, re-render
         if (name === "MinistrySafeCompleted" || name === "WillPay") {
-          // When MinistrySafe is unchecked, clear related fields and uploads
           if (name === 'MinistrySafeCompleted' && !e.target.checked) {
             delete data.MinistrySafeCompletionDate;
             delete data.MinistrySafeCertificate;
@@ -380,21 +443,19 @@
         }
       }});
 
-      // Compute dynamic label for WillPay based on MinistrySafe certificate presence
       if (name === 'WillPay') {
         const hasCertificate = !!(data.MinistrySafeCertificate || (fileUploads && fileUploads.MinistrySafeCertificate));
         const price = hasCertificate ? 15 : 20;
-        const labelEl = h("label", { for: name, text: meta.label });
+        const labelEl = buildLabel(getLabel(name));
         const badge = h('span', { class: 'ri-fee-badge', text: `$${price}` });
         labelEl.append(badge);
         const row = h("div", { class: "ri-checkbox" }, input, labelEl);
         wrapper.append(row);
       } else {
-        const row = h("div", { class: "ri-checkbox" }, input, h("label", { for: name, text: meta.label }));
+        const row = h("div", { class: "ri-checkbox" }, input, buildLabel(getLabel(name)));
         wrapper.append(row);
       }
       
-      // Show certificate upload if MinistrySafe is checked
       if (name === "MinistrySafeCompleted" && value) {
         const certField = fieldFor("MinistrySafeCertificate");
         const dateField = fieldFor("MinistrySafeCompletionDate");
@@ -403,19 +464,16 @@
       return wrapper;
     }
 
-    const label = h("label", { for: name, text: meta.label });
+    const label = buildLabel(getLabel(name));
     let control;
 
-    // Hide fields that are represented via combined UI
-    if (name === 'PreferredServingArea' || name === 'LanguagesSpoken') {
-      // Render a hidden input to ensure the value is present for saves, but do not show a separate control
+    if (name === 'PreferredServingArea') {
       const hiddenVal = (Array.isArray(data[name]) ? data[name].join('|') : (data[name] || ''));
       control = h('input', { type: 'hidden', id: name, value: hiddenVal });
       wrapper.append(control);
       return wrapper;
     }
     
-    // Combined UI: ServingInterest controls PreferredServingArea as primary
     if (name === 'ServingInterest') {
       const opts = fieldMeta.PreferredServingArea?.options || [];
       const curVals = Array.isArray(data[name]) && data[name].length > 0 ? data[name] : [];
@@ -438,7 +496,6 @@
           const set = new Set(prev);
           if (e.target.checked) set.add(val); else set.delete(val);
           data[name] = Array.from(set);
-          // If we cleared the primary, remove it
           if (!data[name].includes(primary)) {
             if (data.PreferredServingArea === val && !data[name].includes(val)) data.PreferredServingArea = '';
           }
@@ -452,16 +509,13 @@
           e.preventDefault();
           if (!Array.isArray(data[name])) data[name] = [];
           if (!data[name].includes(val)) data[name].push(val);
-          // Ensure the corresponding checkbox is checked when starred
           try { if (chk && !chk.checked) { chk.checked = true; chk.dispatchEvent(new Event('change', { bubbles: true })); } } catch (err) {}
-          // Toggle primary: unset if already set
           if (data.PreferredServingArea === val) {
             data.PreferredServingArea = '';
           } else {
             data.PreferredServingArea = val;
           }
           autoSave();
-          // Update all stars in this container without re-rendering entire form
           const allStars = container.querySelectorAll('.ri-star');
           allStars.forEach((s, idx) => {
             const starVal = visibleOpts[idx] && visibleOpts[idx].val;
@@ -478,12 +532,13 @@
       return wrapper;
     }
 
-    // Combined UI: PrimaryLanguage controls LanguagesSpoken as a combined UI
-    if (name === 'PrimaryLanguage') {
-      const opts = fieldMeta.PrimaryLanguage?.options || [];
+    if (name === 'LanguagesSpoken') {
+      const opts = fieldMeta.LanguagesSpoken?.options || [];
       const curVals = Array.isArray(data.LanguagesSpoken) && data.LanguagesSpoken.length > 0 ? data.LanguagesSpoken : [];
       const primary = data.PrimaryLanguage || '';
       const container = h('div', { class: 'ri-multiselect-box' });
+      // Add a small visible helper above the list to emphasize starring a primary language
+      const helper = h('div', { class: 'ri-field-note', text: 'Click the star to indicate your primary language.' });
       if (opts.length === 0) container.append(h('div', { class: 'ri-muted', text: 'No options available' }));
       const visibleOpts = (opts || []).map(opt => {
         const val = (opt && typeof opt === 'object') ? (opt.value ?? opt.text ?? '') : opt;
@@ -495,13 +550,12 @@
       visibleOpts.forEach((optObj, i) => {
         const val = optObj.val;
         const txt = optObj.txt;
-        const idOpt = `PrimaryLanguage__${i}`;
+        const idOpt = `LanguagesSpoken__${i}`;
         const chk = h("input", { type: "checkbox", id: idOpt, checked: Array.isArray(curVals) && curVals.includes(val), onchange: e => {
           const prev = Array.isArray(data.LanguagesSpoken) ? Array.from(data.LanguagesSpoken) : [];
           const set = new Set(prev);
           if (e.target.checked) set.add(val); else set.delete(val);
           data.LanguagesSpoken = Array.from(set);
-          // If primary was cleared
           if (!data.LanguagesSpoken.includes(primary)) {
             if (data.PrimaryLanguage === val && !data.LanguagesSpoken.includes(val)) data.PrimaryLanguage = '';
           }
@@ -515,16 +569,13 @@
           e.preventDefault();
           if (!Array.isArray(data.LanguagesSpoken)) data.LanguagesSpoken = [];
           if (!data.LanguagesSpoken.includes(val)) data.LanguagesSpoken.push(val);
-          // Ensure the corresponding checkbox is checked when starred
           try { if (chk && !chk.checked) { chk.checked = true; chk.dispatchEvent(new Event('change', { bubbles: true })); } } catch (err) {}
-          // Toggle primary language
           if (data.PrimaryLanguage === val) {
             data.PrimaryLanguage = '';
           } else {
             data.PrimaryLanguage = val;
           }
           autoSave();
-          // Update all stars in this container without re-rendering entire form
           const allStars = container.querySelectorAll('.ri-star');
           allStars.forEach((s, idx) => {
             const starVal = visibleOpts[idx] && visibleOpts[idx].val;
@@ -536,15 +587,14 @@
         };
         container.append(h("div", { class: "ri-checkbox" }, chk, lab, star));
       });
-      container.append(h('div', { class: 'ri-muted', text: "Tap items to select languages; click the star to mark your primary language." }));
-      wrapper.append(label, container);
+      //container.append(h('div', { class: 'ri-muted', text: "Tap items to select languages; click the star to mark your primary language." }));
+      wrapper.append(label, helper, container);
       return wrapper;
     }
 
     if (meta.type === "file") {
-      // Only show file input if the MinistrySafe checkbox is checked when this is the certificate field
       if (name === 'MinistrySafeCertificate' && !data.MinistrySafeCompleted) {
-        return wrapper; // empty wrapper, do not render control
+        return wrapper;
       }
 
       control = h("input", { id: name, type: "file", accept: meta.accept || "*" });
@@ -554,7 +604,6 @@
           fileUploads[name] = file;
           data[name] = file.name;
           autoSave();
-          // Re-render so dependent labels (e.g., WillPay) update when certificate uploaded
           if (name === 'MinistrySafeCertificate') renderForm();
         }
       };
@@ -565,13 +614,15 @@
         wrapper.append(label, control);
       }
     } else if (meta.type === "select") {
-      // For completion date, only render if MinistrySafe checkbox is checked
       if (name === 'MinistrySafeCompletionDate' && !data.MinistrySafeCompleted) {
-        return wrapper; // empty wrapper
+        return wrapper;
       }
       control = h("select", { id: name, onchange: e => { 
         data[name] = e.target.value;
         autoSave();
+        if (name === 'Country') {
+          renderForm(); // refresh labels for State/Zip
+        }
       }});
       control.append(h("option", { value: "" }, "Select..."));
       (meta.options || []).forEach(opt => {
@@ -584,7 +635,6 @@
           txt = opt;
         }
         const txtNorm = (txt || '').toString().trim().toLowerCase();
-        // Skip empty/placeholder options from lookup (e.g., "", "Select a ...")
         if (!val || txtNorm === '' || txtNorm.startsWith('select')) return;
         control.append(h("option", { value: val, text: txt }));
       });
@@ -624,7 +674,6 @@
         const lab = h("label", { for: idOpt, text: txt });
         container.append(h("div", { class: "ri-checkbox" }, chk, lab));
       });
-      // helper
       container.append(h('div', { class: 'ri-muted', text: "Tap the items you want to select — multiple selections are allowed." }));
       wrapper.append(label, container);
     } else {
@@ -647,15 +696,42 @@
       const isPast = phaseNames.indexOf(phaseName) < phaseNames.indexOf(currentPhase);
       const chip = h("div", { 
         class: `ri-phase-chip ${isActive ? "active" : ""} ${isPast ? "completed" : ""}` 
-      }, phase.name);
+      }, getPhaseName(phaseName) || phase.name);
       phaseIndicatorEl.append(chip);
     });
+  };
+
+  const calculateProgress = () => {
+    const currentSteps = phases[currentPhase].steps;
+    const totalStepsInPhase = currentSteps.length;
+    const completedInPhase = Array.from(completedSteps).filter(s => s.startsWith(`${currentPhase}-`)).length;
+    const progressPercent = totalStepsInPhase > 0 ? (completedInPhase / totalStepsInPhase) * 100 : 0;
+    return { completed: completedInPhase, total: totalStepsInPhase, percent: progressPercent };
   };
 
   const renderStepper = () => {
     renderPhaseIndicator();
     stepperEl.innerHTML = "";
     const currentSteps = phases[currentPhase].steps;
+    const phaseInfo = phases[currentPhase];
+    
+    // Phase info bar
+    const infoBar = h("div", { class: "ri-phase-info" });
+    const phaseTitle = h("div", { class: "ri-phase-title", text: getPhaseName(currentPhase) || phaseInfo.name });
+    const phaseDesc = h("div", { class: "ri-phase-desc", text: phaseInfo.description });
+    const timeEst = h("div", { class: "ri-phase-time", text: `Est. ${phaseInfo.estimatedTime} min` });
+    infoBar.append(phaseTitle, phaseDesc, timeEst);
+    
+    // Progress bar
+    const progress = calculateProgress();
+    const progressBar = h("div", { class: "ri-progress-wrapper" });
+    const progressFill = h("div", { class: "ri-progress-fill", style: `width: ${progress.percent}%` });
+    const progressText = h("div", { class: "ri-progress-text", text: `Step ${currentStep + 1} of ${currentSteps.length}` });
+    progressBar.append(progressFill, progressText);
+    
+    stepperEl.append(infoBar, progressBar);
+    
+    const chipContainer = h("div", { class: "ri-chip-container" });
     currentSteps.forEach((s, idx) => {
       const stepKey = `${currentPhase}-${idx}`;
       const isCompleted = completedSteps.has(stepKey);
@@ -666,8 +742,10 @@
         const checkmark = h('span', { class: 'ri-checkmark' });
         checkmark.innerHTML = '&#10003;';
         chipContent.push(checkmark);
+      } else {
+        chipContent.push(h('span', { class: 'ri-step-number', text: String(idx + 1) }));
       }
-      chipContent.push(h('span', { text: `${idx + 1}. ${s.title}` }));
+      chipContent.push(h('span', { class: 'ri-step-label', text: getStepTitle(s.title) }));
       
       const chip = h("div", { 
         class: `ri-chip ${isActive ? "active" : ""} ${isCompleted ? "completed" : ""}` 
@@ -683,8 +761,9 @@
         currentStep = idx;
         renderForm();
       };
-      stepperEl.append(chip);
+      chipContainer.append(chip);
     });
+    stepperEl.append(chipContainer);
   };
 
   const debounce = (fn, wait = 300) => {
@@ -731,9 +810,8 @@
     
     // Define required fields by step title
     const requiredByStep = {
-      "Basic Information": ["FirstName", "LastName", "Email"],
-      "Personal Details": ["Gender"],
-      "Address": ["Street", "City", "State"],
+      "Basic Information": ["FirstName", "LastName", "Email", "Phone"],
+      "Personal Details": ["Gender", "Street", "City", "State"],
       "Church & Ministry": ["Church"],
       "Emergency Contact": ["EmergencyContactFirstName", "EmergencyContactLastName", "EmergencyContactPhone"],
       "What You'd Like to Do": ["ServingInterest"],
@@ -986,22 +1064,83 @@
     const currentSteps = phases[currentPhase].steps;
     const step = currentSteps[currentStep];
     formEl.innerHTML = "";
-    formEl.append(h("h3", { text: step.title, class: "ri-step-title" }));
+    
+    // Step header with description
+    const stepHeader = h("div", { class: "ri-step-header" });
+    const stepTitle = h("h3", { text: getStepTitle(step.title), class: "ri-step-title" });
+    const stepDesc = h("p", { text: step.description, class: "ri-step-description" });
+    stepHeader.append(stepTitle, stepDesc);
+
+    // Welcome banner on first page of initial phase (disabled here; shown on landing instead)
+    if (false && currentPhase === 'initial' && currentStep === 0) {
+      const welcome = h('div', { class: 'ri-welcome' },
+        h('img', { src: 'https://images.squarespace-cdn.com/content/v1/5af0bc3a96d45593d7d7e55b/e7f37dd1-a057-4564-99a4-0d1907541ff4/No+MS+1.jpg?format=750w', alt: 'Refuge International volunteers', class: 'ri-welcome-image' }),
+        h('div', { class: 'ri-welcome-content' },
+          h('h4', { class: 'ri-welcome-title', text: 'Welcome to the first part of our volunteer application.' }),
+          h('p', { class: 'ri-welcome-text', html: `We are so thankful for your interest in serving with us!<br><br>Refuge International exists to glorify God by partnering with local churches to love refugees and immigrants. One of the primary ways we do this is through our various volunteer ministry offerings: English Mentoring; Conversation Clubs, Adopt-A-Family, Right Start children's reading program; and the ESL ministry that we sponsor, Community Of Friends Focused On Effective English (COFFEE). This online form is Part 1 of our volunteer application which helps us ensure the integrity of our volunteer programs and the safety of the refugees, children, and immigrants we serve.<br><br>You should be able to complete this section in 5-7 minutes. After you submit this form, you\'ll receive an email from us concerning the second part of the application. Then, following approval of your application, we look forward to deploying you for service in your desired ministry offering! And we look forward to the blessings that await both you and the refugees and immigrants you will serve!<br><br>Warmly,<br><strong>Matt Reynolds</strong><br>Executive Director` })
+        )
+      );
+      formEl.append(welcome);
+    }
+
+    formEl.append(stepHeader);
+    
     let grid;
-    if (step.title === 'Address') {
-      const searchInput = h('input', { id: 'Street', placeholder: 'Search address (type 3+ chars)...', value: data.Street || '', oninput: debounce(async (e) => {
-        const q = e.target.value;
-        data.Street = q;
-        const items = await searchAddress(q);
-        renderAddressSuggestions(items, addressSuggestionsEl);
-      }) });
+    if (step.title === 'Basic Information') {
+      const row1 = h('div', { class: 'ri-basic-row' },
+        h('div', { class: 'ri-basic-col ri-basic-col--salutation' }, fieldFor('Salutation')),
+        h('div', { class: 'ri-basic-col ri-basic-col--name' }, fieldFor('FirstName')),
+        h('div', { class: 'ri-basic-col ri-basic-col--name' }, fieldFor('LastName')),
+      );
+      const row2 = h('div', { class: 'ri-basic-row' },
+        h('div', { class: 'ri-basic-col ri-basic-col--email' }, fieldFor('Email')),
+        h('div', { class: 'ri-basic-col ri-basic-col--phone' }, fieldFor('Phone')),
+      );
+      grid = h('div', { class: 'ri-grid ri-grid--basic-info' }, row1, row2);
+    } else if (step.title === 'Personal Details') {
+      const left = h('div', { class: 'ri-personal-left' },
+        fieldFor('Birthdate'),
+        fieldFor('CountryOfOrigin'),
+        fieldFor('Gender'),
+        fieldFor('MaritalStatus')
+      );
+
+      const right = h('div', { class: 'ri-personal-right' },
+        fieldFor('LanguagesSpoken')
+      );
+
+      // Address row spans both columns and sits at the bottom; use standard fieldFor wrappers
+      const streetWrapper = fieldFor('Street');
+
+
+      // suggestions container for street search
       addressSuggestionsEl = h('div', { class: 'ri-address-suggestions' });
-      const manualBtn = h('button', { class: 'ri-btn ri-btn-ghost', type: 'button', text: manualAddressMode ? 'Hide Manual' : 'Enter Manually' });
-      manualBtn.onclick = () => { manualAddressMode = !manualAddressMode; renderForm(); };
-      grid = h('div', { class: 'ri-grid' }, h('div', { class: 'ri-field' }, h('label', { text: 'Street / Address' }), searchInput, addressSuggestionsEl, manualBtn));
-      if (manualAddressMode || data.City || data.State || data.Zip || data.Country) {
-        ['City','State','Zip','Country'].forEach(n => grid.append(fieldFor(n)));
-      }
+      streetWrapper.append(addressSuggestionsEl);
+
+      // wire up search on the street input
+      try {
+        const input = streetWrapper.querySelector('input');
+        if (input) {
+          input.oninput = debounce(async (e) => {
+            const q = e.target.value;
+            data.Street = q;
+            const items = await searchAddress(q);
+            renderAddressSuggestions(items, addressSuggestionsEl);
+          });
+        }
+      } catch (err) {}
+
+      const cityWrapper = fieldFor('City');
+      const stateWrapper = fieldFor('State');
+      const zipWrapper = fieldFor('Zip');
+      const countryWrapper = fieldFor('Country');
+
+      const addressSubgrid = h('div', { class: 'ri-address-subgrid' });
+      addressSubgrid.append(cityWrapper, stateWrapper, zipWrapper, countryWrapper);
+
+      const addressRow = h('div', { class: 'ri-address-row' }, streetWrapper, addressSubgrid);
+
+      grid = h('div', { class: 'ri-grid ri-grid--personal-details' }, left, right, addressRow);
     } else {
       grid = h("div", { class: "ri-grid" }, step.fields.map(fieldFor));
     }
@@ -1013,6 +1152,7 @@
   };
 
   const renderLanding = () => {
+
     landingEl.innerHTML = "";
     if (bannerEl) {
       bannerEl.style.display = 'none';
@@ -1063,8 +1203,27 @@
       return;
     }
     
-    const title = h("h2", { text: "Volunteer Application", class: "ri-landing-title" });
-    const subtitle = h("p", { text: "Thank you for your interest in serving! We're excited to get to know you. Your progress is automatically saved as you go.", class: "ri-landing-subtitle" });
+    // Welcome banner with mission copy and signature (stacked layout; letter format)
+    const welcome = h('div', { class: 'ri-welcome' },
+      h('img', { src: 'https://images.squarespace-cdn.com/content/v1/5af0bc3a96d45593d7d7e55b/e7f37dd1-a057-4564-99a4-0d1907541ff4/No+MS+1.jpg?format=750w', alt: 'Refuge International volunteers', class: 'ri-welcome-image' }),
+      h('div', { class: 'ri-welcome-content' },
+        h('h4', { class: 'ri-welcome-title', text: 'Welcome to the first part of our volunteer application.' }),
+        h('p', { class: 'ri-welcome-text', text: 'We are so thankful for your interest in serving with us!' }),
+        h('p', { class: 'ri-welcome-text', text: 'Refuge International exists to glorify God by partnering with local churches to love refugees and immigrants. One of the primary ways we do this is through our various volunteer ministry offerings: English Mentoring; Conversation Clubs, Adopt-A-Family, Right Start children\'s reading program; and the ESL ministry that we sponsor, Community Of Friends Focused On Effective English (COFFEE). This online form is Part 1 of our volunteer application which helps us ensure the integrity of our volunteer programs and the safety of the refugees, children, and immigrants we serve.' }),
+        h('p', { class: 'ri-welcome-text', text: 'You should be able to complete this section in 5-7 minutes. After you submit this form, you\'ll receive an email from us concerning the second part of the application. Then, following approval of your application, we look forward to deploying you for service in your desired ministry offering! And we look forward to the blessings that await both you and the refugees and immigrants you will serve!' }),
+        h('p', { class: 'ri-welcome-text', text: 'Warmly,' }),
+        h('div', { class: 'ri-signature' },
+          h('strong', { text: 'Matt Reynolds' }),
+          h('div', { text: 'Executive Director' })
+        )
+      )
+    );
+
+    const infoBox = h('div', { class: 'ri-landing-info' },
+      h('p', { html: '<strong>Start New Application</strong> &mdash; Begin a fresh application; Part 2 instructions will be emailed after submission.' }),
+      h('p', { html: '<strong>Continue Existing Application</strong> &mdash; Already started an application? Use your application code to pick up where you left off.' })
+    );
+
     const newBtn = h("button", { class: "ri-btn ri-btn-primary ri-landing-btn", type: "button", text: "Start New Application" });
     newBtn.onclick = () => {
       appState = 'new';
@@ -1115,14 +1274,18 @@
       landingEl.append(backBtn, resumeTitle, resumeSubtitle, input, loadBtn);
     };
     const btnContainer = h("div", { class: "ri-landing-actions" }, newBtn, continueBtn);
-    landingEl.append(title, subtitle, btnContainer);
+    landingEl.append(welcome, infoBox, btnContainer);
   };
 
   const host = document.getElementById(HOST_ID) || document.body;
   const container = h("div", { class: "ri-app" },
     h("div", { class: "ri-card" },
-      // Branding header
-      headerEl = h("div", { class: "ri-header" }, h("div", { class: "ri-logo", text: "R" }), h("div", { class: "ri-brand-title", text: "Volunteer Application" })),
+      // Header
+      h("div", { class: "ri-header-wrapper" },
+        h("div", { class: "ri-header" }, 
+
+        )
+      ),
       bannerEl = h("div", { class: "ri-banner", style: "display:none;" }),
       landingEl = h("div", { class: "ri-landing" }),
       phaseIndicatorEl = h("div", { class: "ri-phase-indicator", style: "display:none;" }),
@@ -1133,6 +1296,7 @@
   );
 
   host.appendChild(container);
+
   loadLookup().then(applyLookupOptions).finally(() => {
     renderLanding();
   });

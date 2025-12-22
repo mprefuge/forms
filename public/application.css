@@ -27,22 +27,9 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 18px;
-}
-.ri-logo {
-  width: 56px;
-  height: 56px;
-  border-radius: 10px;
-  background: linear-gradient(135deg,var(--accent),var(--accent-600));
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-weight: 900;
-  font-size: 18px;
-  box-shadow: var(--shadow-sm);
+  padding-bottom: 8px; /* slightly reduced for tighter layout */
+  border-bottom: none; /* removed divider under the red top border */
+  margin-bottom: 12px;
 }
 .ri-brand-title { font-size: 18px; font-weight: 900; color: var(--accent-600); }
 
@@ -51,8 +38,11 @@
   border-radius: 16px;
   border-top: 5px solid var(--accent);
   box-shadow: var(--shadow-lg);
-  padding: 28px;
+  padding: 12px 24px 24px 24px; /* reduce top padding to tighten under border */
   position: relative;
+  overflow: hidden; /* avoid visual seams on rounded borders */
+  -webkit-background-clip: padding-box;
+  background-clip: padding-box;
 }
 
 .ri-header {
@@ -164,8 +154,80 @@ form.ri-form {
 
 .ri-grid {
   display: grid;
-  gap: 12px;
+  gap: 10px;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+/* Basic Information specific two-row layout */
+/* Ensure the basic-info grid uses a single-column layout so rows stack vertically */
+.ri-grid--basic-info {
+  grid-template-columns: 1fr;
+}
+.ri-grid--basic-info .ri-basic-row {
+  display: flex;
+  gap: 10px;
+}
+.ri-grid--basic-info .ri-basic-col--salutation {
+  flex: 0 0 120px;
+  max-width: 120px;
+}
+.ri-grid--basic-info .ri-basic-col--name {
+  flex: 1 1 0;
+}
+.ri-grid--basic-info .ri-basic-col--email,
+.ri-grid--basic-info .ri-basic-col--phone {
+  flex: 1 1 0;
+}
+.ri-grid--basic-info .ri-basic-col .ri-field { margin: 0; }
+
+/* Personal Details layout: left stacked fields, right languages list */
+.ri-grid--personal-details {
+  display: grid;
+  /* Left column stretches, right column is flexible but constrained so languages can use two internal columns
+     and the layout adapts without causing horizontal scrolling */
+  grid-template-columns: 1fr minmax(320px, 520px);
+  gap: 20px;
+  /* Stretch columns to the same height so right column matches left height */
+  align-items: stretch;
+  /* allow children to shrink to prevent horizontal overflow */
+  min-width: 0;
+}
+/* Keep left and right columns as vertical stacks */
+.ri-personal-left,
+.ri-personal-right {
+  display: flex;
+  flex-direction: column;
+  min-width: 0; /* important for preventing overflow when a child is wide */
+}
+.ri-personal-left .ri-field { margin-bottom: 10px; }
+/* Make the languages box fill the right column height and scroll within it; prevent horizontal scrolling */
+.ri-personal-right { height: 100%; }
+.ri-personal-right .ri-multiselect-box { height: 100%; overflow-y: auto; overflow-x: hidden; }
+.ri-personal-right .ri-field { margin: 0; }
+
+/* Address label row: label left, enter manually text right */
+.ri-address-label-row { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+.ri-enter-manual { font-size: 13px; font-weight: 700; color: var(--accent-600); cursor: pointer; border: 0; background: transparent; padding: 0; text-decoration: underline; text-transform: none; display: inline-block; margin-left: 8px; }
+.ri-enter-manual:hover, .ri-enter-manual:focus { opacity: 0.85; text-decoration: underline; outline: none; }
+.ri-enter-manual:focus { box-shadow: 0 0 0 3px rgba(189, 33, 53, 0.12); border-radius: 4px; }
+.ri-address-block { margin-bottom: 10px; }
+
+/* Address row spans both columns in Personal Details and matches other field styling */
+.ri-address-row { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+.ri-address-subgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+/* Ensure suggestions under street field don't introduce horizontal scroll */
+.ri-address-suggestions { max-width: 100%; overflow-x: hidden; }
+
+@media (max-width: 960px) {
+  .ri-grid--personal-details { grid-template-columns: 1fr; }
+  .ri-personal-right { order: 2; height: auto; }
+  /* On smaller screens limit list height again */
+  .ri-personal-right .ri-multiselect-box { max-height: 420px; }
+}
+
+@media (max-width: 640px) {
+  .ri-grid--basic-info .ri-basic-row { flex-direction: column; }
+  .ri-grid--basic-info .ri-basic-col--salutation { max-width: 100%; flex: 0 0 auto; }
 }
 
 .ri-field label {
@@ -305,8 +367,31 @@ form.ri-form {
 /* Landing Page */
 .ri-landing {
   text-align: center;
-  padding: 40px 20px;
+  padding: 24px 20px; /* reduced top padding to remove extra whitespace under header */
 }
+
+/* Reduce header spacing to tighten header -> content gap */
+.ri-header-wrapper { margin-bottom: 12px; }
+
+/* Landing info box explaining start vs continue */
+.ri-landing-info {
+  margin: 18px auto 8px auto;
+  max-width: 880px; /* match welcome box increased width */
+  background: #fff;
+  border: 1px solid var(--border);
+  padding: 12px 16px;
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: 14px;
+  text-align: left;
+  box-sizing: border-box;
+}
+.ri-landing-info p { margin: 6px 0; line-height: 1.5; }
+@media (min-width: 768px) {
+  /* Keep these short informational lines on a single row on desktop */
+  .ri-landing-info p { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
+.ri-landing-info strong { color: var(--accent-600); font-weight: 800; }
 
 /* Multiselect box for friendly multi-selection */
 .ri-multiselect-box {
@@ -315,16 +400,23 @@ form.ri-form {
   padding: 10px;
   border-radius: 10px;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  /* Force two internal columns so languages appear in two columns and don't create horizontal scroll */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   max-height: 240px;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden; /* prevent horizontal scrollbar */
 }
-.ri-multiselect-box .ri-checkbox { padding: 6px 8px; margin: 0; border-radius: 8px; display:flex; align-items:center; justify-content:space-between; position: relative; }
-.ri-multiselect-box .ri-checkbox label { flex: 1; text-align: center; margin: 0 8px; }
+/* Reserve extra right padding so the star can sit to the right without overlapping label text */
+.ri-multiselect-box .ri-checkbox { padding: 6px 36px 6px 8px; margin: 0; border-radius: 8px; display:flex; align-items:center; position: relative; }
+.ri-multiselect-box .ri-checkbox label { flex: 1; text-align: left; margin: 0 8px; overflow: hidden; word-break: normal; overflow-wrap: normal; white-space: normal; hyphens: none; font-size: 12px; line-height: 1.25; }
 .ri-multiselect-box .ri-checkbox input { flex: 0 0 22px; width: 22px; height: 22px; margin-right: 8px; }
-.ri-multiselect-box .ri-checkbox .ri-star { margin-left: 8px; }
+/* Position star absolutely so it doesn't overlap wrapped label lines */
+.ri-multiselect-box .ri-checkbox .ri-star { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); margin-left: 0; z-index: 2; }
 .ri-multiselect-box .ri-muted { grid-column: 1 / -1; font-size: 12px; color: var(--muted); padding-top: 8px; }
+
+/* Small helper note shown above the languages list to emphasize starring a primary */
+.ri-field-note { font-size: 13px; color: var(--muted); margin: 6px 0 8px 0; font-weight: 600; }
 .ri-star { border: 0; background: transparent; font-size: 18px; cursor: pointer; color: #f59e0b; padding: 4px; border-radius: 6px; opacity: 0; transition: opacity 0.2s ease, background 0.2s ease; }
 .ri-star.ri-starred { opacity: 1; }
 .ri-checkbox:hover .ri-star { opacity: 1; }
@@ -352,8 +444,17 @@ form.ri-form {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  max-width: 400px;
-  margin: 0 auto;
+  max-width: 880px; /* align with boxes */
+  margin: 12px auto 0 auto;
+  align-items: center;
+}
+.ri-landing-actions .ri-btn { width: 420px; max-width: 100%; display: block; margin: 6px auto; }
+@media (max-width: 1024px) {
+  .ri-landing-actions .ri-btn { width: 360px; }
+}
+@media (max-width: 768px) {
+  .ri-landing-actions .ri-btn { width: 100%; }
+  .ri-welcome, .ri-landing-info { padding-left: 12px; padding-right: 12px; }
 }
 
 .ri-landing-btn {
@@ -502,4 +603,529 @@ form.ri-form {
   padding: 8px 12px;
   background: var(--surface-muted);
   border-radius: 8px;
+}
+
+/* === NEW UX IMPROVEMENTS === */
+
+/* Header wrapper */
+.ri-header-wrapper {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.ri-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 200px;
+}
+
+.ri-brand-title {
+  font-size: 18px;
+  font-weight: 900;
+  color: var(--accent-600);
+}
+
+/* Required field indicator */
+.ri-required {
+  color: #ef4444;
+  font-weight: 700;
+}
+
+
+
+/* Step header with description */
+.ri-step-header {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--border);
+}
+
+.ri-step-title {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+  margin: 0;
+  color: #1a1a1a;
+}
+
+.ri-step-description {
+  font-size: 14px;
+  color: var(--muted);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* Welcome banner for first page */
+.ri-welcome {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  align-items: start;
+  padding: 12px; /* tightened for a denser header */
+  background: linear-gradient(180deg,#fff 0%, #fff7f7 100%);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin-bottom: 18px;
+  max-width: 880px; /* increased width to better utilize available space */
+  margin-left: auto;
+  margin-right: auto;
+  box-sizing: border-box;
+  overflow: hidden; /* ensure cropping behaves consistently */
+}
+.ri-welcome-image {
+  width: 100%;
+  height: 140px; /* crop top/bottom to create a tight banner feel */
+  border-radius: 8px;
+  object-fit: cover;
+  object-position: center;
+  box-shadow: var(--shadow-sm);
+  display: block;
+  margin: 0 auto;
+  max-width: 860px;
+}
+@media (min-width: 1400px) {
+  .ri-welcome-image { height: 200px; }
+}
+@media (max-width: 480px) {
+  .ri-welcome-image { height: 100px; }
+}
+.ri-welcome-content { text-align: left; width: 100%; margin: 0; } /* allow text to span full banner width */
+/* Ensure paragraphs use available width */
+.ri-welcome-content p { max-width: none; }
+.ri-welcome-title {
+  margin: 0 0 8px 0;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--accent-600);
+}
+.ri-welcome-text {
+  margin: 0 0 12px 0;
+  color: var(--muted);
+  line-height: 1.6;
+  font-size: 14px;
+}
+.ri-signature {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 14px;
+}
+.ri-signature strong { display: block; font-size: 15px; color: var(--text); margin-bottom: 2px; }
+
+/* Phase info and progress */
+.ri-phase-info {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 14px;
+  background: linear-gradient(135deg, rgba(189,33,53,0.04), rgba(189,33,53,0.02));
+  border-left: 4px solid var(--accent);
+  border-radius: 8px;
+}
+
+.ri-phase-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--accent-600);
+}
+
+.ri-phase-desc {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0;
+}
+
+.ri-phase-time {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+/* Progress bar */
+.ri-progress-wrapper {
+  position: relative;
+  height: 8px;
+  background: var(--border);
+  border-radius: 10px;
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.ri-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-600));
+  border-radius: 10px;
+  transition: width 0.4s ease;
+}
+
+.ri-progress-text {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: #fff;
+  padding: 0 6px;
+}
+
+/* Chip container */
+.ri-chip-container {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.ri-chip {
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 2px solid var(--border);
+  background: #fff;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.3s ease;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ri-chip:hover:not(.completed) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.ri-chip.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(189, 33, 53, 0.08);
+  box-shadow: var(--shadow-sm);
+  font-weight: 700;
+}
+
+.ri-chip.completed {
+  border-color: #10b981;
+  background: rgba(16, 185, 129, 0.06);
+}
+
+.ri-chip.completed.active {
+  border-color: var(--accent);
+  background: rgba(189, 33, 53, 0.08);
+}
+
+.ri-step-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(189, 33, 53, 0.15);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.ri-chip.active .ri-step-number {
+  background: var(--accent);
+  color: #fff;
+}
+
+.ri-checkmark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #10b981;
+  color: white;
+  font-size: 12px;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.ri-step-label {
+  flex: 1;
+}
+
+/* Improved field styling */
+.ri-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ri-field label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: #374151;
+}
+
+.ri-field input,
+.ri-field select,
+.ri-field textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 2px solid var(--border);
+  font-size: 15px;
+  background: #fff;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.ri-field input::placeholder,
+.ri-field textarea::placeholder {
+  color: #d1d5db;
+}
+
+.ri-field input:focus,
+.ri-field select:focus,
+.ri-field textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(189, 33, 53, 0.15);
+}
+
+/* Multiselect improvements */
+.ri-multiselect-box {
+  border: 2px solid var(--border);
+  background: #fff;
+  padding: 12px;
+  border-radius: 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+/* Reserve right padding for the star and position it absolutely */
+.ri-multiselect-box .ri-checkbox {
+  padding: 8px 36px 8px 10px;
+  margin: 0;
+  border-radius: 8px;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.ri-multiselect-box .ri-checkbox:hover {
+  background: #fff;
+  border-color: var(--accent);
+}
+
+.ri-multiselect-box .ri-checkbox input {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.ri-multiselect-box .ri-checkbox label {
+  flex: 1;
+  margin: 0;
+  text-transform: none;
+  font-weight: 500;
+  font-size: 12px;
+  letter-spacing: normal;
+  text-align: left;
+  overflow: hidden;
+  padding-right: 8px;
+  word-break: normal;
+  overflow-wrap: normal;
+  white-space: normal;
+  hyphens: none;
+  line-height: 1.25;
+}
+
+.ri-multiselect-box .ri-star {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-left: 0;
+  z-index: 2;
+}
+
+.ri-multiselect-box .ri-muted {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  color: var(--muted);
+  padding: 8px 0 0 0;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.ri-muted {
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+/* Actions bar */
+.ri-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.ri-btn {
+  padding: 12px 20px;
+  border-radius: 10px;
+  border: 0;
+  cursor: pointer;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.ri-btn-primary {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-600) 100%);
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(189, 33, 53, 0.25);
+  flex: 1;
+}
+
+.ri-btn-primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px rgba(189, 33, 53, 0.35);
+}
+
+.ri-btn-ghost {
+  background: #fff;
+  color: #111;
+  border: 2px solid var(--border);
+}
+
+.ri-btn-ghost:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.ri-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+  .ri-header-wrapper {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .ri-header {
+    width: 100%;
+  }
+
+
+
+  .ri-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ri-actions {
+    flex-direction: column;
+  }
+
+  .ri-btn {
+    width: 100%;
+  }
+
+  .ri-step-title {
+    font-size: 20px;
+  }
+
+  .ri-chip-container {
+    gap: 6px;
+  }
+
+  .ri-chip {
+    font-size: 12px;
+    padding: 8px 12px;
+  }
+
+  .ri-step-label {
+    display: none;
+  }
+
+  .ri-chip.active .ri-step-label {
+    display: inline;
+  }
+}
+
+@media (max-width: 480px) {
+  .ri-app {
+    margin: 12px auto;
+    padding: 8px;
+  }
+
+  .ri-card {
+    padding: 16px;
+    border-radius: 12px;
+  }
+
+  .ri-step-title {
+    font-size: 18px;
+  }
+
+  .ri-progress-text {
+    display: none;
+  }
+
+  .ri-phase-info {
+    padding: 10px;
+  }
+
+  .ri-modal-content {
+    width: 95%;
+    padding: 24px;
+  }
+
+  .ri-banner {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .ri-landing-title {
+    font-size: 24px;
+  }
+
+  .ri-code-display code {
+    font-size: 18px;
+  }
 }
