@@ -1164,6 +1164,20 @@
 
       grid = h('div', { class: 'ri-grid ri-grid--church-info' }, churchTop, pastoralSection);
 
+    } else if (step.title === "What You'd Like to Do") {
+      // Areas to Serve: top row with Areas of Interest and Skills side-by-side
+      const areasTop = h('div', { class: 'ri-areas-top', style: 'grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;' },
+        fieldFor('ServingInterest'),
+        fieldFor('Skills')
+      );
+
+      // Availability: convert default list into a grid of three columns
+      const availabilityWrapper = fieldFor('Availability');
+      // Add a class so we can style the inner multiselect as a 3-column grid
+      availabilityWrapper.classList.add('ri-availability-grid');
+
+      grid = h('div', { class: 'ri-grid ri-grid--areas-to-serve' }, areasTop, availabilityWrapper);
+
     } else {
       grid = h("div", { class: "ri-grid" }, step.fields.map(fieldFor));
     }

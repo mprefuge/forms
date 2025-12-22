@@ -398,6 +398,26 @@ form.ri-form {
 /* Reduce header spacing to tighten header -> content gap */
 .ri-header-wrapper { margin-bottom: 12px; }
 
+/* Areas to Serve layout */
+.ri-grid--areas-to-serve { grid-template-columns: 1fr; }
+.ri-areas-top { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+/* Make Availability render in three columns; responsively fall back to 2/1 columns */
+.ri-availability-grid .ri-multiselect-box {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(120px, 1fr));
+  gap: 8px;
+  align-items: start;
+}
+.ri-availability-grid .ri-checkbox { padding: 8px 0; border-bottom: none; }
+
+@media (max-width: 860px) {
+  .ri-availability-grid .ri-multiselect-box { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 480px) {
+  .ri-availability-grid .ri-multiselect-box { grid-template-columns: 1fr; }
+}
+
 /* Landing info box explaining start vs continue */
 .ri-landing-info {
   margin: 18px auto 8px auto;
