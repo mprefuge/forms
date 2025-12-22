@@ -207,6 +207,52 @@ describe('SalesforceService - default RecordType behavior', () => {
     expect(result.id).toBe('form-pick');
   });
 
+  it('resolves hyphens to canonical picklist values when creating forms', async () => {
+    const sf = new SalesforceService({ loginUrl: 'https://login.salesforce.com', clientId: 'id', clientSecret: 'secret' });
+    jest.spyOn(sf as any, 'getRecordTypeId').mockResolvedValue('rt-general-id');
+
+    // Allowed uses underscore as canonical value
+    jest.spyOn(sf as any, 'describeFormFields').mockResolvedValue([
+      { name: 'ServingAreasInterest__c', type: 'picklist', picklistValues: ['ESL_Network', 'Other'] }
+    ] as any);
+
+    const createMock = jest.fn().mockResolvedValue({ success: true, id: 'form-pick-hyphen' });
+    (sf as any).connection = {
+      sobject: jest.fn().mockReturnValue({ create: createMock }),
+      query: jest.fn().mockResolvedValue({ records: [] }),
+    } as any;
+
+    const result = await (sf as any).createForm({ ServingAreasInterest__c: 'ESL-Network' }, 'req-pick-hyphen');
+
+    expect(createMock).toHaveBeenCalled();
+    const createdObj = createMock.mock.calls[0][0];
+    expect(createdObj.ServingAreasInterest__c).toBe('ESL_Network');
+    expect(result.id).toBe('form-pick-hyphen');
+  });
+
+  it('resolves hyphens inside multipicklist values when creating forms', async () => {
+    const sf = new SalesforceService({ loginUrl: 'https://login.salesforce.com', clientId: 'id', clientSecret: 'secret' });
+    jest.spyOn(sf as any, 'getRecordTypeId').mockResolvedValue('rt-general-id');
+
+    // Simulate multipicklist with expected encoded picklist values
+    jest.spyOn(sf as any, 'describeFormFields').mockResolvedValue([
+      { name: 'LanguagesSpoken__c', type: 'multipicklist', picklistValues: ['English', 'American_Sign_Language'] }
+    ] as any);
+
+    const createMock = jest.fn().mockResolvedValue({ success: true, id: 'form-mp-hyphen' });
+    (sf as any).connection = {
+      sobject: jest.fn().mockReturnValue({ create: createMock }),
+      query: jest.fn().mockResolvedValue({ records: [] }),
+    } as any;
+
+    const result = await (sf as any).createForm({ LanguagesSpoken__c: 'English|American-Sign-Language' }, 'req-mp-hyphen');
+
+    expect(createMock).toHaveBeenCalled();
+    const createdObj = createMock.mock.calls[0][0];
+    expect(createdObj.LanguagesSpoken__c).toBe('English;American_Sign_Language');
+    expect(result.id).toBe('form-mp-hyphen');
+  });
+
   it('encodes spaces to underscores for picklist values on update', async () => {
     const sf = new SalesforceService({ loginUrl: 'https://login.salesforce.com', clientId: 'id', clientSecret: 'secret' });
 
@@ -225,6 +271,28 @@ describe('SalesforceService - default RecordType behavior', () => {
     } as any;
 
     await (sf as any).updateForm('form-1', { ServingAreasInterest__c: 'ESL Network' }, 'req-update-pick');
+
+    expect(updateMock).toHaveBeenCalledWith(expect.objectContaining({ Id: 'form-1', ServingAreasInterest__c: 'ESL_Network' }));
+  });
+
+  it('resolves hyphens to canonical picklist values on update', async () => {
+    const sf = new SalesforceService({ loginUrl: 'https://login.salesforce.com', clientId: 'id', clientSecret: 'secret' });
+
+    const desc = {
+      fields: [
+        { name: 'ServingAreasInterest__c', type: 'picklist', updateable: true },
+      ],
+    } as any;
+
+    const updateMock = jest.fn().mockResolvedValue({ success: true });
+    (sf as any).connection = {
+      sobject: jest.fn().mockImplementation((name: string) => {
+        if (name === 'Form__c') return { describe: jest.fn().mockResolvedValue(desc), update: updateMock };
+        return { create: jest.fn() };
+      }),
+    } as any;
+
+    await (sf as any).updateForm('form-1', { ServingAreasInterest__c: 'ESL-Network' }, 'req-update-pick-hyphen');
 
     expect(updateMock).toHaveBeenCalledWith(expect.objectContaining({ Id: 'form-1', ServingAreasInterest__c: 'ESL_Network' }));
   });

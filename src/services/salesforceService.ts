@@ -140,14 +140,69 @@ export class SalesforceService {
 
   // Encode picklist tokens by replacing spaces with underscores to match Salesforce API requirements
   private encodePicklistToken(token: string): string {
-    return token.replace(/\s+/g, '_').trim();
+    // Convert spaces and hyphens to underscores; trim whitespace
+    return token.replace(/[\s-]+/g, '_').trim();
+  }
+
+  // Normalize a string for comparison by collapsing spaces, underscores and hyphens to a single space and lower-casing
+  private normalizeForCompare(s: string): string {
+    return String(s).toLowerCase().replace(/[\s_-]+/g, ' ').trim();
+  }
+
+  // Resolve the canonical picklist value from an incoming token using allowed values when available
+  private resolvePicklistToken(token: string, allowedValues?: string[]): string {
+    const t = String(token).trim();
+
+    if (!allowedValues || allowedValues.length === 0) {
+      // No metadata: keep previous behavior (encode spaces to underscores)
+      return this.encodePicklistToken(t);
+    }
+
+    // Prefer exact match (case-sensitive)
+    for (const a of allowedValues) {
+      if (a === t) return this.encodePicklistToken(a);
+    }
+
+    // Then prefer case-insensitive exact match
+    for (const a of allowedValues) {
+      if ((a || '').toLowerCase() === t.toLowerCase()) return this.encodePicklistToken(a);
+    }
+
+    // Use normalized matching (collapse spaces/underscores/hyphens)
+    const normToken = this.normalizeForCompare(t);
+    const normalizedMap = new Map<string, string[]>();
+    for (const a of allowedValues) {
+      const key = this.normalizeForCompare(a);
+      const list = normalizedMap.get(key) || [];
+      list.push(a);
+      normalizedMap.set(key, list);
+    }
+
+    const matches = normalizedMap.get(normToken);
+    if (matches && matches.length > 0) {
+      // If multiple matches, prefer one that contains an underscore (common canonicalization), otherwise first
+      let chosen: string;
+      if (matches.length === 1) chosen = matches[0];
+      else {
+        const underscore = matches.find(m => m.includes('_'));
+        chosen = underscore || matches[0];
+      }
+      return this.encodePicklistToken(chosen);
+    }
+
+    // Fallback: encode spaces to underscores (original behavior)
+    return this.encodePicklistToken(t);
   }
 
   async createForm(formData: FormData, requestId: string): Promise<{ id: string; formCode: string }> {
     const allowedFields = [
+      'AdditionalDocumentsNotes__c',
       'AdditionalNotes__c',
       'AffirmStatementOfFaith__c',
       'Availability__c',
+      'BackgroundCheckDate__c',
+      'BackgroundCheckNotes__c',
+      'BackgroundCheckStatus__c',
       'Birthdate__c',
       'Church__c',
       'ChurchServingDetails__c',
@@ -168,13 +223,21 @@ export class SalesforceService {
       'LastModifiedById',
       'LastName__c',
       'MaritalStatus__c',
+      'MinistrySafeCompleted__c',
+      'MinistrySafeCompletionDate__c',
+      'MinistrySafeCertificate__c',
       'OwnerId',
+      'PastoralReferenceNotes__c',
+      'PastoralReferenceStatus__c',
       'PastorEmail__c',
       'PastorFirstName__c',
       'PastorLastName__c',
       'PastorSalutation__c',
       'Person__c',
       'Phone__c',
+      'PlacementArea__c',
+      'PlacementNotes__c',
+      'PlacementStartDate__c',
       'PrimaryLanguage__c',
       'RecentMinistrySafe__c',
       'RecordTypeId',
@@ -213,20 +276,20 @@ export class SalesforceService {
         const meta: any = fieldMetaMap.get(field);
         if (meta && (meta.type || '').toLowerCase() === 'multipicklist') {
           if (Array.isArray(val)) {
-            // normalize and encode each part
-            val = val.map((s: string) => this.encodePicklistToken(String(s))).join(';');
+            // normalize and resolve each part against allowed values
+            val = val.map((s: string) => this.resolvePicklistToken(String(s), meta.picklistValues)).join(';');
           } else if (typeof val === 'string') {
             // Accept '|' as legacy separator and normalize to ';'
             if (val.includes('|')) {
-              val = val.split('|').map((s: string) => this.encodePicklistToken(s.trim())).join(';');
+              val = val.split('|').map((s: string) => this.resolvePicklistToken(s.trim(), meta.picklistValues)).join(';');
             } else {
               // single string value for multipicklist - split by ';' in case client already used it
-              val = String(val).split(';').map((s: string) => this.encodePicklistToken(s.trim())).filter(Boolean).join(';');
+              val = String(val).split(';').map((s: string) => this.resolvePicklistToken(s.trim(), meta.picklistValues)).filter(Boolean).join(';');
             }
           }
         } else if (meta && (((meta.type || '').toLowerCase() === 'picklist') || (meta.picklistValues || []).length > 0) && typeof val === 'string') {
-          // For single-select picklists, encode spaces to underscores
-          val = this.encodePicklistToken(val);
+          // For single-select picklists, resolve token to canonical value when possible
+          val = this.resolvePicklistToken(val, meta.picklistValues);
         }
         recordTypeRecord[field] = val;
       }
@@ -434,16 +497,16 @@ export class SalesforceService {
         const meta: any = fieldMetaMap.get(key);
         if (meta && (meta.type || '').toLowerCase() === 'multipicklist') {
           if (Array.isArray(val)) {
-            val = val.map((s: string) => this.encodePicklistToken(String(s))).join(';');
+            val = val.map((s: string) => this.resolvePicklistToken(String(s), meta.picklistValues)).join(';');
           } else if (typeof val === 'string') {
             if (val.includes('|')) {
-              val = val.split('|').map((s: string) => this.encodePicklistToken(s.trim())).join(';');
+              val = val.split('|').map((s: string) => this.resolvePicklistToken(s.trim(), meta.picklistValues)).join(';');
             } else {
-              val = String(val).split(';').map((s: string) => this.encodePicklistToken(s.trim())).filter(Boolean).join(';');
+              val = String(val).split(';').map((s: string) => this.resolvePicklistToken(s.trim(), meta.picklistValues)).filter(Boolean).join(';');
             }
           }
         } else if (meta && (((meta.type || '').toLowerCase() === 'picklist') || (meta.picklistValues || []).length > 0) && typeof val === 'string') {
-          val = this.encodePicklistToken(val);
+          val = this.resolvePicklistToken(val, meta.picklistValues);
         }
         updateRecord[key] = val;
       }

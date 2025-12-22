@@ -47,7 +47,7 @@
         { title: "Emergency Contact", fields: ["EmergencyContactFirstName","EmergencyContactLastName","EmergencyContactPhone","EmergencyContactRelationship"] },
         { title: "What You'd Like to Do", fields: ["ServingInterest","PreferredServingArea","Availability"] },
         { title: "Your Faith Journey", fields: ["GospelDetails","TestimonyDetails"] },
-        { title: "Commitments & Agreement", fields: ["AffirmStatementOfFaith","WillPay","AdditionalNotes"] },
+        { title: "Commitments & Agreement", fields: ["AffirmStatementOfFaith","WillPay","MinistrySafeCompleted","AdditionalNotes"] },
         { title: "Pastor Contact Information", fields: ["PastorSalutation","PastorFirstName","PastorLastName","PastorEmail"] },
       ]
     },
@@ -56,7 +56,6 @@
       steps: [
         { title: "Pastoral Reference Review", fields: ["PastoralReferenceStatus","PastoralReferenceNotes"] },
         { title: "Background Check", fields: ["BackgroundCheckStatus","BackgroundCheckDate","BackgroundCheckNotes"] },
-        { title: "MinistrySafe Training", fields: ["MinistrySafeCompleted","MinistrySafeCompletionDate","MinistrySafeCertificate"] },
         { title: "Additional Documents", fields: ["AdditionalDocumentsNotes"] },
       ]
     },
@@ -94,7 +93,7 @@
     AdditionalNotes: { label: "Additional Notes", type: "textarea" },
     Availability: { label: "Availability", type: "multiselect", options: [] },
     AffirmStatementOfFaith: { label: "I affirm the Statement of Faith", type: "checkbox" },
-    WillPay: { label: "I will cover my costs", type: "checkbox" },
+    WillPay: { label: "I am able to pay the application fee", type: "checkbox" },
     Birthdate: { label: "Birthdate", type: "date" },
     PastorSalutation: { label: "Pastor Salutation", type: "select", options: [] },
     PastorFirstName: { label: "Pastor First Name", type: "text" },
@@ -369,10 +368,32 @@
       const input = h("input", { type: "checkbox", id: name, checked: !!value, onchange: e => { 
         data[name] = e.target.checked;
         autoSave();
-        if (name === "MinistrySafeCompleted") renderForm();
+        // If the checkbox affects displayed fields or fee label, re-render
+        if (name === "MinistrySafeCompleted" || name === "WillPay") {
+          // When MinistrySafe is unchecked, clear related fields and uploads
+          if (name === 'MinistrySafeCompleted' && !e.target.checked) {
+            delete data.MinistrySafeCompletionDate;
+            delete data.MinistrySafeCertificate;
+            if (fileUploads && fileUploads.MinistrySafeCertificate) delete fileUploads.MinistrySafeCertificate;
+            autoSave();
+          }
+          renderForm();
+        }
       }});
-      const row = h("div", { class: "ri-checkbox" }, input, h("label", { for: name, text: meta.label }));
-      wrapper.append(row);
+
+      // Compute dynamic label for WillPay based on MinistrySafe certificate presence
+      if (name === 'WillPay') {
+        const hasCertificate = !!(data.MinistrySafeCertificate || (fileUploads && fileUploads.MinistrySafeCertificate));
+        const price = hasCertificate ? 15 : 20;
+        const labelEl = h("label", { for: name, text: meta.label });
+        const badge = h('span', { class: 'ri-fee-badge', text: `$${price}` });
+        labelEl.append(badge);
+        const row = h("div", { class: "ri-checkbox" }, input, labelEl);
+        wrapper.append(row);
+      } else {
+        const row = h("div", { class: "ri-checkbox" }, input, h("label", { for: name, text: meta.label }));
+        wrapper.append(row);
+      }
       
       // Show certificate upload if MinistrySafe is checked
       if (name === "MinistrySafeCompleted" && value) {
@@ -522,12 +543,20 @@
     }
 
     if (meta.type === "file") {
+      // Only show file input if the MinistrySafe checkbox is checked when this is the certificate field
+      if (name === 'MinistrySafeCertificate' && !data.MinistrySafeCompleted) {
+        return wrapper; // empty wrapper, do not render control
+      }
+
       control = h("input", { id: name, type: "file", accept: meta.accept || "*" });
       control.onchange = (e) => {
         const file = e.target.files[0];
         if (file) {
           fileUploads[name] = file;
           data[name] = file.name;
+          autoSave();
+          // Re-render so dependent labels (e.g., WillPay) update when certificate uploaded
+          if (name === 'MinistrySafeCertificate') renderForm();
         }
       };
       if (fileUploads[name]) {
@@ -537,6 +566,10 @@
         wrapper.append(label, control);
       }
     } else if (meta.type === "select") {
+      // For completion date, only render if MinistrySafe checkbox is checked
+      if (name === 'MinistrySafeCompletionDate' && !data.MinistrySafeCompleted) {
+        return wrapper; // empty wrapper
+      }
       control = h("select", { id: name, onchange: e => { 
         data[name] = e.target.value;
         autoSave();
@@ -1089,6 +1122,8 @@
   const host = document.getElementById(HOST_ID) || document.body;
   const container = h("div", { class: "ri-app" },
     h("div", { class: "ri-card" },
+      // Branding header
+      headerEl = h("div", { class: "ri-header" }, h("div", { class: "ri-logo", text: "R" }), h("div", { class: "ri-brand-title", text: "Volunteer Application" })),
       bannerEl = h("div", { class: "ri-banner", style: "display:none;" }),
       landingEl = h("div", { class: "ri-landing" }),
       phaseIndicatorEl = h("div", { class: "ri-phase-indicator", style: "display:none;" }),

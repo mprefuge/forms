@@ -204,7 +204,7 @@ describe('createForm HTTP Function', () => {
 
       expect(response.status).toBe(400);
       const body = JSON.parse(response.body);
-      expect(body.error).toContain('Invalid JSON');
+      expect(body.error).toContain('Invalid request body');
     });
 
     it('should handle RecordType not found error', async () => {

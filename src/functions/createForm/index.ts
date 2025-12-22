@@ -94,22 +94,92 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
       };
     }
 
-    // Parse request body (support .json() or .body shapes)
+    // Parse request body (support .json() or .body shapes, and multipart form data)
     let formData: any;
+    const uploadedFiles: { [key: string]: { fileName: string; contentType: string; base64: string } } = {};
+
     try {
-      if (request && typeof request.json === 'function') {
-        formData = await request.json();
-      } else if (request && typeof request.body !== 'undefined') {
-        formData = request.body;
+      const contentType = ((request.headers as any)?.get?.('content-type') || (request.headers as any)?.['content-type'] || '').toString().toLowerCase();
+      
+      if (contentType.includes('multipart/form-data')) {
+        // Handle multipart form data with file uploads
+        logger.debug('Parsing multipart form data');
+        const boundary = contentType.match(/boundary=([^;]+)/)?.[1];
+        
+        if (!boundary) {
+          throw new Error('Invalid multipart form data: missing boundary');
+        }
+
+        let bodyText = '';
+        if (typeof request.body === 'string') {
+          bodyText = request.body;
+        } else if (request.body instanceof ArrayBuffer || (request.body && typeof request.body === 'object' && 'toString' in request.body)) {
+          bodyText = Buffer.from(request.body as any).toString('utf-8');
+        } else {
+          bodyText = String(request.body || '');
+        }
+
+        const parts = bodyText.split(`--${boundary}`);
+        
+        for (const part of parts) {
+          if (!part.trim() || part === '--\r\n' || part === '--') continue;
+          
+          const [headerSection, ...contentParts] = part.split('\r\n\r\n');
+          const contentSection = contentParts.join('\r\n\r\n').replace(/\r\n$/, '');
+          
+          const nameMatch = headerSection.match(/name="([^"]+)"/);
+          const filenameMatch = headerSection.match(/filename="([^"]+)"/);
+          const contentTypeMatch = headerSection.match(/Content-Type:\s*([^\r\n]+)/);
+          
+          if (nameMatch && nameMatch[1]) {
+            const fieldName = nameMatch[1];
+            
+            if (filenameMatch && filenameMatch[1]) {
+              // This is a file upload
+              const fileName = filenameMatch[1];
+              const mimeType = contentTypeMatch ? contentTypeMatch[1].trim() : 'application/octet-stream';
+              const base64Content = Buffer.from(contentSection, 'binary').toString('base64');
+              
+              uploadedFiles[fieldName] = {
+                fileName,
+                contentType: mimeType,
+                base64: base64Content
+              };
+              logger.debug('Parsed file upload', { fieldName, fileName, contentType: mimeType });
+            } else if (fieldName === 'data') {
+              // This is the JSON data field
+              try {
+                formData = JSON.parse(contentSection.trim());
+              } catch (e: any) {
+                logger.error('Failed to parse JSON data field', e);
+                formData = {};
+              }
+            } else {
+              // Regular form field
+              if (!formData) formData = {};
+              formData[fieldName] = contentSection.trim();
+            }
+          }
+        }
+        
+        if (!formData) formData = {};
+        logger.debug('Multipart form data parsed', { formDataKeys: Object.keys(formData || {}), uploadedFiles: Object.keys(uploadedFiles) });
       } else {
-        formData = {};
+        // Handle JSON content type
+        if (request && typeof request.json === 'function') {
+          formData = await request.json();
+        } else if (request && typeof request.body !== 'undefined') {
+          formData = request.body;
+        } else {
+          formData = {};
+        }
+        logger.debug('Request body parsed', { formDataKeys: Object.keys(formData || {}) });
       }
-      logger.debug('Request body parsed', { formDataKeys: Object.keys(formData || {}) });
     } catch (error: any) {
-      logger.error('Invalid JSON in request body', error);
+      logger.error('Invalid request body', error);
       return {
         status: 400,
-        body: JSON.stringify({ error: 'Invalid JSON in request body' }),
+        body: JSON.stringify({ error: 'Invalid request body' }),
         headers: { 'Content-Type': 'application/json' },
       };
     }
@@ -168,10 +238,23 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
       await salesforceService.updateForm(resolvedFormId, updateFields, requestId);
       logger.info('Form updated successfully', { formId: resolvedFormId });
 
+      // Handle both explicit attachments array and uploaded files
+      const allAttachments: Array<{ fileName: string; contentType?: string; base64: string }> = [];
+      
+      if (Array.isArray(attachments)) {
+        allAttachments.push(...attachments);
+      }
+      
+      // Add uploaded files as attachments
+      Object.entries(uploadedFiles).forEach(([fieldName, fileData]) => {
+        allAttachments.push(fileData);
+        logger.debug('Adding uploaded file as attachment', { fieldName, fileName: fileData.fileName });
+      });
+      
       // Handle attachments if provided
-      if (Array.isArray(attachments) && attachments.length > 0) {
-        logger.info('Creating attachments', { count: attachments.length });
-        await salesforceService.createAttachments(resolvedFormId, attachments);
+      if (allAttachments.length > 0) {
+        logger.info('Creating attachments', { count: allAttachments.length });
+        await salesforceService.createAttachments(resolvedFormId, allAttachments);
         logger.info('Attachments created successfully');
       }
 
@@ -188,7 +271,7 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
         body: JSON.stringify({ 
           id: resolvedFormId, 
           message: 'Form updated successfully',
-          attachmentsCreated: Array.isArray(attachments) ? attachments.length : 0,
+          attachmentsCreated: allAttachments.length,
           notesCreated: Array.isArray(notes) ? notes.length : 0
         }),
         headers: { 'Content-Type': 'application/json', 'X-Request-Id': requestId },
@@ -201,6 +284,22 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
     const formId = typeof createResult === 'string' ? createResult : createResult.id;
     const generatedFormCode = (typeof createResult === 'string' ? undefined : createResult.formCode) || undefined;
     logger.info('Form created successfully', { formId, formCode: generatedFormCode });
+
+    // Handle uploaded files as attachments
+    if (Object.keys(uploadedFiles).length > 0) {
+      const allAttachments: Array<{ fileName: string; contentType?: string; base64: string }> = [];
+      
+      Object.entries(uploadedFiles).forEach(([fieldName, fileData]) => {
+        allAttachments.push(fileData);
+        logger.debug('Adding uploaded file as attachment', { fieldName, fileName: fileData.fileName });
+      });
+      
+      if (allAttachments.length > 0) {
+        logger.info('Creating attachments for new form', { count: allAttachments.length });
+        await salesforceService.createAttachments(formId, allAttachments);
+        logger.info('Attachments created successfully');
+      }
+    }
 
     // Return success response (include generated form code when available)
     const headers: any = { 'Content-Type': 'application/json', 'X-Request-Id': requestId };
