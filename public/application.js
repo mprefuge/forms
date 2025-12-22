@@ -1,5 +1,5 @@
 (() => {
-  const ENDPOINT = "http://localhost:7071/api/form" //"https://rif-hhh8e6e7cbc2hvdw.eastus-01.azurewebsites.net/api/form";
+  const ENDPOINT = "https://rif-hhh8e6e7cbc2hvdw.eastus-01.azurewebsites.net/api/form";
   const HOST_ID = "volunteer-app";
 
   const injectCSS = () => {
@@ -155,7 +155,6 @@
     PreferredServingArea: 'ServingAreaPrimaryInterest__c',
     Availability: 'Availability__c',
     HowHeard: 'HowHeard__c',
-    RecentMinistrySafe: 'RecentMinistrySafe__c',
     WillPay: 'WillPay__c',
     AdditionalNotes: 'AdditionalNotes__c',
     AffirmStatementOfFaith: 'AffirmStatementOfFaith__c',
@@ -164,7 +163,7 @@
     BackgroundCheckStatus: 'BackgroundCheckStatus__c',
     BackgroundCheckDate: 'BackgroundCheckDate__c',
     BackgroundCheckNotes: 'BackgroundCheckNotes__c',
-    MinistrySafeCompleted: 'MinistrySafeCompleted__c',
+    MinistrySafeCompleted: 'RecentMinistrySafe__c',
     MinistrySafeCompletionDate: 'MinistrySafeCompletionDate__c',
     MinistrySafeCertificate: 'MinistrySafeCertificate__c',
     AdditionalDocumentsNotes: 'AdditionalDocumentsNotes__c',
