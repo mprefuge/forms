@@ -65,9 +65,9 @@ test('Phase pills update for Pending -> Submitted -> Approved -> Denied', async 
   let ps = chips();
   expect(ps.length).toBeGreaterThanOrEqual(3);
   expect(ps[0].classList.contains('active')).toBe(true);
-  expect(ps[0].textContent?.trim()).toBe('Volunteer Application');
+  expect(ps[0].textContent?.trim()).toBe('Initial Application');
 
-  // Submitted => Supplemental Documents active, Volunteer Application completed
+  // Submitted => Supplemental Documents active, Initial Application completed
   bridge.setData({ CurrentStatus: 'Submitted', CurrentStatus__c: 'Submitted' });
   bridge.renderPhaseIndicator();
   ps = chips();
