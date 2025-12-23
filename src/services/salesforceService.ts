@@ -269,6 +269,7 @@ export class SalesforceService {
       'TestimonyDetails__c',
       'WillPay__c',
       'Zip__c',
+      'ItemsReceived__c',
     ];
 
     const recordTypeRecord: any = {

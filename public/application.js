@@ -1036,6 +1036,11 @@
       payload['Email__c'] = data.Email;
     }
 
+    if (data.ItemsReceived__c || data.ItemsReceived) {
+      if (data.ItemsReceived__c) payload['ItemsReceived__c'] = data.ItemsReceived__c;
+      if (data.ItemsReceived) payload['ItemsReceived'] = data.ItemsReceived;
+    }
+
     // Handle file uploads
     if (Object.keys(fileUploads).length > 0) {
       const formData = new FormData();
@@ -1262,6 +1267,8 @@
     if (isFinalSubmit) {
       data.CurrentStatus = 'Submitted';
       data.CurrentStatus__c = 'Submitted';
+      data.ItemsReceived__c = 'Application';
+      data.ItemsReceived = 'Application';
     }
 
     try {
