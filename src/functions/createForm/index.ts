@@ -152,6 +152,7 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
           formData = {};
         }
         logger.debug('Request body parsed', { formDataKeys: Object.keys(formData || {}) });
+        try { logger.debug('Parsed email value', { email: formData.Email__c || formData.email }); } catch(e) {}
       }
     } catch (error: any) {
       logger.error('Invalid request body', error);
@@ -243,6 +244,39 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
         logger.info('Notes created successfully');
       }
 
+      // Attempt to email a copy of the application to the applicant (do not block update on failure)
+      try {
+        let applicantEmail = updateFields.Email__c || updateFields.email;
+        let applicantName = [updateFields.FirstName__c, updateFields.LastName__c].filter(Boolean).join(' ').trim();
+
+        // If the request body didn't include an email, attempt to resolve it from Salesforce by code
+        if (!applicantEmail && formCode) {
+          try {
+            logger.debug('Attempting to resolve applicant email from Salesforce record (update via create handler)', { formCode });
+            const savedRecord = await salesforceService.getFormByCode(formCode);
+            applicantEmail = applicantEmail || savedRecord.Email__c || savedRecord.email;
+            // merge savedRecord fields into updateFields for a richer copy in the email
+            Object.assign(updateFields, savedRecord || {});
+            applicantName = applicantName || [updateFields.FirstName__c, updateFields.LastName__c].filter(Boolean).join(' ').trim();
+          } catch (err) {
+            logger.debug('Failed to resolve applicant email by code (update via create handler)', { error: (err && (err as any).message) || err });
+          }
+        }
+
+        if (applicantEmail) {
+          logger.info('Dispatching application copy email (update via create handler)', { to: applicantEmail, applicantName, formId: resolvedFormId });
+          const { EmailService } = await import('../../services/emailService');
+          const emailService = new EmailService();
+          await emailService.sendApplicationCopy(applicantEmail, applicantName, updateFields);
+          try { (global as any).__LAST_APPLICATION_COPY_SENT__ = { to: applicantEmail, name: applicantName, formData: updateFields }; } catch(e) {}
+          logger.info('Application copy email dispatched (update via create handler)', { to: applicantEmail });
+        } else {
+          logger.debug('No applicant email present; skipping application copy email (update via create handler)');
+        }
+      } catch (e: any) {
+        logger.error('Failed to send application copy email (update via create handler)', e, { errorMessage: e?.message });
+      }
+
       // Return success response for update
       return {
         status: 200,
@@ -277,6 +311,41 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
         await salesforceService.createAttachments(formId, allAttachments);
         logger.info('Attachments created successfully');
       }
+    }
+
+    // Attempt to email a copy of the application to the applicant (do not block creation on failure)
+    try {
+      let applicantEmail = formData.Email__c || formData.email;
+      let applicantName = [formData.FirstName__c, formData.LastName__c].filter(Boolean).join(' ').trim();
+
+      // If the request body didn't include an email, attempt to resolve it from the newly created record
+      if (!applicantEmail && generatedFormCode) {
+        try {
+          logger.debug('Attempting to resolve applicant email from Salesforce record', { formCode: generatedFormCode });
+          const savedRecord = await salesforceService.getFormByCode(generatedFormCode);
+          applicantEmail = applicantEmail || savedRecord.Email__c || savedRecord.email;
+          // merge savedRecord fields into formData for a richer copy in the email
+          formData = { ...(formData || {}), ...(savedRecord || {}) };
+          applicantName = applicantName || [formData.FirstName__c, formData.LastName__c].filter(Boolean).join(' ').trim();
+        } catch (err) {
+          logger.debug('Failed to resolve applicant email from saved record', { error: (err && (err as any).message) || err });
+        }
+      }
+
+      if (applicantEmail) {
+        logger.debug('Applicant email check', { applicantEmail, formDataKeys: Object.keys(formData || {}) });
+        logger.info('Dispatching application copy email', { to: applicantEmail, applicantName, formId });
+        const { EmailService } = await import('../../services/emailService');
+        const emailService = new EmailService();
+        await emailService.sendApplicationCopy(applicantEmail, applicantName, formData);
+        // Expose a test-friendly signal for unit tests and local diagnostics
+        try { (global as any).__LAST_APPLICATION_COPY_SENT__ = { to: applicantEmail, name: applicantName, formData }; } catch(e) {}
+        logger.info('Application copy email dispatched', { to: applicantEmail });
+      } else {
+        logger.debug('No applicant email present; skipping application copy email');
+      }
+    } catch (e: any) {
+      logger.error('Failed to send application copy email', e, { errorMessage: e?.message });
     }
 
     // Return success response (include generated form code when available)
@@ -362,12 +431,14 @@ async function getFormHandler(request: HttpRequest, context: InvocationContext, 
 
     if (fieldsParam) {
       try {
-        // Try to parse as JSON array first
-        if (fieldsParam.startsWith('[')) {
-          requestedFields = JSON.parse(fieldsParam) as string[];
+        // Decode in case the query param was URL-encoded (e.g., %5B%22CurrentStatus__c%22%5D)
+        const raw = typeof fieldsParam === 'string' ? decodeURIComponent(fieldsParam) : fieldsParam;
+        // Try to parse as JSON array first (e.g., ["Field__c"])
+        if (raw.trim().startsWith('[')) {
+          requestedFields = JSON.parse(raw) as string[];
         } else {
           // Parse as comma-separated values
-          requestedFields = fieldsParam.split(',').map((f: string) => f.trim()).filter((f: string) => f.length > 0);
+          requestedFields = raw.split(',').map((f: string) => f.trim()).filter((f: string) => f.length > 0);
         }
         logger.debug('Parsed requested fields', { fieldCount: (requestedFields ?? []).length, fields: requestedFields });
       } catch (error: any) {

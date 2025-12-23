@@ -100,7 +100,7 @@ async function updateFormHandler(request: HttpRequest, context: InvocationContex
     }
 
     // Extract form field updates, attachments, and notes
-    const formFields = { ...updateData };
+    let formFields: any = { ...updateData };
     delete formFields.formCode;
     delete formFields.formId;
     delete formFields.Id;
@@ -129,6 +129,48 @@ async function updateFormHandler(request: HttpRequest, context: InvocationContex
       logger.info('Creating notes', { count: notes.length });
       await salesforceService.createNotes(resolvedFormId, notes);
       logger.info('Notes created successfully');
+    }
+
+    // Attempt to email a copy of the application to the applicant (do not block update on failure)
+    try {
+      let applicantEmail = formFields.Email__c || formFields.email;
+      let applicantName = [formFields.FirstName__c, formFields.LastName__c].filter(Boolean).join(' ').trim();
+
+      // If the request body didn't include an email, attempt to resolve it from Salesforce by code or id
+      if (!applicantEmail && formCode) {
+        try {
+          logger.debug('Attempting to resolve applicant email from Salesforce record (by code)', { formCode });
+          const savedRecord = await salesforceService.getFormByCode(formCode);
+          applicantEmail = applicantEmail || savedRecord.Email__c || savedRecord.email;
+          formFields = { ...(formFields || {}), ...(savedRecord || {}) };
+          applicantName = applicantName || [formFields.FirstName__c, formFields.LastName__c].filter(Boolean).join(' ').trim();
+        } catch (err) {
+          logger.debug('Failed to resolve applicant email by code', { error: (err && (err as any).message) || err });
+        }
+      } else if (!applicantEmail && resolvedFormId && typeof (salesforceService as any).getFormById === 'function') {
+        try {
+          logger.debug('Attempting to resolve applicant email from Salesforce record (by id)', { formId: resolvedFormId });
+          const savedRecord = await (salesforceService as any).getFormById(resolvedFormId);
+          applicantEmail = applicantEmail || savedRecord.Email__c || savedRecord.email;
+          formFields = { ...(formFields || {}), ...(savedRecord || {}) };
+          applicantName = applicantName || [formFields.FirstName__c, formFields.LastName__c].filter(Boolean).join(' ').trim();
+        } catch (err) {
+          logger.debug('Failed to resolve applicant email by id', { error: (err && (err as any).message) || err });
+        }
+      }
+
+      if (applicantEmail) {
+        logger.info('Dispatching application copy email (update)', { to: applicantEmail, applicantName, formId: resolvedFormId });
+        const { EmailService } = await import('../../services/emailService');
+        const emailService = new EmailService();
+        await emailService.sendApplicationCopy(applicantEmail, applicantName, formFields);
+        try { (global as any).__LAST_APPLICATION_COPY_SENT__ = { to: applicantEmail, name: applicantName, formData: formFields }; } catch(e) {}
+        logger.info('Application copy email dispatched (update)', { to: applicantEmail });
+      } else {
+        logger.debug('No applicant email present; skipping application copy email (update)');
+      }
+    } catch (e: any) {
+      logger.error('Failed to send application copy email (update)', e, { errorMessage: e?.message });
     }
 
     // Return success response

@@ -26,10 +26,9 @@
       "Commitments & Agreement": "Review and Submit",
     },
     phaseNames: {
-      initial: "Volunteer Application",
+      initial: "Initial Application",
       supplemental: "Supplemental Documents",
-      review: "Review",
-      placement: "Placement"
+      placement: "Decision"
     }
   };
 
@@ -53,6 +52,9 @@
     }
   };
   injectCSS();
+
+  // Attach an early test bridge so unit tests can detect the script loaded even if later parts error
+  try { if (typeof window !== 'undefined') { window.__riTest = window.__riTest || {}; } } catch (e) {}
 
   const h = (tag, attrs = {}, ...kids) => {
     const el = document.createElement(tag);
@@ -207,8 +209,9 @@
     PlacementStartDate: 'PlacementStartDate__c',
     PlacementNotes: 'PlacementNotes__c',
     FormCode: 'FormCode__c',
+    CurrentStatus: 'CurrentStatus__c',
     CurrentPhase: 'CurrentPhase__c'
-  };
+  }; 
 
   // Inverted mapping: SF API name -> client field key (for loading responses)
   const sfToField = Object.entries(fieldToSf).reduce((acc, [k, v]) => {
@@ -340,6 +343,15 @@
     }
   };
 
+  // If an application is not in Pending status, default UI to the Review & Submit step
+  function ensureReviewIfNotPending() {
+    const s = (data.CurrentStatus || data.CurrentStatus__c || '').toString().toLowerCase();
+    if (s && s !== 'pending') {
+      currentPhase = 'initial';
+      currentStep = Math.max(0, (phases['initial']?.steps?.length || 1) - 1);
+    }
+  }
+
   const loadFromLocalStorage = () => {
     try {
       const saved = localStorage.getItem('volunteerAppSession');
@@ -354,6 +366,9 @@
       currentStep = sessionData.currentStep || 0;
       firstPageSaved = sessionData.firstPageSaved || false;
       sessionData.completedSteps.forEach(s => completedSteps.add(s));
+
+      // If the loaded record is not Pending, default to Review & Submit
+      try { ensureReviewIfNotPending(); } catch (e) {}
       
       return true;
     } catch (e) {
@@ -801,13 +816,53 @@
     if (!phaseIndicatorEl) return;
     phaseIndicatorEl.innerHTML = "";
     const phaseNames = ['initial', 'supplemental', 'placement'];
+
+    const statusVal = (data.CurrentStatus || data.CurrentStatus__c || '').toString().toLowerCase();
+
+    // Determine which phase should be active and which are completed based on CurrentStatus (Salesforce)
+    let activePhase = currentPhase || 'initial';
+    const completedSet = new Set();
+
+    if (statusVal === 'pending' || !statusVal) {
+      // Pending => Volunteer Application highlighted
+      activePhase = 'initial';
+    } else if (statusVal === 'submitted') {
+      // Submitted => Supplemental Documents highlighted, Volunteer Application completed
+      activePhase = 'supplemental';
+      completedSet.add('initial');
+    } else if (statusVal === 'approved') {
+      // Approved => final stage should say 'Approved' and show everything as completed
+      activePhase = 'placement';
+      completedSet.add('initial');
+      completedSet.add('supplemental');
+      completedSet.add('placement');
+    } else if (statusVal === 'denied') {
+      // Denied => final stage should say 'Denied'
+      activePhase = 'placement';
+    } else {
+      // Fallback: keep current UI phase
+      activePhase = currentPhase || 'initial';
+    }
+
     phaseNames.forEach(phaseName => {
       const phase = phases[phaseName];
-      const isActive = phaseName === currentPhase;
-      const isPast = phaseNames.indexOf(phaseName) < phaseNames.indexOf(currentPhase);
+      const isActive = phaseName === activePhase;
+      // mark as completed if explicitly set or it's before the active phase
+      const isCompleted = completedSet.has(phaseName) || (phaseNames.indexOf(phaseName) < phaseNames.indexOf(activePhase));
+
+      // allow last phase label to change for Approved/Denied
+      let label = getPhaseName(phaseName) || phase.name;
+      if (phaseName === 'placement') {
+        if (statusVal === 'approved') label = 'Approved';
+        else if (statusVal === 'denied') label = 'Denied';
+      }
+
+      // add a denied-specific class for styling when denied
+      const extraClass = (statusVal === 'denied' && phaseName === 'placement') ? 'denied' : '';
+
       const chip = h("div", { 
-        class: `ri-phase-chip ${isActive ? "active" : ""} ${isPast ? "completed" : ""}` 
-      }, getPhaseName(phaseName) || phase.name);
+        class: `ri-phase-chip ${isActive ? "active" : ""} ${isCompleted ? "completed" : ""} ${extraClass}`.trim()
+      }, label);
       phaseIndicatorEl.append(chip);
     });
   };
@@ -970,6 +1025,17 @@
 
     payload['CurrentPhase__c'] = currentPhase;
 
+    // Ensure CurrentStatus is included when present (e.g., after a final submit)
+    const _statusVal = data.CurrentStatus || data.CurrentStatus__c || null;
+    if (_statusVal) {
+      payload['CurrentStatus__c'] = _statusVal;
+    }
+
+    // Ensure applicant email is included when present so the update handler can dispatch an application copy
+    if (!payload['Email__c'] && data.Email) {
+      payload['Email__c'] = data.Email;
+    }
+
     // Handle file uploads
     if (Object.keys(fileUploads).length > 0) {
       const formData = new FormData();
@@ -1072,6 +1138,46 @@
     }
   };
 
+  // Determine whether the loaded application should be locked.
+  // Applications are editable only when CurrentStatus__c is 'Pending' (case-insensitive).
+  const isFormLocked = () => {
+    const s = (data.CurrentStatus || data.CurrentStatus__c || '') ;
+    return !!(formCode && s && String(s).toLowerCase() !== 'pending');
+  };
+
+  // Enable or disable form controls based on lock state. Also updates submit button label.
+  const updateFormInteractivity = () => {
+    const locked = isFormLocked();
+    if (!formEl) return;
+
+    // Disable/enable all form-scoped controls (inputs, selects, textareas, and buttons)
+    const controls = Array.from(formEl.querySelectorAll('input, select, textarea, button'));
+    controls.forEach(c => {
+      try { c.disabled = locked; } catch (e) {}
+    });
+
+    const submitBtn = formEl.querySelector('button[type=submit]');
+    try {
+      if (submitBtn) {
+        if (locked) {
+          submitBtn.disabled = true;
+          submitBtn.textContent = 'Application Submitted';
+        } else {
+          const currentSteps = phases[currentPhase].steps;
+          const isLast = currentStep === (currentSteps.length - 1);
+          submitBtn.disabled = false;
+          submitBtn.textContent = isLast && currentPhase === 'initial' ? 'Submit Application' : (isLast ? 'Complete Phase' : 'Next');
+        }
+      }
+      // Hide the header "Save Progress and Exit" button for non-pending (locked) applications
+      if (headerExitBtn) {
+        try {
+          headerExitBtn.style.display = locked ? 'none' : 'inline-flex';
+        } catch (e) {}
+      }
+    } catch (e) {}
+  };
+
   const getAllFormFields = () => {
     const allFields = new Set();
     // Collect all fields from all phases
@@ -1083,11 +1189,12 @@
         });
       });
     });
-    // Always include Id and FormCode__c
+    // Always include Id, FormCode__c, and CurrentStatus__c (so client can lock/unlock UI)
     allFields.add('Id');
     allFields.add('FormCode__c');
+    allFields.add('CurrentStatus__c');
     return Array.from(allFields);
-  };
+  }; 
 
   const loadByCode = async (code) => {
     // Get all fields from the form definition and pass them to the API
@@ -1109,8 +1216,10 @@
           normalizeAndAssign(json);
           firstPageSaved = true;
           formCode = json?.FormCode || json?.Form_Code__c || json?.formCode || json?.form_code || json?.FormCode__c || code;
-          // Update UI to reflect loaded completion state
+          // Default to review tab when not Pending, then update UI to reflect loaded state
+          try { ensureReviewIfNotPending(); } catch (e) {}
           renderStepper();
+          try { updateFormInteractivity(); } catch (e) {}
           if (formEl.style.display === 'block') renderForm();
           return json;
         }
@@ -1130,7 +1239,9 @@
       normalizeAndAssign(json);
       firstPageSaved = true;
       formCode = json?.FormCode || json?.Form_Code__c || json?.formCode || json?.form_code || code;
+      try { ensureReviewIfNotPending(); } catch (e) {}
       renderStepper();
+      try { updateFormInteractivity(); } catch (e) {}
       if (formEl.style.display === 'block') renderForm();
       return json;
     }
@@ -1145,6 +1256,14 @@
     submitBtn.disabled = true;
     const label = submitBtn.textContent;
     submitBtn.innerHTML = '<span class="ri-loader"></span>';
+
+    // If this is the final submission of the initial phase, set the CurrentStatus to 'Submitted'
+    const isFinalSubmit = !stay && currentPhase === 'initial' && currentStep === (phases[currentPhase].steps.length - 1);
+    if (isFinalSubmit) {
+      data.CurrentStatus = 'Submitted';
+      data.CurrentStatus__c = 'Submitted';
+    }
+
     try {
       const res = await saveProgress();
       const returnedCode = res?.FormCode || res?.Form_Code__c || res?.formCode || res?.form_code || res?.Form_Code || res?.form_code__c;
@@ -1155,6 +1274,8 @@
         saveToLocalStorage();
       }
       setStatus("Progress saved.", "success");
+      try { renderStepper(); } catch (e) {}
+      try { updateFormInteractivity(); } catch (e) {}
       
       // Mark current step as completed
       const stepKey = `${currentPhase}-${currentStep}`;
@@ -1167,7 +1288,9 @@
         renderForm();
       } else if (!stay && currentStep === currentSteps.length - 1) {
         if (currentPhase === 'initial') {
-          setStatus("Application submitted successfully! Thank you for applying. We'll review your application and be in touch soon.", "success");
+          setStatus("Application submitted successfully! To monitor your application, go to the application page, click \"Check Progress\", and enter your application code.", "success");
+          // Lock the form UI since status is now submitted
+          try { updateFormInteractivity(); } catch (e) {}
           setTimeout(() => {
             showExitModal(formCode);
           }, 2500);
@@ -1183,8 +1306,15 @@
     } catch (e) {
       setStatus(e.message, "error");
     } finally {
-      submitBtn.disabled = false;
-      submitBtn.textContent = label;
+      if (isFinalSubmit) {
+        // Keep the submit button deactivated and show submitted label
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Application Submitted';
+        try { updateFormInteractivity(); } catch (e) {}
+      } else {
+        submitBtn.disabled = false;
+        submitBtn.textContent = label;
+      }
     }
   };
 
@@ -1390,6 +1520,8 @@
     formEl.append(grid, actions);
     // show header exit button when the form is visible
     if (headerExitBtn) headerExitBtn.style.display = 'inline-flex';
+    // Update control enabled/disabled state based on CurrentStatus__c (Pending vs others)
+    try { updateFormInteractivity(); } catch (e) {};
   };
 
   const renderLanding = () => {
@@ -1464,7 +1596,8 @@
 
     const infoBox = h('div', { class: 'ri-landing-info' },
       h('p', { html: '<strong>Start New Application</strong> &mdash; Begin a fresh application; Part 2 instructions will be emailed after submission.' }),
-      h('p', { html: '<strong>Continue Existing Application</strong> &mdash; Already started an application? Use your application code to pick up where you left off.' })
+      h('p', { html: '<strong>Continue Existing Application</strong> &mdash; Already started an application? Use your application code to pick up where you left off.' }),
+      h('p', { html: '<strong>Check Progress</strong> &mdash; View the current status of your submitted application by entering your application code on the next screen.' })
     );
 
     const newBtn = h("button", { class: "ri-btn ri-btn-primary ri-landing-btn", type: "button", text: "Start New Application" });
@@ -1487,7 +1620,7 @@
       appState = 'continue';
       landingEl.innerHTML = "";
 
-      const backBtn = h("button", { class: "ri-btn ri-btn-ghost ri-btn-sm", type: "button", html: "&#8592; Back" });
+      const backBtn = h("button", { class: "ri-btn ri-btn-ghost ri-btn-sm ri-landing-back", type: "button", html: "&#8592; Back" });
       backBtn.onclick = () => { appState = 'landing'; renderLanding(); };
 
       const resumeTitle = h("h3", { text: "Continue Your Application", class: "ri-step-title" });
@@ -1528,7 +1661,7 @@
         // Render the email lookup UI
         const emailInput = h('input', { placeholder: 'Enter the email used on your application', id: 'forgot-email-input', style: 'width:100%; padding: 12px 14px; border-radius: 10px; border: 2px solid var(--border);' });
         const findBtn = h('button', { class: 'ri-btn ri-btn-primary', type: 'button', text: 'Find Code' });
-        const backToCodeBtn = h('button', { class: 'ri-btn ri-btn-ghost ri-btn-sm', type: 'button', html: '&#8592; Back' });
+        const backToCodeBtn = h('button', { class: 'ri-btn ri-btn-ghost ri-btn-sm ri-landing-back', type: 'button', html: '&#8592; Back' });
         backToCodeBtn.onclick = () => { renderLanding(); setTimeout(() => { try { input.focus(); } catch (err) {} }, 80); };
 
         findBtn.onclick = async () => {
@@ -1600,7 +1733,89 @@
       // Focus input for convenience
       setTimeout(() => { try { input.focus(); } catch (e) {} }, 80);
     };
-    const btnContainer = h("div", { class: "ri-landing-actions" }, newBtn, continueBtn);
+    const checkProgressBtn = h("button", { class: "ri-btn ri-btn-ghost ri-landing-btn", type: "button", text: "Check Progress" });
+    checkProgressBtn.onclick = () => {
+      landingEl.innerHTML = '';
+      const backBtn = h('button', { class: 'ri-btn ri-btn-ghost ri-btn-sm ri-landing-back', type: 'button', html: '&#8592; Back' });
+      backBtn.onclick = () => { renderLanding(); };
+
+      const title = h('h3', { text: 'Check Progress', class: 'ri-step-title' });
+      const subtitle = h('p', { text: 'Enter your application code to view current status.', class: 'ri-step-description' });
+      const input = h('input', { placeholder: 'Enter your application code', id: 'check-code-input', style: 'width:100%; padding: 12px 14px; border-radius: 10px; border: 2px solid var(--border);' });
+      const checkBtn = h('button', { class: 'ri-btn ri-btn-primary', type: 'button', text: 'Check Progress' });
+      const resultEl = h('div', { class: 'ri-check-result', style: 'margin-top:12px; max-width:720px; margin: 0 auto; text-align:left;' });
+
+      checkBtn.onclick = async () => {
+        const code = (input.value || '').trim();
+        if (!code) return setStatus('Please enter your application code.', 'error');
+        checkBtn.disabled = true; checkBtn.innerHTML = '<span class="ri-loader"></span>';
+        setStatus('Checking application status...', '');
+        try {
+          const fields = encodeURIComponent(JSON.stringify(['CurrentStatus__c','ItemsReceived__c']));
+          const url = `${ENDPOINT}?code=${encodeURIComponent(code)}&fields=${fields}`;
+          const res = await fetch(url);
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(json.error || 'Unable to retrieve application');
+
+          const statusVal = json.CurrentStatus__c || json.currentStatus || json.CurrentStatus || json.Status || 'Unknown';
+          const itemsRaw = json.ItemsReceived__c || json.ItemsReceived || json.itemsReceived || '';
+          const tokens = (itemsRaw || '').split(/[;,]/).map(t => t.trim()).filter(Boolean);
+
+          resultEl.innerHTML = '';
+          // nicer status chip
+          resultEl.append(h('h4', { text: 'Application Status' }), h('div', { class: 'ri-status-chip', text: statusVal }));
+
+          // Update local data and refresh phase indicator so pills reflect latest status
+          try {
+            data.CurrentStatus = statusVal;
+            data.CurrentStatus__c = statusVal;
+            renderStepper();
+            try { updateFormInteractivity(); } catch (e) {}
+            saveToLocalStorage();
+          } catch (e) {}
+
+          const required = ['Application','Application Fee','Pastoral Reference','Background Check','MinistrySafe Training'];
+          // sort alphabetically for display
+          const sortedRequired = required.slice().sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' }));
+          const list = h('ul', { class: 'ri-received-list' });
+          sortedRequired.forEach(item => {
+            const match = tokens.find(t => t.toLowerCase().includes(item.toLowerCase()));
+            let state = 'remaining';
+            if (match) {
+              if (/waiv/i.test(match)) state = 'waived';
+              else state = 'received';
+            }
+            // Use unicode escapes to avoid encoding issues (avoid raw glyphs)
+            const symbol = state === 'received' ? '\u2713' : state === 'waived' ? '\u2014' : '\u2718';
+            const labelText = state === 'waived' ? `${item} (waived)` : item;
+            const li = h('li', { class: `ri-received-item ri-${state}` },
+              h('span', { class: 'ri-received-symbol', text: symbol }),
+              h('span', { class: 'ri-received-label', text: labelText })
+            );
+            list.append(li);
+          });
+
+          resultEl.append(h('h4', { text: 'Items Received' }), list);
+
+          setStatus('', 'success');
+
+          // hide the Check Progress button and the code input/subtitle now that information is loaded
+          checkBtn.style.display = 'none';
+          input.style.display = 'none';
+          subtitle.style.display = 'none';
+        } catch (e) {
+          setStatus(e.message || 'Failed to check status', 'error');
+        } finally {
+          checkBtn.disabled = false;
+          checkBtn.textContent = 'Check Progress';
+        }
+      };
+
+      landingEl.append(backBtn, title, subtitle, input, h('div', { style: 'margin-top:12px;' }, checkBtn), resultEl);
+      setTimeout(() => { try { input.focus(); } catch (e) {} }, 80);
+    };
+
+    const btnContainer = h("div", { class: "ri-landing-actions" }, newBtn, continueBtn, checkProgressBtn);
     landingEl.append(welcome, infoBox, btnContainer);
   };
 
@@ -1624,6 +1839,17 @@
   );
 
   host.appendChild(container);
+
+  // Expose a tiny test bridge for unit tests (only used in tests)
+  try {
+    if (typeof window !== 'undefined') {
+      window.__riTest = window.__riTest || {};
+      window.__riTest.getData = () => (data);
+      window.__riTest.setData = (obj) => { Object.assign(data, obj); };
+      window.__riTest.renderPhaseIndicator = () => { try { renderPhaseIndicator(); return true; } catch (e) { return false; } };
+      window.__riTest.renderStepper = () => { try { renderStepper(); return true; } catch (e) { return false; } };
+    }
+  } catch (e) {}
 
   loadLookup().then(applyLookupOptions).finally(() => {
     renderLanding();

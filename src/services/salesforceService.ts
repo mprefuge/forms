@@ -455,7 +455,8 @@ export class SalesforceService {
     if (desc && desc.fields) {
       const validFields = new Set(desc.fields.map((f: any) => f.name));
       fieldsToQuery = fieldsToQuery.filter(f => validFields.has(f));
-      if (fieldsToQuery.length === 1) { // only Id remains
+      // If filtering removed all requested fields, or the only remaining field is the Id, fall back to defaults
+      if (fieldsToQuery.length === 0 || (fieldsToQuery.length === 1 && fieldsToQuery[0] === 'Id')) {
         fieldsToQuery = [...defaultFields];
       }
     }
@@ -487,6 +488,49 @@ export class SalesforceService {
   }
 
   /**
+   * Retrieve a form by its Salesforce Id
+   * @param id The Form__c Id
+   * @param fields Optional array of field names to retrieve
+   */
+  async getFormById(id: string, fields?: string[]): Promise<any> {
+    if (!id || typeof id !== 'string') throw new Error('Invalid id parameter');
+
+    // Default fields if none specified
+    const defaultFields = ['Id', 'FormCode__c', 'Name', 'FirstName__c', 'LastName__c', 'Email__c', 'Phone__c', 'CreatedDate'];
+    let fieldsToQuery = fields && fields.length > 0 ? [...fields] : [...defaultFields];
+
+    // Validate fields against Salesforce schema
+    const desc: any = await this.connection.sobject('Form__c').describe();
+    if (desc && desc.fields) {
+      const validFields = new Set(desc.fields.map((f: any) => f.name));
+      fieldsToQuery = fieldsToQuery.filter(f => validFields.has(f));
+      // If filtering removed all requested fields, or the only remaining field is the Id, fall back to defaults
+      if (fieldsToQuery.length === 0 || (fieldsToQuery.length === 1 && fieldsToQuery[0] === 'Id')) {
+        fieldsToQuery = [...defaultFields];
+      }
+    }
+
+    if (!fieldsToQuery.includes('Id')) fieldsToQuery.unshift('Id');
+
+    const selectClause = fieldsToQuery.join(', ');
+    const safeId = id.replace(/'/g, "\\'");
+    const query = `SELECT ${selectClause} FROM Form__c WHERE Id = '${safeId}' LIMIT 1`;
+
+    try {
+      const result: any = await this.connection.query(query);
+      if (result.records && result.records.length > 0) {
+        return result.records[0];
+      }
+      throw new Error(`Form not found with id: ${id}`);
+    } catch (error: any) {
+      if (error.message && error.message.includes('INVALID_FIELD')) {
+        throw new Error(`Invalid field in query: ${error.message}`);
+      }
+      throw error;
+    }
+  }
+
+  /**
    * Retrieve a form by the applicant's email address. Returns the first matching record.
    * @param email Applicant email to search on (matches Email__c)
    * @param fields Optional array of field names to retrieve
@@ -503,7 +547,8 @@ export class SalesforceService {
     if (desc && desc.fields) {
       const validFields = new Set(desc.fields.map((f: any) => f.name));
       fieldsToQuery = fieldsToQuery.filter(f => validFields.has(f));
-      if (fieldsToQuery.length === 1) {
+      // If filtering removed all requested fields, or the only remaining field is the Id, fall back to defaults
+      if (fieldsToQuery.length === 0 || (fieldsToQuery.length === 1 && fieldsToQuery[0] === 'Id')) {
         fieldsToQuery = [...defaultFields];
       }
     }

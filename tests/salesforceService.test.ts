@@ -143,6 +143,22 @@ describe('SalesforceService - default RecordType behavior', () => {
     expect(rec.FormCode__c).toBe('eee11');
   });
 
+  it('honors a single requested field when it is valid (e.g., CurrentStatus__c)', async () => {
+    const sf = new SalesforceService({ loginUrl: 'https://login.salesforce.com', clientId: 'id', clientSecret: 'secret' });
+
+    // Describe should include Id and CurrentStatus__c as valid field names
+    (sf as any).connection = {
+      sobject: jest.fn().mockReturnValue({ describe: jest.fn().mockResolvedValue({ fields: [{ name: 'Id' }, { name: 'FormCode__c' }, { name: 'CurrentStatus__c' }] }) }),
+      query: jest.fn().mockResolvedValue({ records: [{ Id: 'f-123', CurrentStatus__c: 'Under Review' }] }),
+    } as any;
+
+    const rec = await (sf as any).getFormByCode('abc12', ['CurrentStatus__c']);
+    expect(rec).toBeDefined();
+    expect(rec.CurrentStatus__c).toBe('Under Review');
+    // ensure the query requested Id and CurrentStatus__c
+    expect((sf as any).connection.query).toHaveBeenCalledWith("SELECT Id, CurrentStatus__c FROM Form__c WHERE FormCode__c = 'abc12'");
+  });
+
   it('throws when no form found for email', async () => {
     const sf = new SalesforceService({ loginUrl: 'https://login.salesforce.com', clientId: 'id', clientSecret: 'secret' });
 

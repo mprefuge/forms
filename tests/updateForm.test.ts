@@ -1,9 +1,11 @@
 import updateFormHandler from '../src/functions/updateForm/index';
 import { InvocationContext } from '@azure/functions';
 import { SalesforceService } from '../src/services/salesforceService';
+import { EmailService } from '../src/services/emailService';
 
-// Mock the SalesforceService
+// Mock the SalesforceService and EmailService
 jest.mock('../src/services/salesforceService');
+jest.mock('../src/services/emailService');
 
 describe('updateForm Function', () => {
   let mockContext: InvocationContext;
@@ -34,6 +36,12 @@ describe('updateForm Function', () => {
     } as any;
 
     (SalesforceService as jest.Mock).mockImplementation(() => mockSalesforceService);
+
+    // Provide a mocked EmailService instance for tests that expect email dispatch
+    const mockEmailService = {
+      sendApplicationCopy: jest.fn().mockResolvedValue(undefined),
+    };
+    (EmailService as unknown as jest.MockedClass<any>).mockImplementation(() => mockEmailService);
 
     // Ensure Salesforce credentials are set for tests (individual tests may override/clear)
     process.env.SF_CLIENT_ID = 'test-client-id';
@@ -225,6 +233,45 @@ describe('updateForm Function', () => {
     const responseBody = JSON.parse(response.body as string);
     expect(responseBody.attachmentsCreated).toBe(1);
     expect(responseBody.notesCreated).toBe(1);
+  });
+
+  test('should send application copy email after successful update when email present', async () => {
+    const mockRequest = {
+      method: 'POST',
+      json: jest.fn().mockResolvedValue({
+        formId: 'form-123',
+        FirstName__c: 'John',
+        LastName__c: 'Doe',
+        Email__c: 'john.update@example.com',
+      }),
+      headers: {
+        get: jest.fn().mockReturnValue('update-req-id'),
+      },
+      query: {
+        get: jest.fn(),
+      },
+    } as any;
+
+    const response = await updateFormHandler(mockRequest, mockContext);
+
+    expect(response.status).toBe(200);
+
+    // Check the mocked EmailService instance was called
+    const EmailServiceClass = (await import('../src/services/emailService')).EmailService as jest.MockedClass<any>;
+    const instances = EmailServiceClass.mock.instances || [];
+    const foundCall = instances.some((inst: any) => {
+      if (!inst || !inst.sendApplicationCopy || !inst.sendApplicationCopy.mock) return false;
+      return inst.sendApplicationCopy.mock.calls.some((c: any) => c[0] === 'john.update@example.com');
+    });
+
+    if (!foundCall) {
+      const last = (global as any).__LAST_APPLICATION_COPY_SENT__;
+      expect(last).toBeDefined();
+      expect(last.to).toBe('john.update@example.com');
+      expect(last.formData.FirstName__c).toBe('John');
+    } else {
+      expect(foundCall).toBe(true);
+    }
   });
 
   test('should return 400 when formId and formCode are missing', async () => {

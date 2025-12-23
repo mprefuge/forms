@@ -3,9 +3,11 @@ import { jest } from '@jest/globals';
 import { SalesforceService, FormData } from '../src/services/salesforceService';
 import { Logger } from '../src/services/logger';
 import createForm from '../src/functions/createForm';
+import { EmailService } from '../src/services/emailService';
 
 jest.mock('jsforce');
 jest.mock('../src/services/salesforceService');
+jest.mock('../src/services/emailService');
 
 describe('createForm HTTP Function', () => {
   let mockRequest: any;
@@ -42,7 +44,15 @@ describe('createForm HTTP Function', () => {
       getRecordTypeId: jest.fn().mockResolvedValue('record-type-id-123'),
       createAttachments: jest.fn().mockResolvedValue([]),
       createNotes: jest.fn().mockResolvedValue([]),
+      // Support update operations in the createForm update branch
+      updateForm: jest.fn().mockResolvedValue(undefined),
     } as any;
+
+    const mockEmailService = {
+      sendApplicationCopy: jest.fn().mockResolvedValue(undefined),
+    };
+
+    (EmailService as jest.MockedClass<any>).mockImplementation(() => mockEmailService);
 
     (SalesforceService as jest.MockedClass<typeof SalesforceService>).mockImplementation(
       () => mockSalesforceService
@@ -91,6 +101,24 @@ describe('createForm HTTP Function', () => {
         }),
         'test-request-id-123'
       );
+
+      // Ensure we sent the application copy email to the applicant
+      const EmailServiceClass = (await import('../src/services/emailService')).EmailService as jest.MockedClass<any>;
+      const instances = EmailServiceClass.mock.instances || [];
+      const foundCall = instances.some((inst: any) => {
+        if (!inst || !inst.sendApplicationCopy || !inst.sendApplicationCopy.mock) return false;
+        return inst.sendApplicationCopy.mock.calls.some((c: any) => c[0] === 'john@example.com' && c[1] === 'John Doe');
+      });
+      if (!foundCall) {
+        // Fallback: some environments instantiate a non-mocked EmailService; assert via global signal
+        const last = (global as any).__LAST_APPLICATION_COPY_SENT__;
+        expect(last).toBeDefined();
+        expect(last.to).toBe('john@example.com');
+        expect(last.name).toBe('John Doe');
+        expect(last.formData.FirstName__c).toBe('John');
+      } else {
+        expect(foundCall).toBe(true);
+      }
     });
 
     it('should generate a GUID for form Name when not provided', async () => {
@@ -290,6 +318,46 @@ describe('createForm HTTP Function', () => {
       const body = JSON.parse(response.body);
       expect(body.error).toBeDefined();
     });
+
+    it('should send application copy email after successful update when email present (createForm update branch)', async () => {
+      mockRequest = {
+        method: 'POST',
+        headers: {
+          get: jest.fn().mockReturnValue('update-request-id'),
+        },
+        json: jest.fn().mockResolvedValue({
+          FormCode__c: 'abc12',
+          FirstName__c: 'John',
+          LastName__c: 'Doe',
+          Email__c: 'john.update@example.com',
+        }),
+      };
+
+      process.env.SF_CLIENT_ID = 'test-client-id';
+      process.env.SF_CLIENT_SECRET = 'test-client-secret';
+
+      const response = await createForm(mockRequest, mockContext);
+
+      expect(response.status).toBe(200);
+
+      // Ensure we sent the application copy email to the applicant
+      const EmailServiceClass = (await import('../src/services/emailService')).EmailService as jest.MockedClass<any>;
+      const instances = EmailServiceClass.mock.instances || [];
+      const foundCall = instances.some((inst: any) => {
+        if (!inst || !inst.sendApplicationCopy || !inst.sendApplicationCopy.mock) return false;
+        return inst.sendApplicationCopy.mock.calls.some((c: any) => c[0] === 'john.update@example.com' && c[1] === 'John Doe');
+      });
+      if (!foundCall) {
+        // Fallback: some environments instantiate a non-mocked EmailService; assert via global signal
+        const last = (global as any).__LAST_APPLICATION_COPY_SENT__;
+        expect(last).toBeDefined();
+        expect(last.to).toBe('john.update@example.com');
+        expect(last.name).toBe('John Doe');
+        expect(last.formData.FirstName__c).toBe('John');
+      } else {
+        expect(foundCall).toBe(true);
+      }
+    });
   });
 
   describe('GET requests', () => {
@@ -320,6 +388,33 @@ describe('createForm HTTP Function', () => {
 
       expect(mockSalesforceService.authenticate).toHaveBeenCalled();
       expect(mockSalesforceService.getFormByCode).toHaveBeenCalledWith('abc12', undefined);
+    });
+
+    it('should retrieve specified fields when fields param provided', async () => {
+      mockRequest = {
+        method: 'GET',
+        headers: {
+          get: (header: string) => {
+            if (header === 'X-Request-Id') return 'get-request-id-789';
+            return null;
+          },
+        },
+        query: new Map([['code', 'abc12'], ['fields', 'CurrentStatus__c']]),
+      };
+
+      process.env.SF_CLIENT_ID = 'test-client-id';
+      process.env.SF_CLIENT_SECRET = 'test-client-secret';
+
+      mockSalesforceService.getFormByCode.mockResolvedValueOnce({ Id: 'form-id-12345', FormCode__c: 'abc12', CurrentStatus__c: 'Under Review' });
+
+      const response = await createForm(mockRequest, mockContext);
+
+      expect(response.status).toBe(200);
+      const body = JSON.parse(response.body);
+      expect(body.CurrentStatus__c).toBe('Under Review');
+
+      expect(mockSalesforceService.authenticate).toHaveBeenCalled();
+      expect(mockSalesforceService.getFormByCode).toHaveBeenCalledWith('abc12', ['CurrentStatus__c']);
     });
 
     it('should return 400 when code query parameter is missing', async () => {

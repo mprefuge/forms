@@ -35,15 +35,8 @@ export class EmailService {
     return !!(process.env.AZURE_COMMUNICATION_CONNECTION_STRING || process.env.AZURE_EMAIL_CONNECTION_STRING);
   }
 
-  async sendApplicationCode(toEmail: string, formCode: string): Promise<void> {
-    if (!toEmail || !formCode) throw new Error('Invalid parameters for sendApplicationCode');
-
-    const subject = 'Your Refuge International Application Code';
-    // Normalize code to uppercase for readability in email
-    const codeToSend = String(formCode).toUpperCase();
-
-    const text = `Hello,\n\nWe received a request to retrieve your application code for Refuge International. Your application code is: ${codeToSend}\n\nYou can use this code to resume your application at our website. If you did not request this email, please ignore it.\n\nBlessings,\nRefuge International`;
-    const html = `<p>Hello,</p><p>We received a request to retrieve your application code for Refuge International. <strong>Your application code is: <code>${codeToSend}</code></strong></p><p>You can use this code to resume your application at our website. If you did not request this email, please ignore it.</p><p>Blessings,<br/>Refuge International</p>`;
+  private async sendRawEmail(toEmail: string, subject: string, text: string, html: string): Promise<void> {
+    if (!toEmail || !subject) throw new Error('Invalid parameters for sendRawEmail');
 
     // Use Azure Communication Services Email when configured
     if (this.hasAzureConfig()) {
@@ -60,13 +53,11 @@ export class EmailService {
 
       const client = new EmailClient(conn);
       const from = this.config.fromAddress || process.env.EMAIL_FROM || 'no-reply@example.com';
-      const message = {
-        // Include multiple variants for the sender field to be compatible across SDK versions
+      const message: any = {
         sender: from,
         senderAddress: from,
         from,
         content: { subject, plainText: text, html },
-        // Some SDK versions expect `address` and others `email` as the recipient key; include both for compatibility
         recipients: { to: [{ address: toEmail, email: toEmail }] },
       };
 
@@ -75,13 +66,11 @@ export class EmailService {
       }
 
       try {
-        // SDK may differ in exact method; prefer send if available
         if (typeof client.send === 'function') {
           await client.send(message);
         } else if (typeof client.sendEmail === 'function') {
           await client.sendEmail(message);
         } else if (typeof client.beginSend === 'function') {
-          // beginSend returns a poller
           const poller = await client.beginSend(message);
           await poller.pollUntilDone();
         } else {
@@ -120,5 +109,32 @@ export class EmailService {
     } catch (err: any) {
       throw new Error(`Failed to send email: ${err?.message || err}`);
     }
+  }
+
+  async sendApplicationCode(toEmail: string, formCode: string): Promise<void> {
+    if (!toEmail || !formCode) throw new Error('Invalid parameters for sendApplicationCode');
+
+    const subject = 'Your Refuge International Application Code';
+    // Normalize code to uppercase for readability in email
+    const codeToSend = String(formCode).toUpperCase();
+
+    const text = `Hello,\n\nWe received a request to retrieve your application code for Refuge International. Your application code is: ${codeToSend}\n\nYou can use this code to resume your application at our website. If you did not request this email, please ignore it.\n\nBlessings,\nRefuge International`;
+    const html = `<p>Hello,</p><p>We received a request to retrieve your application code for Refuge International. <strong>Your application code is: <code>${codeToSend}</code></strong></p><p>You can use this code to resume your application at our website. If you did not request this email, please ignore it.</p><p>Blessings,<br/>Refuge International</p>`;
+
+    await this.sendRawEmail(toEmail, subject, text, html);
+  }
+
+  async sendApplicationCopy(toEmail: string, applicantName: string, formData: any): Promise<void> {
+    if (!toEmail) throw new Error('Missing recipient email');
+
+    // New behavior: short confirmation email with optional application code
+    const subject = 'Your Refuge International Application Submission';
+    const code = (formData && (formData.FormCode__c || formData.formCode || formData.FormCode || formData.form_code)) ? String(formData.FormCode__c || formData.formCode || formData.FormCode || formData.form_code) : undefined;
+
+    const text = `Hello ${applicantName || ''},\n\nThank you — your application has been successfully submitted. You can monitor its progress by navigating to the application page and selecting "Check Progress", then entering your application code${code ? `: ${code.toUpperCase()}` : '.'}\n\nIf you cannot locate your application code, use the "Forgot your code?" link on the application page.\n\nBlessings,\nRefuge International`;
+
+    const html = `<p>Hello ${applicantName || ''},</p><p>Thank you — your application has been <strong>successfully submitted</strong>. You can monitor its progress by navigating to the application page and selecting <strong>Check Progress</strong>, then entering your application code${code ? `: <strong>${code.toUpperCase()}</strong>` : '.'}</p><p>If you cannot locate your application code, use the <em>Forgot your code?</em> link on the application page.</p><p>Blessings,<br/>Refuge International</p>`;
+
+    await this.sendRawEmail(toEmail, subject, text, html);
   }
 }

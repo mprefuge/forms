@@ -565,19 +565,36 @@ form.ri-form {
 }
 
 .ri-landing-actions {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   max-width: 880px; /* align with boxes */
   margin: 12px auto 0 auto;
   align-items: center;
 }
-.ri-landing-actions .ri-btn { width: 420px; max-width: 100%; display: block; margin: 6px auto; }
-@media (max-width: 1024px) {
-  .ri-landing-actions .ri-btn { width: 360px; }
+
+.ri-landing-actions .ri-btn {
+  width: 100%;
+  max-width: none;
+  display: block;
 }
+
+/* Make the first button span both columns so it stretches full width */
+.ri-landing-actions .ri-btn:first-child {
+  grid-column: 1 / -1;
+}
+
+/* Responsive: stack buttons on smaller screens */
+@media (max-width: 640px) {
+  .ri-landing-actions {
+    grid-template-columns: 1fr;
+  }
+  .ri-landing-actions .ri-btn:first-child {
+    grid-column: auto;
+  }
+}
+
 @media (max-width: 768px) {
-  .ri-landing-actions .ri-btn { width: 100%; }
   .ri-welcome, .ri-landing-info { padding-left: 12px; padding-right: 12px; }
 }
 
@@ -638,6 +655,13 @@ form.ri-form {
   border-color: #10b981;
   color: #10b981;
   background: rgba(16, 185, 129, 0.06);
+}
+
+/* Denied state for final phase */
+.ri-phase-chip.denied {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(189, 33, 53, 0.06);
 }
 
 /* Modal */
@@ -1291,4 +1315,122 @@ form.ri-form {
   .ri-code-display code {
     font-size: 18px;
   }
+}
+
+/* Strong override to ensure landing action buttons layout correctly */
+.ri-landing-actions {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 12px;
+  max-width: 880px;
+  margin: 12px auto 0 auto;
+  align-items: center;
+}
+.ri-landing-actions > .ri-btn {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  display: inline-flex !important;
+}
+.ri-landing-actions > .ri-btn:first-child {
+  grid-column: 1 / -1 !important;
+}
+@media (max-width: 640px) {
+  .ri-landing-actions {
+    grid-template-columns: 1fr !important;
+  }
+  .ri-landing-actions > .ri-btn:first-child {
+    grid-column: auto !important;
+  }
+}
+
+/* Position the landing back button in the top-left of the card */
+.ri-landing .ri-landing-back {
+  position: absolute;
+  top: 18px;
+  left: 18px;
+  z-index: 30;
+}
+
+/* On narrow screens, nudge it inwards so it doesn't overlap edges */
+@media (max-width: 640px) {
+  .ri-landing .ri-landing-back {
+    top: 12px;
+    left: 12px;
+  }
+}
+
+/* Styles for Check Progress result card and items */
+.ri-check-result {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 18px;
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+  margin-top: 12px;
+}
+.ri-check-result h4 {
+  margin: 0 0 8px 0;
+  font-size: 16px;
+}
+.ri-status-chip {
+  display: inline-block;
+  background: var(--surface-muted);
+  color: var(--muted);
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+.ri-received-list {
+  list-style: none;
+  margin: 12px 0 0 0;
+  padding: 0;
+  max-width: 720px;
+  margin-left: auto;
+  margin-right: auto;
+  display: grid;
+  gap: 8px;
+}
+.ri-received-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-weight: 700;
+}
+.ri-received-symbol {
+  display: inline-flex;
+  width: 36px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.ri-received-item.ri-received .ri-received-symbol {
+  background: #ecfdf5;
+  color: #059669;
+  border: 1px solid rgba(5,150,105,0.15);
+}
+.ri-received-item.ri-remaining .ri-received-symbol {
+  background: #fff7f7;
+  color: #dc2626;
+  border: 1px solid rgba(220,38,38,0.12);
+}
+.ri-received-item.ri-waived .ri-received-symbol {
+  background: #f3f4f6;
+  color: #111;
+  border: 1px solid #e5e7eb;
+}
+.ri-received-item .ri-received-label {
+  flex: 1;
+  color: #111;
+}
+@media (max-width: 640px) {
+  .ri-check-result { padding: 12px; }
 }
