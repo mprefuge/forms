@@ -114,26 +114,29 @@ export class EmailService {
   async sendApplicationCode(toEmail: string, formCode: string): Promise<void> {
     if (!toEmail || !formCode) throw new Error('Invalid parameters for sendApplicationCode');
 
-    const subject = 'Your Refuge International Application Code';
+    const subject = 'Your Application Code';
     // Normalize code to uppercase for readability in email
     const codeToSend = String(formCode).toUpperCase();
 
-    const text = `Hello,\n\nWe received a request to retrieve your application code for Refuge International. Your application code is: ${codeToSend}\n\nYou can use this code to resume your application at our website. If you did not request this email, please ignore it.\n\nBlessings,\nRefuge International`;
-    const html = `<p>Hello,</p><p>We received a request to retrieve your application code for Refuge International. <strong>Your application code is: <code>${codeToSend}</code></strong></p><p>You can use this code to resume your application at our website. If you did not request this email, please ignore it.</p><p>Blessings,<br/>Refuge International</p>`;
+    const text = `Hello,\n\nWe received a request to retrieve your application code. Your application code is: ${codeToSend}\n\nYou can use this code to resume your application at our website. If you did not request this email, please ignore it.\n\nThank you`;
+    const html = `<p>Hello,</p><p>We received a request to retrieve your application code. <strong>Your application code is: <code>${codeToSend}</code></strong></p><p>You can use this code to resume your application at our website. If you did not request this email, please ignore it.</p><p>Thank you</p>`;
 
     await this.sendRawEmail(toEmail, subject, text, html);
   }
 
-  async sendApplicationCopy(toEmail: string, applicantName: string, formData: any): Promise<void> {
+  async sendApplicationCopy(toEmail: string, applicantName: string, formData: any, formConfig?: any): Promise<void> {
     if (!toEmail) throw new Error('Missing recipient email');
 
+    // Get organization name from form config or use generic text
+    const orgName = (formConfig && formConfig.terms && formConfig.terms.orgName) || 'our organization';
+
     // New behavior: short confirmation email with optional application code
-    const subject = 'Your Refuge International Application Submission';
+    const subject = `Your ${orgName} Application Submission`;
     const code = (formData && (formData.FormCode__c || formData.formCode || formData.FormCode || formData.form_code)) ? String(formData.FormCode__c || formData.formCode || formData.FormCode || formData.form_code) : undefined;
 
-    const text = `Hello ${applicantName || ''},\n\nThank you — your application has been successfully submitted. You can monitor its progress by navigating to the application page and selecting "Check Progress", then entering your application code${code ? `: ${code.toUpperCase()}` : '.'}\n\nIf you cannot locate your application code, use the "Forgot your code?" link on the application page.\n\nBlessings,\nRefuge International`;
+    const text = `Hello ${applicantName || ''},\n\nThank you — your application has been successfully submitted. You can monitor its progress by navigating to the application page and selecting "Check Progress", then entering your application code${code ? `: ${code.toUpperCase()}` : '.'}\n\nIf you cannot locate your application code, use the "Forgot your code?" link on the application page.\n\nThank you,\n${orgName}`;
 
-    const html = `<p>Hello ${applicantName || ''},</p><p>Thank you — your application has been <strong>successfully submitted</strong>. You can monitor its progress by navigating to the application page and selecting <strong>Check Progress</strong>, then entering your application code${code ? `: <strong>${code.toUpperCase()}</strong>` : '.'}</p><p>If you cannot locate your application code, use the <em>Forgot your code?</em> link on the application page.</p><p>Blessings,<br/>Refuge International</p>`;
+    const html = `<p>Hello ${applicantName || ''},</p><p>Thank you — your application has been <strong>successfully submitted</strong>. You can monitor its progress by navigating to the application page and selecting <strong>Check Progress</strong>, then entering your application code${code ? `: <strong>${code.toUpperCase()}</strong>` : '.'}</p><p>If you cannot locate your application code, use the <em>Forgot your code?</em> link on the application page.</p><p>Thank you,<br/>${orgName}</p>`;
 
     await this.sendRawEmail(toEmail, subject, text, html);
   }

@@ -1,11 +1,9 @@
 (() => {
   const ENDPOINT = "https://rif-hhh8e6e7cbc2hvdw.eastus-01.azurewebsites.net/api/form";
   const HOST_ID = "volunteer-app";
-  // Public link to the Statement of Faith (opened in a new tab)
   const STATEMENT_URL = "https://static1.squarespace.com/static/5af0bc3a96d45593d7d7e55b/t/675251913102604777fd712c/1733448082026/Refuge+International+Statement+Of+Faith-Rev.+9_25_23.pdf";
 
 
-  // Organization terminology (labels/titles). Terms are static and defined here
   let orgTerms = {
     orgName: "Refuge International",
     labels: {
@@ -34,7 +32,50 @@
 
   // Organization terminology is static (defined in `orgTerms`) and not fetched from the backend.
 
+  // ============================================================================
+  // FORM CONFIGURATION (Volunteer Application)
+  // This file is specific to the Volunteer Application form.
+  // Each form (Donor, Survey, etc.) has its own dedicated .js file with its own config.
+  // ============================================================================
 
+  const FORM_CONFIG = {
+    id: 'volunteer',
+    name: 'Volunteer Application',
+    salesforce: {
+      objectName: 'Form__c',
+      recordTypeName: 'Volunteer Application',
+      allowedFields: [
+        'FirstName__c', 'LastName__c', 'Email__c', 'Phone__c', 'Salutation__c',
+        'Street__c', 'City__c', 'State__c', 'Zip__c', 'Country__c', 'Gender__c',
+        'MaritalStatus__c', 'Birthdate__c', 'CountryOfOrigin__c', 'PrimaryLanguage__c',
+        'LanguagesSpoken__c', 'Skills__c', 'Church__c', 'ChurchServingDetails__c',
+        'PastorSalutation__c', 'PastorFirstName__c', 'PastorLastName__c', 'PastorEmail__c',
+        'EmergencyContactFirstName__c', 'EmergencyContactLastName__c', 'EmergencyContactPhone__c',
+        'EmergencyContactRelationship__c', 'GospelDetails__c', 'TestimonyDetails__c',
+        'ServingAreasInterest__c', 'ServingAreaPrimaryInterest__c', 'Availability__c',
+        'HowHeard__c', 'WillPay__c', 'AdditionalNotes__c', 'AffirmStatementOfFaith__c',
+        'RecentMinistrySafe__c', 'MinistrySafeCompletionDate__c', 'MinistrySafeCertificate__c',
+        'PastoralReferenceStatus__c', 'PastoralReferenceNotes__c', 'BackgroundCheckStatus__c',
+        'BackgroundCheckDate__c', 'BackgroundCheckNotes__c', 'AdditionalDocumentsNotes__c',
+        'PlacementArea__c', 'PlacementStartDate__c', 'PlacementNotes__c'
+      ],
+      queryFields: [
+        'Id', 'FormCode__c', 'FirstName__c', 'LastName__c', 'Email__c',
+        'Phone__c', 'Country__c', 'LanguagesSpoken__c', 'Church__c',
+        'GospelDetails__c', 'TestimonyDetails__c', 'AffirmStatementOfFaith__c',
+        'CreatedDate', 'RecordTypeId'
+      ],
+      updateFields: [
+        'PlacementArea__c', 'PlacementNotes__c', 'PlacementStartDate__c',
+        'PastoralReferenceStatus__c', 'PastoralReferenceNotes__c',
+        'BackgroundCheckDate__c', 'BackgroundCheckNotes__c', 'BackgroundCheckStatus__c',
+        'RecentMinistrySafe__c', 'MinistrySafeCompletionDate__c',
+        'MinistrySafeCertificate__c', 'Availability__c', 'AdditionalDocumentsNotes__c'
+      ],
+      searchField: 'FormCode__c',
+      lookupEmailField: 'Email__c'
+    }
+  };
 
   const injectCSS = () => {
     try {
@@ -1014,9 +1055,9 @@
 
     // If this is a create (no formCode yet), set the Record Type explicitly
     if (!formCode) {
-      payload['RecordType__c'] = 'Volunteer Application';
-      payload['RecordType'] = 'Volunteer Application';
-      payload['RecordTypeName'] = 'Volunteer Application';
+      payload['RecordType__c'] = FORM_CONFIG.salesforce.recordTypeName;
+      payload['RecordType'] = FORM_CONFIG.salesforce.recordTypeName;
+      payload['RecordTypeName'] = FORM_CONFIG.salesforce.recordTypeName;
     }
 
     if (formCode) {
@@ -1040,6 +1081,9 @@
       if (data.ItemsReceived__c) payload['ItemsReceived__c'] = data.ItemsReceived__c;
       if (data.ItemsReceived) payload['ItemsReceived'] = data.ItemsReceived;
     }
+
+    // Attach form config to all requests
+    payload['__formConfig'] = FORM_CONFIG;
 
     // Handle file uploads
     if (Object.keys(fileUploads).length > 0) {
@@ -1206,11 +1250,12 @@
     const allFields = getAllFormFields();
     const fieldsParam = JSON.stringify(allFields);
     const encodedFields = encodeURIComponent(fieldsParam);
+    const encodedConfig = encodeURIComponent(JSON.stringify(FORM_CONFIG));
     
     const tryUrls = [
-      `${ENDPOINT}?code=${encodeURIComponent(code)}&fields=${encodedFields}`,
-      `${ENDPOINT}?FormCode=${encodeURIComponent(code)}&fields=${encodedFields}`,
-      `${ENDPOINT}?FormCode__c=${encodeURIComponent(code)}&fields=${encodedFields}`,
+      `${ENDPOINT}?code=${encodeURIComponent(code)}&fields=${encodedFields}&formConfig=${encodedConfig}`,
+      `${ENDPOINT}?FormCode=${encodeURIComponent(code)}&fields=${encodedFields}&formConfig=${encodedConfig}`,
+      `${ENDPOINT}?FormCode__c=${encodeURIComponent(code)}&fields=${encodedFields}&formConfig=${encodedConfig}`,
     ];
 
     for (const url of tryUrls) {
@@ -1237,7 +1282,7 @@
     const res = await fetch(ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code, FormCode__c: code }),
+      body: JSON.stringify({ code, FormCode__c: code, __formConfig: FORM_CONFIG }),
     });
     const json = await res.json().catch(() => ({}));
     if (res.ok) {

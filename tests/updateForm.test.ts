@@ -2,6 +2,7 @@ import updateFormHandler from '../src/functions/updateForm/index';
 import { InvocationContext } from '@azure/functions';
 import { SalesforceService } from '../src/services/salesforceService';
 import { EmailService } from '../src/services/emailService';
+import { testFormConfig } from './testFormConfig';
 
 // Mock the SalesforceService and EmailService
 jest.mock('../src/services/salesforceService');

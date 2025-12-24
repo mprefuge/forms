@@ -4,6 +4,7 @@ import { SalesforceService, FormData } from '../src/services/salesforceService';
 import { Logger } from '../src/services/logger';
 import createForm from '../src/functions/createForm';
 import { EmailService } from '../src/services/emailService';
+import { testFormConfig } from './testFormConfig';
 
 jest.mock('jsforce');
 jest.mock('../src/services/salesforceService');
@@ -74,6 +75,7 @@ describe('createForm HTTP Function', () => {
           LastName__c: 'Doe',
           Email__c: 'john@example.com',
           RecordType: 'Registration',
+          __formConfig: testFormConfig,
         }),
       };
 
@@ -130,6 +132,7 @@ describe('createForm HTTP Function', () => {
         json: jest.fn().mockResolvedValue({
           FirstName__c: 'Jane',
           LastName__c: 'Smith',
+          __formConfig: testFormConfig,
         }),
       };
 
@@ -147,7 +150,8 @@ describe('createForm HTTP Function', () => {
       // but we verified the service was called
       expect(mockSalesforceService.createForm).toHaveBeenCalledWith(
         expect.any(Object),
-        'test-request-id-123'
+        'test-request-id-123',
+        testFormConfig
       );
     });
 
@@ -161,6 +165,7 @@ describe('createForm HTTP Function', () => {
           FirstName__c: 'Jane',
           Attachments: [{ fileName: 'test.txt', base64: Buffer.from('hello').toString('base64') }],
           Notes: [{ Title: 'Note1', Body: 'This is a test note' }],
+          __formConfig: testFormConfig,
         }),
       };
 
@@ -564,7 +569,10 @@ describe('createForm HTTP Function', () => {
         headers: {
           get: jest.fn().mockReturnValue(null),
         },
-        json: jest.fn().mockResolvedValue(allowedFields),
+        json: jest.fn().mockResolvedValue({
+          ...allowedFields,
+          __formConfig: testFormConfig,
+        }),
       };
 
       process.env.SF_CLIENT_ID = 'test-client-id';
@@ -590,7 +598,10 @@ describe('createForm HTTP Function', () => {
             return null;
           },
         },
-        json: jest.fn().mockResolvedValue({ FirstName__c: 'John' }),
+        json: jest.fn().mockResolvedValue({
+          FirstName__c: 'John',
+          __formConfig: testFormConfig,
+        }),
       };
 
       process.env.SF_CLIENT_ID = 'test-client-id';

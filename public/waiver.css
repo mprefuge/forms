@@ -1,0 +1,62 @@
+/* Waiver-specific layout helpers */
+.ri-grid > .waiver-row { grid-column: 1 / -1; width: 100%; display: grid; gap: 10px; margin-top: 10px; align-items: start; }
+.waiver-row--two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+/* Make street wider than city/state */
+.waiver-row--three { grid-template-columns: 2fr 1fr 1fr; }
+/* Address row: Street | City | State | Zip | Country */
+.waiver-row--address { grid-template-columns: 2fr 1fr 1fr 1fr 1fr; }
+/* Child rows: top (4 cols) and bottom (3 cols) */
+.waiver-row--child-top { grid-template-columns: 1fr 1fr 1fr 0.9fr; }
+.waiver-row--child-bottom { grid-template-columns: repeat(3, 1fr); }
+.waiver-row .ri-field { margin: 0; min-width: 0; }
+/* Ensure inputs/selects shrink properly */
+.waiver-row .ri-field input, .waiver-row .ri-field select { min-width: 0; }
+@media (max-width: 1100px) {
+  .waiver-row--two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .waiver-row--address { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .waiver-row--child-top { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .waiver-row--child-bottom { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 860px) {
+  .waiver-row--two, .waiver-row--three, .waiver-row--address, .waiver-row--child-top, .waiver-row--child-bottom { grid-template-columns: 1fr; }
+}
+
+/* Consent rows: make each waiver checkbox take full row */
+.waiver-row--consent { grid-template-columns: 1fr; }
+.waiver-row--consent .ri-field { width: 100%; }
+/* Align checkbox left and make label span remaining width */
+.waiver-row--consent .ri-checkbox { display: grid; grid-template-columns: 22px 1fr; gap: 12px; align-items: start; }
+.waiver-row--consent .ri-checkbox input { grid-column: 1; margin-top: 6px; width: 18px; height: 18px; }
+.waiver-row--consent .ri-checkbox label { grid-column: 2; display: block; margin: 0; }
+.waiver-row--consent .ri-statement-top { display: block; margin-bottom: 6px; }
+
+/* Signature: signature input grows, date is fixed width */
+.waiver-row--signature { grid-template-columns: 1fr 240px; gap: 12px; align-items: center; }
+.waiver-row--signature .ri-field input[type=date] { width: 100%; }
+@media (max-width: 620px) {
+  .waiver-row--signature { grid-template-columns: 1fr; }
+}
+
+/* Waiver stepper full-width tabs */
+.ri-stepper.waiver-stepper { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; width: 100%; align-items: stretch; }
+.ri-stepper.waiver-stepper > .ri-chip.waiver-chip { display: flex; width: 100%; justify-content: center; align-items: center; padding: 12px 14px; border-radius: 10px; text-align: center; }
+.ri-stepper.waiver-stepper > .ri-chip.waiver-chip .ri-step-number { display: none; }
+.ri-stepper.waiver-stepper > .ri-chip.waiver-chip .ri-step-label { font-weight: 700; text-align:center; display:block; }
+.ri-stepper.waiver-stepper > .ri-chip.waiver-chip.active { border-color: var(--accent); color: var(--accent); background: rgba(189,33,53,0.06); }
+.ri-stepper.waiver-stepper > .ri-chip.waiver-chip.completed { border-color: #10b981; }
+@media (max-width: 640px) {
+  .ri-stepper.waiver-stepper { grid-template-columns: 1fr; }
+}
+
+/* Waiver header spacing */
+.ri-card .ri-header { padding-bottom: 20px; }
+.ri-card .ri-title { margin-bottom: 12px; }
+
+/* Full-width Next button on the first step */
+.ri-form.ri-form--first-step .ri-actions { display: block; }
+.ri-form.ri-form--first-step .ri-actions .ri-btn { display: block; width: 100%; box-sizing: border-box; }
+.ri-form.ri-form--first-step .ri-actions .ri-btn.ri-btn-ghost { display: none; }
+.ri-form.ri-form--first-step .ri-actions .ri-btn-primary { margin-left: 0; }
+@media (max-width: 640px) {
+  .ri-form.ri-form--first-step .ri-actions .ri-btn { margin-bottom: 8px; }
+}

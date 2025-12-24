@@ -1,12 +1,52 @@
 # Azure Functions Form App
 
-A TypeScript-based Azure Functions application for managing Salesforce forms using Client Credentials OAuth flow.
+A TypeScript-based Azure Functions application for managing Salesforce forms with JavaScript-first form configuration.
+
+## Architecture
+
+This application supports **two ways to configure forms**:
+
+1. **JavaScript Forms (Recommended)** - Independent .js files that send their own configuration
+   - No build needed to add new forms
+   - Each form is completely self-contained
+   - See [QUICK_START.md](QUICK_START.md) for details
+
+2. **TypeScript Forms (Fallback)** - Server-side configuration registry
+   - Used when JavaScript forms don't provide configuration
+   - Provides backward compatibility
+   - Located in `src/config/`
 
 ## Requirements
 
 - Node.js >= 18.0.0
 - Azure Functions v4
-- TypeScript 5.0+
+- TypeScript 5.0+ (for backend only, not required for JavaScript forms)
+
+## Quick Start
+
+### Option 1: Add JavaScript Form (No Build)
+
+```bash
+# Copy template
+cp public/donor.js.template public/myform.js
+
+# Edit configuration in myform.js
+# Deploy and use - no build needed!
+```
+
+See [QUICK_START.md](QUICK_START.md) for complete guide.
+
+### Option 2: Backend Development
+
+```bash
+# Install dependencies
+npm install
+
+# Configure environment
+# Create local.settings.json with credentials
+npm run build
+npm start
+```
 
 ## Setup
 
@@ -18,16 +58,20 @@ npm install
 
 ### 2. Configure Environment Variables
 
-Create or update `.env.local` or `local.settings.json` with your Salesforce Connected App credentials and any email provider configuration you plan to use (Azure Communication Services or SMTP):
+Create or update `local.settings.json` with your Salesforce Connected App credentials and email provider configuration:
 
-```
-FUNCTIONS_WORKER_RUNTIME=node
-WEBSITE_NODE_DEFAULT_VERSION=18.x
-SF_LOGIN_URL=https://login.salesforce.com
-SF_CLIENT_ID=your_connected_app_consumer_key
-SF_CLIENT_SECRET=your_connected_app_consumer_secret
-# Optional: Azure Communication Services (preferred for email)
-AZURE_COMMUNICATION_CONNECTION_STRING=endpoint=https://<your-resource>.communication.azure.com/;accesskey=...
+```json
+{
+  "IsEncrypted": false,
+  "Values": {
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "WEBSITE_NODE_DEFAULT_VERSION": "18.x",
+    "SF_LOGIN_URL": "https://login.salesforce.com",
+    "SF_CLIENT_ID": "your_connected_app_consumer_key",
+    "SF_CLIENT_SECRET": "your_connected_app_consumer_secret",
+    "AZURE_COMMUNICATION_CONNECTION_STRING": "endpoint=https://<resource>.communication.azure.com/;accesskey=..."
+  }
+}
 # Optional alias supported by the code
 AZURE_EMAIL_CONNECTION_STRING=endpoint=https://<your-resource>.communication.azure.com/;accesskey=...
 # The email address that will appear in the From field (must be a verified ACS sender)

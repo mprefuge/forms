@@ -3,6 +3,7 @@ import { jest } from '@jest/globals';
 import sendCode from '../src/functions/sendCode';
 import { SalesforceService } from '../src/services/salesforceService';
 import { EmailService } from '../src/services/emailService';
+import { testFormConfig } from './testFormConfig';
 
 jest.mock('../src/services/salesforceService');
 jest.mock('../src/services/emailService');

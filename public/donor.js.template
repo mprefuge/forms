@@ -1,0 +1,325 @@
+// ============================================================================
+// DONOR FORM - Template for creating new forms
+// ============================================================================
+// Each form gets its own dedicated JavaScript file.
+// This file contains the form's UI logic, configuration, and API integration.
+// 
+// To use this form:
+// 1. Copy this file to public/donor.js (or your-form-name.js)
+// 2. Update FORM_CONFIG with your form's specifications
+// 3. Customize phases, fieldMeta, and fieldToSf as needed
+// 4. Include in HTML: <script src="donor.js"></script>
+// 5. Deploy - no build step needed!
+// ============================================================================
+
+(() => {
+  const ENDPOINT = "http://localhost:7071/api/form"; // Same API endpoint for all forms
+  const HOST_ID = "donor-app";
+
+  const orgTerms = {
+    orgName: "Refuge International",
+    labels: {
+      // Add form-specific label overrides here
+    },
+    stepTitles: {
+      // Add step title customizations here
+    },
+    phaseNames: {
+      initial: "Donor Registration",
+    }
+  };
+
+  // ============================================================================
+  // FORM CONFIGURATION - Customize for your form
+  // ============================================================================
+  const FORM_CONFIG = {
+    id: 'donor',
+    name: 'Donor Registration',
+    salesforce: {
+      objectName: 'Account',                    // Which Salesforce object
+      recordTypeName: 'Donor',                  // Record type for creates
+      allowedFields: [                          // Fields client can write
+        'Name',
+        'BillingStreet__c',
+        'BillingCity__c',
+        'BillingState__c',
+        'BillingPostalCode__c',
+        'BillingCountry__c',
+        'Phone',
+        'Website',
+        'Industry__c',
+        'AnnualRevenue',
+        'DonationAmount__c',
+        'DonationType__c',
+        'TaxId__c',
+        'Email__c'
+      ],
+      queryFields: [                            // Fields retrieved (optimized)
+        'Id',
+        'DonorCode__c',
+        'Name',
+        'Email__c',
+        'Phone',
+        'DonationAmount__c',
+        'DonationType__c'
+      ],
+      updateFields: [                           // Fields that can be updated
+        'DonationAmount__c',
+        'DonationType__c',
+        'Phone',
+        'Website'
+      ],
+      searchField: 'DonorCode__c',              // Field used for lookups
+      lookupEmailField: 'Email__c'              // Email lookup field
+    }
+  };
+
+  // ============================================================================
+  // FORM PHASES - Define your form workflow
+  // ============================================================================
+  const phases = {
+    initial: {
+      name: "Donor Information",
+      description: "Tell us about your donation",
+      estimatedTime: 10,
+      steps: [
+        { 
+          title: "Contact Information", 
+          description: "Your contact details",
+          fields: ["Name", "Email", "Phone"] 
+        },
+        { 
+          title: "Donation Details", 
+          description: "Information about your donation",
+          fields: ["DonationAmount", "DonationType", "TaxId"] 
+        },
+        { 
+          title: "Organization", 
+          description: "Your organization details",
+          fields: ["Website", "Industry"] 
+        },
+      ]
+    }
+  };
+
+  // ============================================================================
+  // FIELD METADATA - Define how fields are rendered
+  // ============================================================================
+  const fieldMeta = {
+    Name: { label: "Organization Name", type: "text", required: true },
+    Email: { label: "Email", type: "email", required: true },
+    Phone: { label: "Phone", type: "tel", required: false },
+    BillingStreet: { label: "Address", type: "text", required: false },
+    BillingCity: { label: "City", type: "text", required: false },
+    BillingState: { label: "State/Province", type: "select", options: [], required: false },
+    BillingPostalCode: { label: "Postal Code", type: "text", required: false },
+    BillingCountry: { label: "Country", type: "select", options: [], required: false },
+    Website: { label: "Website", type: "url", required: false },
+    Industry: { label: "Industry", type: "select", options: [], required: false },
+    DonationAmount: { label: "Donation Amount ($)", type: "number", required: true },
+    DonationType: { label: "Donation Type", type: "select", options: ["One-Time", "Monthly", "Quarterly", "Annual"], required: true },
+    TaxId: { label: "Tax ID (EIN)", type: "text", required: false },
+  };
+
+  // ============================================================================
+  // FIELD MAPPING - Client names to Salesforce field names
+  // ============================================================================
+  const fieldToSf = {
+    Name: 'Name',
+    Email: 'Email__c',
+    Phone: 'Phone',
+    BillingStreet: 'BillingStreet__c',
+    BillingCity: 'BillingCity__c',
+    BillingState: 'BillingState__c',
+    BillingPostalCode: 'BillingPostalCode__c',
+    BillingCountry: 'BillingCountry__c',
+    Website: 'Website',
+    Industry: 'Industry__c',
+    DonationAmount: 'DonationAmount__c',
+    DonationType: 'DonationType__c',
+    TaxId: 'TaxId__c',
+  };
+
+  // Inverted mapping: SF API name -> client field key
+  const sfToField = Object.entries(fieldToSf).reduce((acc, [k, v]) => {
+    acc[v] = k;
+    return acc;
+  }, {});
+
+  // ============================================================================
+  // FORM STATE - Variables to track form state
+  // ============================================================================
+  const data = {};
+  const fileUploads = {};
+  const completedSteps = new Set();
+  let formCode = null;
+  let currentStep = 0;
+  let currentPhase = 'initial';
+  
+  // ============================================================================
+  // UTILITY FUNCTIONS - Common form operations
+  // ============================================================================
+
+  const validateStep = () => {
+    const currentSteps = phases[currentPhase]?.steps || [];
+    const stepFields = (currentSteps[currentStep] && currentSteps[currentStep].fields) 
+      ? currentSteps[currentStep].fields 
+      : Object.keys(data);
+
+    const missing = stepFields.filter(k => {
+      const val = data[k];
+      return !val || (typeof val === 'string' && val.trim() === '');
+    });
+
+    if (missing.length) {
+      const fieldNames = missing.map(k => fieldMeta[k]?.label || k).join(", ");
+      alert(`Please complete required fields: ${fieldNames}`);
+      return false;
+    }
+    return true;
+  };
+
+  const saveProgress = async () => {
+    if (!validateStep()) return;
+
+    const payload = {};
+    const currentSteps = phases[currentPhase].steps;
+    const stepFields = (currentSteps[currentStep] && currentSteps[currentStep].fields) 
+      ? currentSteps[currentStep].fields 
+      : Object.keys(data);
+
+    stepFields.forEach((k) => {
+      if (!(k in data)) return;
+      const v = data[k];
+      if (v === undefined || v === null) return;
+      if (typeof v === 'string' && v.trim() === '') return;
+      const sfKey = fieldToSf[k] || k;
+      
+      if (Array.isArray(v)) {
+        payload[sfKey] = v.join('|');
+      } else {
+        payload[sfKey] = v;
+      }
+    });
+
+    if (!formCode) {
+      payload['RecordType__c'] = FORM_CONFIG.salesforce.recordTypeName;
+      payload['RecordType'] = FORM_CONFIG.salesforce.recordTypeName;
+      payload['RecordTypeName'] = FORM_CONFIG.salesforce.recordTypeName;
+    }
+
+    if (formCode) {
+      payload['FormCode__c'] = formCode;
+    }
+
+    payload['CurrentPhase__c'] = currentPhase;
+    payload['__formConfig'] = FORM_CONFIG;
+
+    try {
+      const res = await fetch(ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json().catch(() => ({}));
+      
+      if (!res.ok) {
+        alert('Error saving form: ' + (json.message || res.statusText));
+        return;
+      }
+
+      formCode = json?.FormCode || json?.DonorCode || json?.formCode || formCode;
+      alert('Donation registered successfully!');
+      
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  const renderForm = () => {
+    const currentSteps = phases[currentPhase].steps;
+    const step = currentSteps[currentStep];
+    
+    let html = `<h2>${step.title}</h2>`;
+    html += `<p>${step.description}</p>`;
+    
+    step.fields.forEach(fieldKey => {
+      const field = fieldMeta[fieldKey];
+      if (!field) return;
+      
+      const value = data[fieldKey] || '';
+      let input = '';
+      
+      switch (field.type) {
+        case 'text':
+        case 'email':
+        case 'tel':
+        case 'url':
+        case 'number':
+          input = `<input type="${field.type}" value="${value}" id="${fieldKey}" />`;
+          break;
+        case 'select':
+          input = `<select id="${fieldKey}">
+            <option value="">-- Select --</option>
+            ${field.options.map(o => `<option value="${o}" ${value === o ? 'selected' : ''}>${o}</option>`).join('')}
+          </select>`;
+          break;
+      }
+      
+      html += `
+        <div class="form-group">
+          <label for="${fieldKey}">${field.label}${field.required ? ' *' : ''}</label>
+          ${input}
+        </div>
+      `;
+    });
+    
+    html += `
+      <div class="form-buttons">
+        ${currentStep > 0 ? `<button type="button" onclick="previousStep()">Back</button>` : ''}
+        ${currentStep < currentSteps.length - 1 ? `<button type="button" onclick="nextStep()">Next</button>` : `<button type="button" onclick="submitForm()">Submit</button>`}
+      </div>
+    `;
+    
+    const formEl = document.getElementById('form-container');
+    if (formEl) formEl.innerHTML = html;
+    
+    // Update field values
+    step.fields.forEach(fieldKey => {
+      const el = document.getElementById(fieldKey);
+      if (el) {
+        el.addEventListener('change', (e) => {
+          data[fieldKey] = e.target.value;
+        });
+      }
+    });
+  };
+
+  // ============================================================================
+  // INITIALIZATION
+  // ============================================================================
+  
+  window.nextStep = () => {
+    const currentSteps = phases[currentPhase].steps;
+    if (currentStep < currentSteps.length - 1) {
+      currentStep++;
+      renderForm();
+    }
+  };
+
+  window.previousStep = () => {
+    if (currentStep > 0) {
+      currentStep--;
+      renderForm();
+    }
+  };
+
+  window.submitForm = () => {
+    saveProgress();
+  };
+
+  window.loadDonorForm = () => {
+    renderForm();
+  };
+
+})();
