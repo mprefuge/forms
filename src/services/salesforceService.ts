@@ -241,15 +241,12 @@ export class SalesforceService {
    * All field specifications come from the form configuration.
    */
   async createForm(formData: FormData | { [key: string]: any }, requestId: string, formConfig?: FormConfig): Promise<{ id: string; formCode: string }> {
-    if (!formConfig) {
-      throw new Error('FormConfig is required for createForm');
-    }
-
-    const objectName = formConfig.salesforce.objectName;
-    const recordTypeName = formConfig.salesforce.recordTypeName;
-    const allowedFields = formConfig.salesforce.allowedFields;
-    const codeLength = formConfig.salesforce.codeLength || 5;
-    const codeFieldName = formConfig.salesforce.lookupCodeField || 'FormCode__c';
+    // Allow callers to omit a full FormConfig; fall back to sensible defaults when missing
+    const objectName = formConfig?.salesforce?.objectName || 'Form__c';
+    const recordTypeName = formConfig?.salesforce?.recordTypeName || 'General';
+    const allowedFields = formConfig?.salesforce?.allowedFields || [];
+    const codeLength = formConfig?.salesforce?.codeLength || 5;
+    const codeFieldName = formConfig?.salesforce?.lookupCodeField || 'FormCode__c';
 
     const recordTypeRecord: any = {
       attributes: { type: objectName },
@@ -267,14 +264,43 @@ export class SalesforceService {
     const describedFields = await this.describeFormFields(formConfig);
     const fieldMetaMap = new Map(describedFields.map(f => [f.name, f]));
 
-    // Copy only allowed fields from input data
-    for (const field of allowedFields) {
-      if (field === 'RecordTypeId' || field === 'Name' || field === codeFieldName) continue;
-      if (formData[field] !== undefined) {
-        let val: any = formData[field];
-        const meta: any = fieldMetaMap.get(field);
-        
-        // Handle picklist/multipicklist values
+    // Copy only allowed fields from input data.
+    // If a FormConfig is provided, use its allowedFields list; otherwise, accept any fields present in the incoming data that
+    // exist in the Salesforce schema (based on describe) so that legacy callers that don't provide a config still work.
+    if (formConfig) {
+      for (const field of allowedFields) {
+        if (field === 'RecordTypeId' || field === 'Name' || field === codeFieldName) continue;
+        if (formData[field] !== undefined) {
+          let val: any = formData[field];
+          const meta: any = fieldMetaMap.get(field);
+          
+          // Handle picklist/multipicklist values
+          if (meta && (meta.type || '').toLowerCase() === 'multipicklist') {
+            if (Array.isArray(val)) {
+              val = val.map((s: string) => this.resolvePicklistToken(String(s), meta.picklistValues)).join(';');
+            } else if (typeof val === 'string') {
+              if (val.includes('|')) {
+                val = val.split('|').map((s: string) => this.resolvePicklistToken(s.trim(), meta.picklistValues)).join(';');
+              } else {
+                val = String(val).split(';').map((s: string) => this.resolvePicklistToken(s.trim(), meta.picklistValues)).filter(Boolean).join(';');
+              }
+            }
+          } else if (meta && (((meta.type || '').toLowerCase() === 'picklist') || (meta.picklistValues || []).length > 0) && typeof val === 'string') {
+            val = this.resolvePicklistToken(val, meta.picklistValues);
+          }
+          recordTypeRecord[field] = val;
+        }
+      }
+    } else {
+      // No FormConfig provided: accept any fields present in formData that appear in the described fields
+      for (const key of Object.keys(formData)) {
+        if (key === 'RecordType' || key === 'RecordTypeId' || key === 'Name' || key === codeFieldName) continue;
+        if (!fieldMetaMap.has(key)) continue;
+
+        let val: any = (formData as any)[key];
+        const meta: any = fieldMetaMap.get(key);
+
+        // Handle picklist/multipicklist values (same logic as above)
         if (meta && (meta.type || '').toLowerCase() === 'multipicklist') {
           if (Array.isArray(val)) {
             val = val.map((s: string) => this.resolvePicklistToken(String(s), meta.picklistValues)).join(';');
@@ -288,7 +314,8 @@ export class SalesforceService {
         } else if (meta && (((meta.type || '').toLowerCase() === 'picklist') || (meta.picklistValues || []).length > 0) && typeof val === 'string') {
           val = this.resolvePicklistToken(val, meta.picklistValues);
         }
-        recordTypeRecord[field] = val;
+
+        recordTypeRecord[key] = val;
       }
     }
 
@@ -453,7 +480,7 @@ export class SalesforceService {
         
         const selectClause = fieldsToQuery.join(', ');
         const safeCode = String(formCode).replace(/'/g, "\\'");
-        query = `SELECT ${selectClause} FROM Form__c WHERE FormCode__c = '${safeCode}' LIMIT 1`;
+        query = `SELECT ${selectClause} FROM Form__c WHERE FormCode__c = '${safeCode}'`;
       }
 
       const result: any = await this.connection.query(query);

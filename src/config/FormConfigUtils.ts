@@ -183,9 +183,13 @@ export function filterAllowedFields(
 
   Object.entries(formData).forEach(([fieldName, value]) => {
     if (hasMapping) {
-      // Data is in client format, map to Salesforce format
+      // Prefer mapping from client field name -> Salesforce field name
       const sfFieldName = formConfig.salesforceMapping[fieldName];
       if (sfFieldName && allowedSalesforceFields.has(sfFieldName)) {
+        // Keep the original incoming key (could be client or Salesforce name)
+        filtered[fieldName] = value;
+      } else if (allowedSalesforceFields.has(fieldName)) {
+        // Incoming data is already in Salesforce format (e.g., FirstName__c) — accept it
         filtered[fieldName] = value;
       }
     } else {
@@ -218,6 +222,9 @@ export function convertToSalesforceFormat(
     const sfFieldName = formConfig.salesforceMapping[clientFieldName];
     if (sfFieldName) {
       sfData[sfFieldName] = value;
+    } else if (Array.isArray(formConfig.salesforce.allowedFields) && formConfig.salesforce.allowedFields.includes(clientFieldName)) {
+      // The incoming key is already a Salesforce field name (e.g., FirstName__c) — preserve it
+      sfData[clientFieldName] = value;
     }
   });
 

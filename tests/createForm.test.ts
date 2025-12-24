@@ -101,7 +101,8 @@ describe('createForm HTTP Function', () => {
           Email__c: 'john@example.com',
           RecordType: 'Registration',
         }),
-        'test-request-id-123'
+        'test-request-id-123',
+        testFormConfig
       );
 
       // Ensure we sent the application copy email to the applicant
@@ -181,7 +182,8 @@ describe('createForm HTTP Function', () => {
           Attachments: expect.any(Array),
           Notes: expect.any(Array),
         }),
-        'attach-request-id'
+        'attach-request-id',
+        testFormConfig
       );
     });
 
@@ -583,7 +585,8 @@ describe('createForm HTTP Function', () => {
       expect(response.status).toBe(201);
       expect(mockSalesforceService.createForm).toHaveBeenCalledWith(
         expect.objectContaining(allowedFields),
-        expect.any(String)
+        expect.any(String),
+        testFormConfig
       );
     });
   });
