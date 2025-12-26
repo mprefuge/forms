@@ -5,7 +5,7 @@
   //   window.FORMS_CONFIG = { apiEndpoint: 'https://your-app.azurewebsites.net/api/form' };
   // </script>
   const config = window.FORMS_CONFIG || {};
-  const ENDPOINT = config.apiEndpoint || "http://localhost:7071/api/form"; //"https://rif-hhh8e6e7cbc2hvdw.eastus-01.azurewebsites.net/api/form";
+  const ENDPOINT = config.apiEndpoint || "https://rif-hhh8e6e7cbc2hvdw.eastus-01.azurewebsites.net/api/form"; //"http://localhost:7071/api/form";
   const HOST_ID = "waiver-app";
 
   // Organization terminology

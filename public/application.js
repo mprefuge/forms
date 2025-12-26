@@ -5,7 +5,7 @@
   //   window.FORMS_CONFIG = { apiEndpoint: 'https://your-app.azurewebsites.net/api/form' };
   // </script>
   const config = window.FORMS_CONFIG || {};
-  const ENDPOINT = config.apiEndpoint || "http://localhost:7071/api/form"; //"https://rif-hhh8e6e7cbc2hvdw.eastus-01.azurewebsites.net/api/form";
+  const ENDPOINT = config.apiEndpoint || "https://rif-hhh8e6e7cbc2hvdw.eastus-01.azurewebsites.net/api/form"; //"http://localhost:7071/api/form";
   const HOST_ID = "volunteer-app";
   const STATEMENT_URL = config.statementUrl || "https://static1.squarespace.com/static/5af0bc3a96d45593d7d7e55b/t/675251913102604777fd712c/1733448082026/Refuge+International+Statement+Of+Faith-Rev.+9_25_23.pdf";
 
