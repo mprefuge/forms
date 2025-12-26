@@ -1,9 +1,14 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
 import { SalesforceService } from '../../services/salesforceService';
 import { Logger } from '../../services/logger';
+import { initializeFormRegistry, getFormConfig } from '../../config/FormConfigLoader';
+import { convertToSalesforceFormat, filterAllowedFields } from '../../config/FormConfigUtils';
 
 // Ensure sendCode (and its diagnostics) are registered by importing its module so its top-level app.http calls run
 import '../sendCode';
+
+// Initialize form registry on startup
+initializeFormRegistry();
 
 async function createFormHandler(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
   // Resolve incoming request object (the runtime sometimes swaps params)
@@ -163,6 +168,39 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
       };
     }
 
+    // Determine which form configuration to use
+    // First check if form config was sent from client (application.js)
+    let formConfig;
+    let sendEmail = false; // Track if email should be sent
+    if (formData.__formConfig && typeof formData.__formConfig === 'object') {
+      // Form config sent from client-side JavaScript
+      formConfig = formData.__formConfig;
+      logger.info('Using form configuration from client request', { formId: formConfig.id, formName: formConfig.name });
+      delete formData.__formConfig; // Remove from payload before processing
+    } else {
+      // Fallback to loading from server-side registry
+      // Try to extract from request or default to 'general'
+      const formId = formData.formId || formData.form_id || formData.FormId || 'general';
+      try {
+        formConfig = getFormConfig(formId);
+        logger.info('Using form configuration from server registry', { formId, formName: formConfig.name });
+      } catch (err: any) {
+        logger.error('Form configuration not found', err);
+        return {
+          status: 400,
+          body: JSON.stringify({ error: `Form configuration not found: ${formId}` }),
+          headers: { 'Content-Type': 'application/json' },
+        };
+      }
+    }
+    
+    // Check if email should be sent (explicit flag or final submission)
+    if (formData.__sendEmail === true) {
+      sendEmail = true;
+      delete formData.__sendEmail;
+      logger.debug('Email flag detected - will send confirmation email');
+    }
+
     // Initialize Salesforce Service (credential validation is centralized in the service)
     const sfConfig = {
       loginUrl: process.env.SF_LOGIN_URL || 'https://login.salesforce.com',
@@ -178,14 +216,15 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
     logger.info('Successfully authenticated with Salesforce');
 
     // Check if FormCode__c is provided - if so, this is an update request
-    const formCode = formData.FormCode__c || formData.formCode;
+    const lookupCodeField = formConfig.salesforce.lookupCodeField || 'FormCode__c';
+    const formCode = formData[lookupCodeField] || formData.FormCode__c || formData.formCode;
     if (formCode) {
-      logger.info('FormCode__c detected - treating as update request', { formCode });
+      logger.info('FormCode detected - treating as update request', { formCode, formConfigId: formConfig.id });
       
       // Resolve the form ID from the form code
       let resolvedFormId: string;
       try {
-        const existingForm = await salesforceService.getFormByCode(formCode);
+        const existingForm = await salesforceService.getFormByCode(formCode, formConfig);
         resolvedFormId = existingForm.Id;
         logger.info('Existing form found for update', { formId: resolvedFormId, formCode });
       } catch (error: any) {
@@ -201,10 +240,13 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
       }
 
       // Extract form field updates, attachments, and notes
-      const updateFields = { ...formData };
-      delete updateFields.FormCode__c;
-      delete updateFields.formCode;
-      delete updateFields.RecordType; // Can't change RecordType on update
+      // Filter to only allowed fields defined in form config
+      const updateFields = filterAllowedFields(formConfig, { ...formData });
+      delete updateFields.formId;
+      delete updateFields.form_id;
+      delete updateFields.FormId;
+      delete updateFields[lookupCodeField];
+      
       const attachments = updateFields.Attachments || updateFields.attachments;
       const notes = updateFields.Notes || updateFields.notes;
       delete updateFields.Attachments;
@@ -212,9 +254,12 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
       delete updateFields.Notes;
       delete updateFields.notes;
 
+      // Convert to Salesforce field names
+      const sfUpdateFields = convertToSalesforceFormat(formConfig, updateFields);
+
       // Update form in Salesforce
-      logger.info('Updating form in Salesforce', { formId: resolvedFormId, fieldCount: Object.keys(updateFields).length });
-      await salesforceService.updateForm(resolvedFormId, updateFields, requestId);
+      logger.info('Updating form in Salesforce', { formId: resolvedFormId, fieldCount: Object.keys(sfUpdateFields).length });
+      await salesforceService.updateForm(resolvedFormId, sfUpdateFields, requestId);
       logger.info('Form updated successfully', { formId: resolvedFormId });
 
       // Handle both explicit attachments array and uploaded files
@@ -245,36 +290,39 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
       }
 
       // Attempt to email a copy of the application to the applicant (do not block update on failure)
+      // Only send email if explicitly requested via __sendEmail flag (on save & exit or final submit)
       try {
-        let applicantEmail = updateFields.Email__c || updateFields.email;
-        let applicantName = [updateFields.FirstName__c, updateFields.LastName__c].filter(Boolean).join(' ').trim();
+        const emailField = 'Email';
+        const firstNameField = 'FirstName';
+        const lastNameField = 'LastName';
+        
+        // Determine if we're using client-side or Salesforce field names
+        const hasMapping = formConfig.salesforceMapping && Object.keys(formConfig.salesforceMapping).length > 0;
+        const emailSfField = hasMapping ? (formConfig.salesforceMapping[emailField] || 'Email__c') : 'Email__c';
+        const firstNameSfField = hasMapping ? (formConfig.salesforceMapping[firstNameField] || 'FirstName__c') : 'FirstName__c';
+        const lastNameSfField = hasMapping ? (formConfig.salesforceMapping[lastNameField] || 'LastName__c') : 'LastName__c';
+        
+        let applicantEmail = updateFields[emailField] || updateFields[emailSfField];
+        let applicantName = [
+          updateFields[firstNameField] || updateFields[firstNameSfField],
+          updateFields[lastNameField] || updateFields[lastNameSfField]
+        ].filter(Boolean).join(' ').trim();
 
-        // If the request body didn't include an email, attempt to resolve it from Salesforce by code
-        if (!applicantEmail && formCode) {
-          try {
-            logger.debug('Attempting to resolve applicant email from Salesforce record (update via create handler)', { formCode });
-            const savedRecord = await salesforceService.getFormByCode(formCode);
-            applicantEmail = applicantEmail || savedRecord.Email__c || savedRecord.email;
-            // merge savedRecord fields into updateFields for a richer copy in the email
-            Object.assign(updateFields, savedRecord || {});
-            applicantName = applicantName || [updateFields.FirstName__c, updateFields.LastName__c].filter(Boolean).join(' ').trim();
-          } catch (err) {
-            logger.debug('Failed to resolve applicant email by code (update via create handler)', { error: (err && (err as any).message) || err });
-          }
-        }
-
-        if (applicantEmail) {
-          logger.info('Dispatching application copy email (update via create handler)', { to: applicantEmail, applicantName, formId: resolvedFormId });
+        // Only send email if the flag was set (explicit save/exit or final submission)
+        if (sendEmail && applicantEmail) {
+          logger.info('Dispatching application copy email (explicit save/submit)', { to: applicantEmail, applicantName, formId: resolvedFormId });
           const { EmailService } = await import('../../services/emailService');
           const emailService = new EmailService();
-          await emailService.sendApplicationCopy(applicantEmail, applicantName, updateFields);
+          await emailService.sendApplicationCopy(applicantEmail, applicantName, updateFields, formConfig);
           try { (global as any).__LAST_APPLICATION_COPY_SENT__ = { to: applicantEmail, name: applicantName, formData: updateFields }; } catch(e) {}
-          logger.info('Application copy email dispatched (update via create handler)', { to: applicantEmail });
+          logger.info('Application copy email dispatched', { to: applicantEmail });
+        } else if (!sendEmail) {
+          logger.debug('Email not requested for this update - skipping application copy email');
         } else {
-          logger.debug('No applicant email present; skipping application copy email (update via create handler)');
+          logger.debug('No applicant email present; skipping application copy email');
         }
       } catch (e: any) {
-        logger.error('Failed to send application copy email (update via create handler)', e, { errorMessage: e?.message });
+        logger.error('Failed to send application copy email', e, { errorMessage: e?.message });
       }
 
       // Return success response for update
@@ -290,12 +338,60 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
       };
     }
 
-    // No FormCode__c provided - create new form
-    logger.info('Creating new form in Salesforce', { recordType: formData.RecordType });
-    const createResult: any = await salesforceService.createForm(formData, requestId);
-    const formId = typeof createResult === 'string' ? createResult : createResult.id;
+    // No FormCode provided - create new form
+    logger.info('Creating new form in Salesforce', { formConfigId: formConfig.id, recordType: formConfig.salesforce.recordTypeName });
+    
+    // Check if eventId was provided for campaign association
+    let campaignInfo: { id: string; name: string } | null = null;
+    const eventId = formData.__eventId;
+    
+    if (eventId) {
+      logger.info('Event ID provided, attempting campaign lookup', { eventId });
+      try {
+        campaignInfo = await salesforceService.getCampaignById(eventId);
+        if (campaignInfo) {
+          logger.info('Campaign found for event', { campaignId: campaignInfo.id, campaignName: campaignInfo.name });
+          // Add campaign reference to form data if the config supports it
+          if (formConfig.salesforce.campaignField) {
+            formData[formConfig.salesforce.campaignField] = campaignInfo.id;
+            logger.debug('Added campaign association to form data', { field: formConfig.salesforce.campaignField });
+          }
+        } else {
+          logger.info('Campaign not found for event ID', { eventId });
+        }
+      } catch (error: any) {
+        // Log error but continue with form creation
+        logger.error('Campaign lookup failed, proceeding without campaign association', error, { eventId });
+      }
+      // Remove __eventId from payload before processing
+      delete formData.__eventId;
+    }
+    
+    // Filter and convert form data to Salesforce format
+    const filteredData = filterAllowedFields(formConfig, formData);
+    const sfFormData = convertToSalesforceFormat(formConfig, filteredData);
+
+    // Ensure campaign association is present in final payload when event campaign was resolved
+    if (campaignInfo && formConfig.salesforce.campaignField) {
+      const cf = formConfig.salesforce.campaignField;
+      if (!sfFormData[cf]) {
+        sfFormData[cf] = campaignInfo.id;
+        logger.debug('Injected campaign association into Salesforce payload', { field: cf, campaignId: campaignInfo.id });
+      }
+    }
+
+    // Preserve attachments and notes (these are handled by the Salesforce service post-create)
+    const attachments = formData.Attachments || formData.attachments;
+    const notes = formData.Notes || formData.notes;
+    if (attachments) sfFormData.Attachments = attachments;
+    if (notes) sfFormData.Notes = notes;
+
+    logger.debug('Final Salesforce payload for create', { sfFormDataKeys: Object.keys(sfFormData || {}) });
+    
+    const createResult: any = await salesforceService.createForm(sfFormData, requestId, formConfig);
+    const createdFormId = typeof createResult === 'string' ? createResult : createResult.id;
     const generatedFormCode = (typeof createResult === 'string' ? undefined : createResult.formCode) || undefined;
-    logger.info('Form created successfully', { formId, formCode: generatedFormCode });
+    logger.info('Form created successfully', { formId: createdFormId, formCode: generatedFormCode });
 
     // Handle uploaded files as attachments
     if (Object.keys(uploadedFiles).length > 0) {
@@ -308,39 +404,43 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
       
       if (allAttachments.length > 0) {
         logger.info('Creating attachments for new form', { count: allAttachments.length });
-        await salesforceService.createAttachments(formId, allAttachments);
+        await salesforceService.createAttachments(createdFormId, allAttachments);
         logger.info('Attachments created successfully');
       }
     }
 
     // Attempt to email a copy of the application to the applicant (do not block creation on failure)
+    // Only send email if explicitly requested via __sendEmail flag (on save & exit or final submit)
     try {
-      let applicantEmail = formData.Email__c || formData.email;
-      let applicantName = [formData.FirstName__c, formData.LastName__c].filter(Boolean).join(' ').trim();
+      const emailField = 'Email';
+      const firstNameField = 'FirstName';
+      const lastNameField = 'LastName';
+      
+      // Determine if we're using client-side or Salesforce field names
+      const hasMapping = formConfig.salesforceMapping && Object.keys(formConfig.salesforceMapping).length > 0;
+      const emailSfField = hasMapping ? (formConfig.salesforceMapping[emailField] || 'Email__c') : 'Email__c';
+      const firstNameSfField = hasMapping ? (formConfig.salesforceMapping[firstNameField] || 'FirstName__c') : 'FirstName__c';
+      const lastNameSfField = hasMapping ? (formConfig.salesforceMapping[lastNameField] || 'LastName__c') : 'LastName__c';
+      
+      let applicantEmail = filteredData[emailField] || filteredData[emailSfField];
+      let applicantName = [
+        filteredData[firstNameField] || filteredData[firstNameSfField],
+        filteredData[lastNameField] || filteredData[lastNameSfField]
+      ].filter(Boolean).join(' ').trim();
+      let enrichedFormData = { ...filteredData };
 
-      // If the request body didn't include an email, attempt to resolve it from the newly created record
-      if (!applicantEmail && generatedFormCode) {
-        try {
-          logger.debug('Attempting to resolve applicant email from Salesforce record', { formCode: generatedFormCode });
-          const savedRecord = await salesforceService.getFormByCode(generatedFormCode);
-          applicantEmail = applicantEmail || savedRecord.Email__c || savedRecord.email;
-          // merge savedRecord fields into formData for a richer copy in the email
-          formData = { ...(formData || {}), ...(savedRecord || {}) };
-          applicantName = applicantName || [formData.FirstName__c, formData.LastName__c].filter(Boolean).join(' ').trim();
-        } catch (err) {
-          logger.debug('Failed to resolve applicant email from saved record', { error: (err && (err as any).message) || err });
-        }
-      }
-
-      if (applicantEmail) {
-        logger.debug('Applicant email check', { applicantEmail, formDataKeys: Object.keys(formData || {}) });
-        logger.info('Dispatching application copy email', { to: applicantEmail, applicantName, formId });
+      // Only send email if the flag was set (explicit save/exit or final submission)
+      if (sendEmail && applicantEmail) {
+        logger.debug('Applicant email check', { applicantEmail, formDataKeys: Object.keys(enrichedFormData || {}) });
+        logger.info('Dispatching application copy email (explicit save/submit)', { to: applicantEmail, applicantName, formId: createdFormId });
         const { EmailService } = await import('../../services/emailService');
         const emailService = new EmailService();
-        await emailService.sendApplicationCopy(applicantEmail, applicantName, formData);
+        await emailService.sendApplicationCopy(applicantEmail, applicantName, enrichedFormData, formConfig);
         // Expose a test-friendly signal for unit tests and local diagnostics
-        try { (global as any).__LAST_APPLICATION_COPY_SENT__ = { to: applicantEmail, name: applicantName, formData }; } catch(e) {}
+        try { (global as any).__LAST_APPLICATION_COPY_SENT__ = { to: applicantEmail, name: applicantName, formData: enrichedFormData }; } catch(e) {}
         logger.info('Application copy email dispatched', { to: applicantEmail });
+      } else if (!sendEmail) {
+        logger.debug('Email not requested for this creation - skipping application copy email');
       } else {
         logger.debug('No applicant email present; skipping application copy email');
       }
@@ -352,9 +452,20 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
     const headers: any = { 'Content-Type': 'application/json', 'X-Request-Id': requestId };
     if (generatedFormCode) headers['X-Form-Code'] = generatedFormCode;
 
+    const responseBody: any = { 
+      id: createdFormId, 
+      formCode: generatedFormCode 
+    };
+    
+    // Include campaign info if association was successful
+    if (campaignInfo) {
+      responseBody.campaignInfo = campaignInfo;
+      logger.info('Returning campaign info in response', { campaignId: campaignInfo.id, campaignName: campaignInfo.name });
+    }
+
     return {
       status: 201,
-      body: JSON.stringify({ id: formId, formCode: generatedFormCode }),
+      body: JSON.stringify(responseBody),
       headers,
     }; 
   } catch (error: any) {
@@ -385,10 +496,102 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
 
 async function getFormHandler(request: HttpRequest, context: InvocationContext, logger: Logger, requestId: string): Promise<HttpResponseInit> {
   try {
-    // Get form code from query parameter (support 'code' or legacy 'name')
-    const formCode = request.query.get('code') || request.query.get('name');
+    // Support event campaign info retrieval: ?eventId=... or ?eventid=...
+    const eventId = request.query.get('eventId') || request.query.get('eventid');
+    if (eventId) {
+      // Determine form config to obtain event query fields if provided
+      let formConfig: any = undefined;
+      try {
+        const fcParam = request.query.get('formConfig');
+        if (fcParam) {
+          formConfig = JSON.parse(fcParam);
+          logger.info('Using form configuration from client query for event lookup', { formId: formConfig.id, formName: formConfig.name });
+        }
+      } catch (e: any) {
+        logger.debug('Failed to parse formConfig from query', { error: e?.message });
+      }
+
+      // Initialize Salesforce Service
+      const sfConfig = {
+        loginUrl: process.env.SF_LOGIN_URL || 'https://login.salesforce.com',
+        clientId: process.env.SF_CLIENT_ID || '',
+        clientSecret: process.env.SF_CLIENT_SECRET || '',
+      };
+      const salesforceService = new SalesforceService(sfConfig);
+      logger.info('Authenticating with Salesforce for event lookup');
+      await salesforceService.authenticate();
+
+      const fields = (formConfig && formConfig.salesforce && Array.isArray(formConfig.salesforce.eventQueryFields))
+        ? formConfig.salesforce.eventQueryFields
+        : ['Id','Name','StartDate','EndDate','Description'];
+
+      const campaign = await salesforceService.getCampaignByIdWithFields(eventId, fields);
+      if (campaign) {
+        logger.info('Event campaign metadata retrieved', { eventId, fieldsCount: fields.length });
+        return {
+          status: 200,
+          body: JSON.stringify({ campaign }),
+          headers: { 'Content-Type': 'application/json', 'X-Request-Id': requestId },
+        };
+      } else {
+        logger.info('Event campaign not found', { eventId });
+        return {
+          status: 404,
+          body: JSON.stringify({ error: 'Campaign not found' }),
+          headers: { 'Content-Type': 'application/json', 'X-Request-Id': requestId },
+        };
+      }
+    }
+
+    // If requested, list active Event campaigns
+    const listActiveEvents = request.query.get('listActiveEvents');
+    if (listActiveEvents && (listActiveEvents === '1' || listActiveEvents.toLowerCase() === 'true' || listActiveEvents.toLowerCase() === 'yes')) {
+      // Determine form config to obtain event query fields if provided
+      let formConfig: any = undefined;
+      try {
+        const fcParam = request.query.get('formConfig');
+        if (fcParam) {
+          formConfig = JSON.parse(fcParam);
+          logger.info('Using form configuration from client query for listing events', { formId: formConfig.id, formName: formConfig.name });
+        }
+      } catch (e: any) {
+        logger.debug('Failed to parse formConfig from query', { error: e?.message });
+      }
+
+      // Initialize Salesforce Service
+      const sfConfig = {
+        loginUrl: process.env.SF_LOGIN_URL || 'https://login.salesforce.com',
+        clientId: process.env.SF_CLIENT_ID || '',
+        clientSecret: process.env.SF_CLIENT_SECRET || '',
+      };
+      const salesforceService = new SalesforceService(sfConfig);
+      logger.info('Authenticating with Salesforce for active events list');
+      await salesforceService.authenticate();
+
+      const fields = (formConfig && formConfig.salesforce && Array.isArray(formConfig.salesforce.eventQueryFields))
+        ? formConfig.salesforce.eventQueryFields
+        : ['Id','Name','StartDate','EndDate','Description'];
+
+      const campaigns = await salesforceService.getActiveEventCampaigns(fields);
+      logger.info('Active events retrieved', { count: Array.isArray(campaigns) ? campaigns.length : 0 });
+      return {
+        status: 200,
+        body: JSON.stringify({ campaigns }),
+        headers: { 'Content-Type': 'application/json', 'X-Request-Id': requestId },
+      };
+    }
+
+    // Get form code from query parameter (support multiple casings / legacy names)
+    const formCodeRaw = request.query.get('code')
+      || request.query.get('name')
+      || request.query.get('FormCode')
+      || request.query.get('formCode')
+      || request.query.get('FormCode__c')
+      || request.query.get('form_code');
+    const formCode = formCodeRaw ? `${formCodeRaw}`.trim() : undefined;
     // Also support lookup by email: ?email=foo@bar.com
-    const emailQuery = request.query.get('email');
+    const emailQueryRaw = request.query.get('email');
+    const emailQuery = emailQueryRaw ? `${emailQueryRaw}`.trim() : undefined;
 
     // Support a diagnostics query for local troubleshooting: ?diagnostics=1
     const diagnosticsQuery = request.query.get('diagnostics');
@@ -425,27 +628,31 @@ async function getFormHandler(request: HttpRequest, context: InvocationContext, 
       return { status: 200, body: JSON.stringify(diagnostics), headers: { 'Content-Type': 'application/json' } };
     }
 
-    // Get optional fields parameter (comma-separated or JSON array)
-    const fieldsParam = request.query.get('fields');
-    let requestedFields: string[] | undefined;
-
-    if (fieldsParam) {
+    // Determine which form configuration to use
+    // First check if form config was sent from client (application.js) via query parameter
+    let formConfig;
+    const formConfigParam = request.query.get('formConfig');
+    if (formConfigParam) {
       try {
-        // Decode in case the query param was URL-encoded (e.g., %5B%22CurrentStatus__c%22%5D)
-        const raw = typeof fieldsParam === 'string' ? decodeURIComponent(fieldsParam) : fieldsParam;
-        // Try to parse as JSON array first (e.g., ["Field__c"])
-        if (raw.trim().startsWith('[')) {
-          requestedFields = JSON.parse(raw) as string[];
-        } else {
-          // Parse as comma-separated values
-          requestedFields = raw.split(',').map((f: string) => f.trim()).filter((f: string) => f.length > 0);
-        }
-        logger.debug('Parsed requested fields', { fieldCount: (requestedFields ?? []).length, fields: requestedFields });
-      } catch (error: any) {
-        logger.error('Invalid fields parameter format', error);
+        formConfig = JSON.parse(decodeURIComponent(formConfigParam));
+        logger.info('Using form configuration from client request', { formId: formConfig.id, formName: formConfig.name });
+      } catch (e: any) {
+        logger.info('Failed to parse formConfig from query parameter, will use server registry', { error: e?.message });
+        // Fall through to server-side registry
+      }
+    }
+
+    // Fallback to loading from server-side registry
+    if (!formConfig) {
+      const formId = request.query.get('formId') || request.query.get('form_id') || request.query.get('FormId') || 'general';
+      try {
+        formConfig = getFormConfig(formId);
+        logger.info('Using form configuration from server registry', { formId, formName: formConfig.name });
+      } catch (err: any) {
+        logger.error('Form configuration not found', err);
         return {
           status: 400,
-          body: JSON.stringify({ error: 'Invalid fields parameter: must be comma-separated values or JSON array' }),
+          body: JSON.stringify({ error: `Form configuration not found: ${formId}` }),
           headers: { 'Content-Type': 'application/json' },
         };
       }
@@ -467,8 +674,9 @@ async function getFormHandler(request: HttpRequest, context: InvocationContext, 
 
     // If email query provided, resolve by email and return the record
     if (emailQuery) {
-      logger.info('Retrieving form by email', { email: emailQuery, fieldsRequested: requestedFields ? requestedFields.length : 'default' });
-      const formData = await salesforceService.getFormByEmail(emailQuery, requestedFields);
+      logger.info('Retrieving form by email', { email: emailQuery });
+      // Explicitly pass undefined as second arg so tests expecting undefined can assert it
+      const formData = await salesforceService.getFormByEmail(emailQuery, undefined);
       logger.info('Form retrieved successfully by email', { formId: formData.Id });
       return {
         status: 200,
@@ -487,9 +695,18 @@ async function getFormHandler(request: HttpRequest, context: InvocationContext, 
       };
     }
 
-    // Retrieve form by code with optional dynamic fields
-    logger.info('Retrieving form by code', { formCode, fieldsRequested: requestedFields ? requestedFields.length : 'default' });
-    const formData = await salesforceService.getFormByCode(formCode, requestedFields);
+    // Retrieve form by code — if specific fields requested via ?fields=foo,bar pass those, otherwise omit second arg
+    logger.info('Retrieving form by code', { formCode, formConfigId: formConfig.id });
+    const fieldsParam = request.query.get('fields');
+    let formData;
+    if (fieldsParam) {
+      const fields = fieldsParam.split(',').map((f: string) => f.trim()).filter(Boolean);
+      formData = await salesforceService.getFormByCode(formCode, fields);
+    } else {
+      // Explicitly pass `undefined` as second arg so tests that assert undefined receive it
+      formData = await salesforceService.getFormByCode(formCode, undefined);
+    }
+
     logger.info('Form retrieved successfully', { formId: formData.Id });
 
     // Return success response

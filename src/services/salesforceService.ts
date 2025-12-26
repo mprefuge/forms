@@ -1,5 +1,12 @@
 import { Connection } from 'jsforce';
 import axios from 'axios';
+import { FormConfig } from '../config/formConfigTypes';
+import { 
+  buildSoqlQuery, 
+  buildSoqlQueryByField, 
+  buildSoqlSelectClause,
+  getUpdateableFields 
+} from '../config/FormConfigUtils';
 
 export interface SalesforceServiceConfig {
   loginUrl: string;
@@ -58,8 +65,22 @@ export class SalesforceService {
     }
   }
 
-  async getRecordTypeId(recordTypeName: string): Promise<string> {
-    const query = `SELECT Id FROM RecordType WHERE SObjectType = 'Form__c' AND Name = '${recordTypeName}'`;
+  /**
+   * Get RecordType ID, supporting both legacy string lookup and FormConfig
+   */
+  async getRecordTypeId(recordTypeNameOrFormConfig: string | FormConfig): Promise<string> {
+    let recordTypeName: string;
+    let objectName = 'Form__c';
+
+    if (typeof recordTypeNameOrFormConfig === 'string') {
+      recordTypeName = recordTypeNameOrFormConfig;
+    } else {
+      // FormConfig provided
+      recordTypeName = recordTypeNameOrFormConfig.salesforce.recordTypeName;
+      objectName = recordTypeNameOrFormConfig.salesforce.objectName;
+    }
+
+    const query = `SELECT Id FROM RecordType WHERE SObjectType = '${objectName}' AND Name = '${recordTypeName}'`;
     const result: any = await this.connection.query(query);
 
     if (result.records && result.records.length > 0) {
@@ -86,8 +107,9 @@ export class SalesforceService {
   /**
    * Describe Form__c fields and return a simplified list with types
    */
-  async describeFormFields(): Promise<Array<{ name: string; label?: string; type?: string; length?: number; nillable?: boolean; createable?: boolean; referenceTo?: string[] }>> {
-    const desc: any = await this.connection.sobject('Form__c').describe();
+  async describeFormFields(formConfig?: FormConfig): Promise<Array<{ name: string; label?: string; type?: string; length?: number; nillable?: boolean; createable?: boolean; referenceTo?: string[] }>> {
+    const objectName = formConfig?.salesforce.objectName || 'Form__c';
+    const desc: any = await this.connection.sobject(objectName).describe();
     if (!desc || !desc.fields) return [];
 
     return desc.fields.map((f: any) => ({
@@ -103,14 +125,14 @@ export class SalesforceService {
   }
 
   /**
-   * Generate a unique 5-character lowercase alphanumeric identifier for the form code
+   * Generate a unique lowercase alphanumeric identifier for the form code
    */
-  private generateFormCodeGuid(): string {
+  private generateFormCodeGuid(length: number = 5): string {
     const crypto = require('crypto');
     const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-    const bytes = crypto.randomBytes(5);
+    const bytes = crypto.randomBytes(length);
     let out = '';
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < length; i++) {
       out += chars[bytes[i] % chars.length];
     }
 
@@ -121,10 +143,11 @@ export class SalesforceService {
    * Try generating a unique FormCode__c value by checking for existing records.
    * Retries up to `maxAttempts` times before failing.
    */
-  private async generateUniqueFormCode(maxAttempts = 10): Promise<string> {
+  private async generateUniqueFormCode(codeField?: string, length: number = 5, maxAttempts = 10): Promise<string> {
+    const lookupField = codeField || 'FormCode__c';
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      const code = this.generateFormCodeGuid();
-      const q = `SELECT Id FROM Form__c WHERE FormCode__c = '${code}'`;
+      const code = this.generateFormCodeGuid(length);
+      const q = `SELECT Id FROM Form__c WHERE ${lookupField} = '${code}'`;
       try {
         const res: any = await this.connection.query(q);
         if (!res.records || res.records.length === 0) return code;
@@ -213,110 +236,91 @@ export class SalesforceService {
     return this.encodePicklistToken(t);
   }
 
-  async createForm(formData: FormData, requestId: string): Promise<{ id: string; formCode: string }> {
-    const allowedFields = [
-      'AdditionalDocumentsNotes__c',
-      'AdditionalNotes__c',
-      'AffirmStatementOfFaith__c',
-      'Availability__c',
-      'BackgroundCheckDate__c',
-      'BackgroundCheckNotes__c',
-      'BackgroundCheckStatus__c',
-      'Birthdate__c',
-      'Church__c',
-      'ChurchServingDetails__c',
-      'City__c',
-      'Country__c',
-      'CountryOfOrigin__c',
-      'CreatedById',
-      'Email__c',
-      'EmergencyContactFirstName__c',
-      'EmergencyContactLastName__c',
-      'EmergencyContactPhone__c',
-      'EmergencyContactRelationship__c',
-      'FirstName__c',
-      'Gender__c',
-      'GospelDetails__c',
-      'HowHeard__c',
-      'LanguagesSpoken__c',
-      'LastModifiedById',
-      'LastName__c',
-      'MaritalStatus__c',
-      'MinistrySafeCompleted__c',
-      'MinistrySafeCompletionDate__c',
-      'MinistrySafeCertificate__c',
-      'OwnerId',
-      'PastoralReferenceNotes__c',
-      'PastoralReferenceStatus__c',
-      'PastorEmail__c',
-      'PastorFirstName__c',
-      'PastorLastName__c',
-      'PastorSalutation__c',
-      'Person__c',
-      'Phone__c',
-      'PlacementArea__c',
-      'PlacementNotes__c',
-      'PlacementStartDate__c',
-      'PrimaryLanguage__c',
-      'RecentMinistrySafe__c',
-      'RecordTypeId',
-      'Salutation__c',
-      'ServingAreaPrimaryInterest__c',
-      'ServingAreasInterest__c',
-      'Skills__c',
-      'State__c',
-      'Street__c',
-      'TestimonyDetails__c',
-      'WillPay__c',
-      'Zip__c',
-      'ItemsReceived__c',
-    ];
+  /**
+   * Create a form record. Requires FormConfig to specify which fields to write.
+   * All field specifications come from the form configuration.
+   */
+  async createForm(formData: FormData | { [key: string]: any }, requestId: string, formConfig?: FormConfig): Promise<{ id: string; formCode: string }> {
+    // Allow callers to omit a full FormConfig; fall back to sensible defaults when missing
+    const objectName = formConfig?.salesforce?.objectName || 'Form__c';
+    const recordTypeName = formConfig?.salesforce?.recordTypeName || 'General';
+    const allowedFields = formConfig?.salesforce?.allowedFields || [];
+    const codeLength = formConfig?.salesforce?.codeLength || 5;
+    const codeFieldName = formConfig?.salesforce?.lookupCodeField || 'FormCode__c';
 
     const recordTypeRecord: any = {
-      attributes: { type: 'Form__c' },
+      attributes: { type: objectName },
     };
 
-    // Handle RecordType mapping - default to 'General' when not provided
-    const recordTypeName = formData.RecordType ?? 'General';
-    const recordTypeId = await this.getRecordTypeId(recordTypeName);
+    // Resolve RecordType by name to ID
+    const recordTypeRecord_Name = formData.RecordType ?? recordTypeName;
+    const recordTypeId = await this.getRecordTypeId(recordTypeRecord_Name);
     recordTypeRecord.RecordTypeId = recordTypeId;
 
-    // Always generate a unique 5-character GUID for the form code (override any client-supplied FormCode__c)
-    recordTypeRecord.FormCode__c = await this.generateUniqueFormCode();
+    // Generate unique form code
+    recordTypeRecord[codeFieldName] = await this.generateUniqueFormCode(undefined, codeLength);
 
-    // Map allowed fields, but do NOT copy client-supplied Name or FormCode__c (we always generate the code)
-    // Coerce multipicklist values: accept arrays, '|' delimited strings, or ';' delimited strings; Salesforce expects semicolon-separated values for multipicklists.
-    const describedFields = await this.describeFormFields();
+    // Get field metadata from Salesforce schema
+    const describedFields = await this.describeFormFields(formConfig);
     const fieldMetaMap = new Map(describedFields.map(f => [f.name, f]));
 
-    for (const field of allowedFields) {
-      if (field === 'RecordTypeId' || field === 'Name' || field === 'FormCode__c') continue;
-      if (formData[field] !== undefined) {
-        let val: any = formData[field];
-        const meta: any = fieldMetaMap.get(field);
+    // Copy only allowed fields from input data.
+    // If a FormConfig is provided, use its allowedFields list; otherwise, accept any fields present in the incoming data that
+    // exist in the Salesforce schema (based on describe) so that legacy callers that don't provide a config still work.
+    if (formConfig) {
+      for (const field of allowedFields) {
+        if (field === 'RecordTypeId' || field === 'Name' || field === codeFieldName) continue;
+        if (formData[field] !== undefined) {
+          let val: any = formData[field];
+          const meta: any = fieldMetaMap.get(field);
+          
+          // Handle picklist/multipicklist values
+          if (meta && (meta.type || '').toLowerCase() === 'multipicklist') {
+            if (Array.isArray(val)) {
+              val = val.map((s: string) => this.resolvePicklistToken(String(s), meta.picklistValues)).join(';');
+            } else if (typeof val === 'string') {
+              if (val.includes('|')) {
+                val = val.split('|').map((s: string) => this.resolvePicklistToken(s.trim(), meta.picklistValues)).join(';');
+              } else {
+                val = String(val).split(';').map((s: string) => this.resolvePicklistToken(s.trim(), meta.picklistValues)).filter(Boolean).join(';');
+              }
+            }
+          } else if (meta && (((meta.type || '').toLowerCase() === 'picklist') || (meta.picklistValues || []).length > 0) && typeof val === 'string') {
+            val = this.resolvePicklistToken(val, meta.picklistValues);
+          }
+          recordTypeRecord[field] = val;
+        }
+      }
+    } else {
+      // No FormConfig provided: accept any fields present in formData that appear in the described fields
+      for (const key of Object.keys(formData)) {
+        if (key === 'RecordType' || key === 'RecordTypeId' || key === 'Name' || key === codeFieldName) continue;
+        if (!fieldMetaMap.has(key)) continue;
+
+        let val: any = (formData as any)[key];
+        const meta: any = fieldMetaMap.get(key);
+
+        // Handle picklist/multipicklist values (same logic as above)
         if (meta && (meta.type || '').toLowerCase() === 'multipicklist') {
           if (Array.isArray(val)) {
-            // normalize and resolve each part against allowed values
             val = val.map((s: string) => this.resolvePicklistToken(String(s), meta.picklistValues)).join(';');
           } else if (typeof val === 'string') {
-            // Accept '|' as legacy separator and normalize to ';'
             if (val.includes('|')) {
               val = val.split('|').map((s: string) => this.resolvePicklistToken(s.trim(), meta.picklistValues)).join(';');
             } else {
-              // single string value for multipicklist - split by ';' in case client already used it
               val = String(val).split(';').map((s: string) => this.resolvePicklistToken(s.trim(), meta.picklistValues)).filter(Boolean).join(';');
             }
           }
         } else if (meta && (((meta.type || '').toLowerCase() === 'picklist') || (meta.picklistValues || []).length > 0) && typeof val === 'string') {
-          // For single-select picklists, resolve token to canonical value when possible
           val = this.resolvePicklistToken(val, meta.picklistValues);
         }
-        recordTypeRecord[field] = val;
+
+        recordTypeRecord[key] = val;
       }
     }
 
     try {
-      const result = await this.connection.sobject('Form__c').create(recordTypeRecord);
+      const result = await this.connection.sobject(objectName).create(recordTypeRecord);
 
       if (result.success) {
         const formId = result.id;
@@ -333,12 +337,10 @@ export class SalesforceService {
             await this.createNotes(formId, notes);
           }
         } catch (err: any) {
-          // Log and rethrow with context
           throw new Error(`Failed post-create operations: ${err?.message || err}`);
         }
 
-        // Return both id and the generated form code used for the record
-        const codeUsed = recordTypeRecord.FormCode__c || (formData as any).FormCode__c || '';
+        const codeUsed = recordTypeRecord[codeFieldName] || '';
         return { id: formId, formCode: codeUsed };
       } else {
         throw new Error(`Failed to create form: ${result.errors?.join(', ') || 'Unknown error'}`);
@@ -440,38 +442,47 @@ export class SalesforceService {
   }
 
   /**
-   * Retrieve a form by its FormCode__c field (GUID)
-   * @param formCode The FormCode__c value to search for
-   * @param fields Optional array of field names to retrieve. If not provided, defaults to a standard set.
+   * Retrieve a form by its search field (usually FormCode__c)
+   * Uses fields and object from FormConfig
+   * @param formCode The value to search for
+   * @param fieldsOrFormConfig FormConfig object (required) or field array for legacy behavior
    */
-  async getFormByCode(formCode: string, fields?: string[]): Promise<any> {
-    // Default fields if none specified
-    const defaultFields = ['Id', 'FormCode__c', 'Name', 'FirstName__c', 'LastName__c', 'Email__c', 'Phone__c', 'CreatedDate'];
-    
-    // Use provided fields or fall back to defaults
-    let fieldsToQuery = fields && fields.length > 0 ? [...fields] : [...defaultFields];
-    
-    // Validate fields against Salesforce schema
-    const desc: any = await this.connection.sobject('Form__c').describe();
-    if (desc && desc.fields) {
-      const validFields = new Set(desc.fields.map((f: any) => f.name));
-      fieldsToQuery = fieldsToQuery.filter(f => validFields.has(f));
-      // If filtering removed all requested fields, or the only remaining field is the Id, fall back to defaults
-      if (fieldsToQuery.length === 0 || (fieldsToQuery.length === 1 && fieldsToQuery[0] === 'Id')) {
-        fieldsToQuery = [...defaultFields];
-      }
-    }
-    
-    // Ensure Id is always included if not already present
-    if (!fieldsToQuery.includes('Id')) {
-      fieldsToQuery.unshift('Id');
+  async getFormByCode(formCode: string, fieldsOrFormConfig?: string[] | FormConfig): Promise<any> {
+    let formConfig: FormConfig | undefined;
+    let customFields: string[] | undefined;
+
+    // Handle both old API (fields array) and new API (FormConfig object)
+    if (Array.isArray(fieldsOrFormConfig)) {
+      customFields = fieldsOrFormConfig;
+    } else if (fieldsOrFormConfig) {
+      formConfig = fieldsOrFormConfig;
     }
 
-    // Build SELECT clause
-    const selectClause = fieldsToQuery.join(', ');
-    const query = `SELECT ${selectClause} FROM Form__c WHERE FormCode__c = '${formCode}'`;
-    
+    if (!formConfig && !customFields) {
+      throw new Error('FormConfig or field array must be provided to getFormByCode');
+    }
+
     try {
+      let query: string;
+      
+      if (formConfig) {
+        // Use config-driven query builder - queries only the fields in config
+        query = buildSoqlQuery(formConfig, formCode);
+      } else {
+        // Legacy behavior: use custom fields
+        const defaultFields = ['Id', 'FormCode__c', 'Name', 'FirstName__c', 'LastName__c', 'Email__c', 'Phone__c', 'CreatedDate'];
+        const fieldsToQuery = customFields && customFields.length > 0 ? [...customFields] : [...defaultFields];
+        
+        // Ensure Id is always included
+        if (!fieldsToQuery.includes('Id')) {
+          fieldsToQuery.unshift('Id');
+        }
+        
+        const selectClause = fieldsToQuery.join(', ');
+        const safeCode = String(formCode).replace(/'/g, "\\'");
+        query = `SELECT ${selectClause} FROM Form__c WHERE FormCode__c = '${safeCode}'`;
+      }
+
       const result: any = await this.connection.query(query);
 
       if (result.records && result.records.length > 0) {
@@ -480,7 +491,6 @@ export class SalesforceService {
 
       throw new Error(`Form not found with code: ${formCode}`);
     } catch (error: any) {
-      // If it's a Salesforce field error, provide more context
       if (error.message && error.message.includes('INVALID_FIELD')) {
         throw new Error(`Invalid field in query: ${error.message}`);
       }
@@ -532,35 +542,29 @@ export class SalesforceService {
   }
 
   /**
-   * Retrieve a form by the applicant's email address. Returns the first matching record.
-   * @param email Applicant email to search on (matches Email__c)
-   * @param fields Optional array of field names to retrieve
+   * Retrieve a form by email address
+   * Uses email field specified in FormConfig (default: Email__c)
+   * @param email Email to search for
+   * @param formConfig FormConfig with email field and query fields specification
    */
-  async getFormByEmail(email: string, fields?: string[]): Promise<any> {
+  async getFormByEmail(email: string, formConfig?: FormConfig): Promise<any> {
     if (!email || typeof email !== 'string') throw new Error('Invalid email parameter');
 
-    // Default fields if none specified
-    const defaultFields = ['Id', 'FormCode__c', 'Name', 'FirstName__c', 'LastName__c', 'Email__c', 'Phone__c', 'CreatedDate'];
-    let fieldsToQuery = fields && fields.length > 0 ? [...fields] : [...defaultFields];
-
-    // Validate fields against Salesforce schema
-    const desc: any = await this.connection.sobject('Form__c').describe();
-    if (desc && desc.fields) {
-      const validFields = new Set(desc.fields.map((f: any) => f.name));
-      fieldsToQuery = fieldsToQuery.filter(f => validFields.has(f));
-      // If filtering removed all requested fields, or the only remaining field is the Id, fall back to defaults
-      if (fieldsToQuery.length === 0 || (fieldsToQuery.length === 1 && fieldsToQuery[0] === 'Id')) {
-        fieldsToQuery = [...defaultFields];
-      }
-    }
-
-    if (!fieldsToQuery.includes('Id')) fieldsToQuery.unshift('Id');
-
-    const selectClause = fieldsToQuery.join(', ');
-    const safeEmail = email.replace(/'/g, "\\'");
-    const query = `SELECT ${selectClause} FROM Form__c WHERE Email__c = '${safeEmail}' LIMIT 1`;
-
     try {
+      let query: string;
+
+      if (formConfig) {
+        // Use email field from config
+        const emailField = formConfig.salesforce.lookupEmailField || 'Email__c';
+        query = buildSoqlQueryByField(formConfig, emailField, email);
+      } else {
+        // Legacy behavior
+        const defaultFields = ['Id', 'FormCode__c', 'Name', 'FirstName__c', 'LastName__c', 'Email__c', 'Phone__c', 'CreatedDate'];
+        const selectClause = defaultFields.join(', ');
+        const safeEmail = String(email).replace(/'/g, "\\'");
+        query = `SELECT ${selectClause} FROM Form__c WHERE Email__c = '${safeEmail}' LIMIT 1`;
+      }
+
       const result: any = await this.connection.query(query);
       if (result.records && result.records.length > 0) {
         return result.records[0];
@@ -575,33 +579,46 @@ export class SalesforceService {
   }
 
   /**
-   * Update an existing Form__c record
-   * Dynamically determines which fields are updateable from Salesforce schema
+   * Update an existing form record
+   * Uses fields specified in FormConfig.salesforce.updateFields (or allowedFields as fallback)
    */
-  async updateForm(formId: string, formData: FormData, requestId: string): Promise<void> {
-    // Get the describe information to determine updateable fields
-    const desc: any = await this.connection.sobject('Form__c').describe();
-    if (!desc || !desc.fields) {
-      throw new Error('Unable to describe Form__c object');
-    }
-
-    // Build list of updateable fields (exclude system fields and non-updateable fields)
-    const updateableFields = desc.fields
-      .filter((f: any) => f.updateable && !f.calculated && f.name !== 'Id')
-      .map((f: any) => f.name);
-
+  async updateForm(formId: string, formData: FormData, requestId: string, formConfig?: FormConfig): Promise<void> {
     const updateRecord: any = {
       Id: formId,
     };
 
-    // Build a lookup of field metadata to support special handling (e.g., multipicklists)
-    const fieldMetaMap = new Map((desc.fields || []).map((f: any) => [f.name, f]));
+    // Determine which fields can be updated
+    let updateableFieldsList: string[];
+    let fieldMetaMap: Map<string, any> = new Map();
 
-    // Map provided fields that are updateable
-    for (const [key, value] of Object.entries(formData)) {
-      if (updateableFields.includes(key) && value !== undefined) {
-        let val: any = value;
-        const meta: any = fieldMetaMap.get(key);
+    if (formConfig) {
+      // Use config-specified updateable fields
+      updateableFieldsList = getUpdateableFields(formConfig);
+      
+      // Get metadata for picklist handling
+      const describedFields = await this.describeFormFields(formConfig);
+      fieldMetaMap = new Map(describedFields.map(f => [f.name, f]));
+    } else {
+      // Legacy: get updateable fields from Salesforce schema
+      const desc: any = await this.connection.sobject('Form__c').describe();
+      if (!desc || !desc.fields) {
+        throw new Error('Unable to describe Form__c object');
+      }
+
+      updateableFieldsList = desc.fields
+        .filter((f: any) => f.updateable && !f.calculated && f.name !== 'Id')
+        .map((f: any) => f.name);
+
+      fieldMetaMap = new Map((desc.fields || []).map((f: any) => [f.name, f]));
+    }
+
+    // Copy only updateable fields
+    for (const field of updateableFieldsList) {
+      if (formData[field] !== undefined) {
+        let val: any = formData[field];
+        const meta: any = fieldMetaMap.get(field);
+        
+        // Handle picklist/multipicklist values
         if (meta && (meta.type || '').toLowerCase() === 'multipicklist') {
           if (Array.isArray(val)) {
             val = val.map((s: string) => this.resolvePicklistToken(String(s), meta.picklistValues)).join(';');
@@ -615,7 +632,7 @@ export class SalesforceService {
         } else if (meta && (((meta.type || '').toLowerCase() === 'picklist') || (meta.picklistValues || []).length > 0) && typeof val === 'string') {
           val = this.resolvePicklistToken(val, meta.picklistValues);
         }
-        updateRecord[key] = val;
+        updateRecord[field] = val;
       }
     }
 
@@ -625,7 +642,8 @@ export class SalesforceService {
     }
 
     try {
-      const result: any = await this.connection.sobject('Form__c').update(updateRecord);
+      const objectName = formConfig?.salesforce.objectName || 'Form__c';
+      const result: any = await this.connection.sobject(objectName).update(updateRecord);
 
       if (!result.success) {
         throw new Error(`Failed to update form: ${result.errors?.join(', ') || 'Unknown error'}`);
@@ -634,6 +652,78 @@ export class SalesforceService {
       throw new Error(
         `Salesforce error: ${error.message || 'Unknown error'} (Request ID: ${requestId})`
       );
+    }
+  }
+
+  /**
+   * Look up a Campaign by ID and return its information
+   * Returns null if not found or on error (graceful degradation)
+   */
+  async getCampaignById(campaignId: string): Promise<{ id: string; name: string } | null> {
+    try {
+      if (!campaignId || typeof campaignId !== 'string') {
+        return null;
+      }
+
+      const query = `SELECT Id, Name FROM Campaign WHERE Id = '${campaignId}' LIMIT 1`;
+      const result: any = await this.connection.query(query);
+
+      if (result.records && result.records.length > 0) {
+        return {
+          id: result.records[0].Id,
+          name: result.records[0].Name,
+        };
+      }
+
+      return null;
+    } catch (error: any) {
+      // Log error but don't throw - allow form creation to proceed
+      console.error(`Campaign lookup failed for ID ${campaignId}:`, error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Look up a Campaign by ID and return specified fields.
+   * Returns null if not found or on error (graceful degradation)
+   */
+  async getCampaignByIdWithFields(campaignId: string, fields: string[] = ['Id','Name','StartDate','EndDate','Description']): Promise<Record<string, any> | null> {
+    try {
+      if (!campaignId || typeof campaignId !== 'string') {
+        return null;
+      }
+
+      // Sanitize and build select clause
+      const safeFields = (fields || []).filter(f => typeof f === 'string' && f.trim().length > 0);
+      const select = safeFields.length > 0 ? safeFields.join(', ') : 'Id, Name';
+      const query = `SELECT ${select} FROM Campaign WHERE Id = '${campaignId}' LIMIT 1`;
+      const result: any = await this.connection.query(query);
+
+      if (result.records && result.records.length > 0) {
+        return result.records[0];
+      }
+
+      return null;
+    } catch (error: any) {
+      console.error(`Campaign lookup (fields) failed for ID ${campaignId}:`, error.message);
+      return null;
+    }
+  }
+
+  /**
+   * List active Campaigns with RecordType.Name = 'Event'.
+   * Returns an array of raw records with requested fields.
+   */
+  async getActiveEventCampaigns(fields: string[] = ['Id','Name','StartDate','EndDate','Description']): Promise<Array<Record<string, any>>> {
+    try {
+      const safeFields = (fields || []).filter(f => typeof f === 'string' && f.trim().length > 0);
+      const select = safeFields.length > 0 ? safeFields.join(', ') : 'Id, Name';
+      const query = `SELECT ${select} FROM Campaign WHERE RecordType.Name = 'Event' AND IsActive = true ORDER BY StartDate DESC NULLS LAST, Name ASC`;
+      const result: any = await this.connection.query(query);
+      return (result.records || []) as Array<Record<string, any>>;
+    } catch (error: any) {
+      console.error(`Active Event campaigns query failed:`, error?.message || error);
+      return [];
     }
   }
 }

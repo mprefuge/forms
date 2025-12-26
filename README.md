@@ -1,108 +1,271 @@
-# Azure Functions Form App
+# Azure Functions Form Application
 
-A TypeScript-based Azure Functions application for managing Salesforce forms using Client Credentials OAuth flow.
+A production-ready TypeScript Azure Functions application for managing Salesforce forms with integrated email verification and multi-phase workflow support.
 
-## Requirements
+## Features
+
+- **Multi-Form Support**: Volunteer applications, parental waivers, and event registration
+- **Email Verification**: Azure Communication Services integration for secure code verification
+- **Salesforce Integration**: Direct integration with Salesforce Form__c custom object
+- **Multi-Phase Workflows**: Support for multi-step application processes
+- **Attachment Support**: File upload with Salesforce ContentVersion integration
+- **Production Ready**: Secure configuration management and comprehensive error handling
+
+## Available Forms
+
+- **Volunteer Application** ([public/application.js](public/application.js)) - Multi-phase volunteer recruitment with pastoral references
+- **Parental Waiver** ([public/waiver.js](public/waiver.js)) - Youth program consent and liability waiver
+- **Event Registration** ([public/event.js](public/event.js)) - Event registration with optional Salesforce campaign linking
+
+## Prerequisites
 
 - Node.js >= 18.0.0
 - Azure Functions v4
-- TypeScript 5.0+
+- Azure subscription (for deployment)
+- Salesforce org with Connected App configured
+- Azure Communication Services resource (for email)
 
-## Setup
+## Local Development Setup
 
-### 1. Install Dependencies
+### 1. Clone and Install
 
 ```bash
+git clone <repository-url>
+cd forms
 npm install
 ```
 
 ### 2. Configure Environment Variables
 
-Create or update `.env.local` or `local.settings.json` with your Salesforce Connected App credentials and any email provider configuration you plan to use (Azure Communication Services or SMTP):
-
-```
-FUNCTIONS_WORKER_RUNTIME=node
-WEBSITE_NODE_DEFAULT_VERSION=18.x
-SF_LOGIN_URL=https://login.salesforce.com
-SF_CLIENT_ID=your_connected_app_consumer_key
-SF_CLIENT_SECRET=your_connected_app_consumer_secret
-# Optional: Azure Communication Services (preferred for email)
-AZURE_COMMUNICATION_CONNECTION_STRING=endpoint=https://<your-resource>.communication.azure.com/;accesskey=...
-# Optional alias supported by the code
-AZURE_EMAIL_CONNECTION_STRING=endpoint=https://<your-resource>.communication.azure.com/;accesskey=...
-# The email address that will appear in the From field (must be a verified ACS sender)
-EMAIL_FROM=no-reply@yourdomain.com
-# Optional SMTP fallback (if not using ACS)
-SMTP_HOST=smtp.example.com
-SMTP_PORT=587
-SMTP_USER=smtp-user
-SMTP_PASS=smtp-pass
-```
-
-**Note:** Use Client Credentials flow for Salesforce (not JWT). Obtain credentials from your Salesforce Connected App settings. For detailed instructions on setting up **Azure Communication Services (Email)**, see `docs/azure-communication-setup.md`.
-
-### 3. Build
+Create a `local.settings.json` file for local development:
 
 ```bash
+cp .env.example local.settings.json
+```
+
+Edit `local.settings.json` with your actual credentials:
+
+```json
+{
+  "IsEncrypted": false,
+  "Values": {
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "WEBSITE_NODE_DEFAULT_VERSION": "18.x",
+    "SF_LOGIN_URL": "https://login.salesforce.com",
+    "SF_CLIENT_ID": "your_salesforce_connected_app_client_id",
+    "SF_CLIENT_SECRET": "your_salesforce_connected_app_client_secret",
+    "AZURE_COMMUNICATION_CONNECTION_STRING": "endpoint=https://your-resource.communication.azure.com/;accesskey=your_key",
+    "EMAIL_FROM": "noreply@yourdomain.com"
+  },
+  "Host": {
+    "CORS": "*",
+    "CORSCredentials": false
+  }
+}
+```
+
+**Important**: Never commit `local.settings.json` to version control. It's already in `.gitignore`.
+
+### 3. Build and Run
+
+```bash
+# Build TypeScript
 npm run build
-```
 
-### 4. Run Locally
-
-```bash
+# Start local Azure Functions
 npm start
 ```
 
-The function will be available at: `http://localhost:7071/api/form`
+The API will be available at `http://localhost:7071/api/form`
 
-## Running Tests
+### 4. Test Locally
 
-```bash
-npm test
-npm run test:watch
+Open the test pages in your browser:
+- Volunteer Application: `index.html`
+- Parental Waiver: `public/waiver.html`
+- Event Registration: `public/event.html`
+
+## Environment Variables Reference
+
+### Required Variables
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `SF_LOGIN_URL` | Salesforce instance URL | `https://login.salesforce.com` or `https://test.salesforce.com` |
+| `SF_CLIENT_ID` | Salesforce Connected App Consumer Key | `3MVG9kBt168mda_...` |
+| `SF_CLIENT_SECRET` | Salesforce Connected App Consumer Secret | `16C092610...` |
+| `AZURE_COMMUNICATION_CONNECTION_STRING` | Azure Communication Services connection string | `endpoint=https://...;accesskey=...` |
+| `EMAIL_FROM` | Verified sender email address | `noreply@yourdomain.com` |
+
+### Salesforce Setup
+
+1. **Create a Connected App** in Salesforce:
+   - Setup → App Manager → New Connected App
+   - Enable OAuth Settings
+   - Enable "Client Credentials Flow"
+   - Add required OAuth scopes: `api`, `refresh_token`
+   - Note the Consumer Key (Client ID) and Consumer Secret
+
+2. **Configure API User**:
+   - Create a dedicated API integration user
+   - Assign appropriate permissions to access Form__c object
+   - Link the user to the Connected App
+
+3. **Custom Object Requirements**:
+   - Your Salesforce org must have a custom object named `Form__c`
+   - Required fields: `FormCode__c` (unique identifier), record types for different form types
+   - The application dynamically queries available fields
+
+### Azure Communication Services Setup
+
+1. **Create ACS Resource**:
+   - Azure Portal → Create Resource → Communication Services
+   - Choose a resource name and region
+
+2. **Configure Email**:
+   - In the ACS resource, go to Email → Domains
+   - Add and verify your domain OR use the provided Azure domain
+   - Add verified sender addresses
+
+3. **Get Connection String**:
+   - Navigate to Keys in your ACS resource
+   - Copy the connection string
+   - Set as `AZURE_COMMUNICATION_CONNECTION_STRING`
+
+## Production Deployment
+
+### Option 1: GitHub Actions (Recommended)
+
+The repository includes a GitHub Actions workflow for automated deployment.
+
+1. **Configure GitHub Secrets**:
+
+Go to your repository → Settings → Secrets and variables → Actions
+
+Add the following secrets:
+- `AZUREAPPSERVICE_CLIENTID_*` - Azure Service Principal Client ID
+- `AZUREAPPSERVICE_TENANTID_*` - Azure Tenant ID  
+- `AZUREAPPSERVICE_SUBSCRIPTIONID_*` - Azure Subscription ID
+
+2. **Configure Azure App Settings**:
+
+After deployment, configure environment variables in Azure Portal:
+- Navigate to your Function App → Configuration → Application settings
+- Add all required environment variables (see Environment Variables Reference above)
+
+3. **Update Frontend Configuration**:
+
+Edit the `window.APP_CONFIG` in your HTML files:
+```javascript
+window.APP_CONFIG = {
+  apiEndpoint: 'https://your-app.azurewebsites.net/api/form',
+  statementUrl: 'https://your-cdn.com/statement.pdf',
+  orgName: 'Your Organization'
+};
 ```
 
-> **Note:** Some unit tests rely on Salesforce credentials being present. The test suite sets test credentials for `updateForm` tests automatically and some tests set credentials inline; you can also export `SF_CLIENT_ID` and `SF_CLIENT_SECRET` in your environment before running the tests if you prefer.
+4. **Deploy**:
+- Push to your main branch or trigger workflow manually
+- GitHub Actions will build and deploy automatically
 
-## API Endpoints
+### Option 2: Azure CLI
 
-### Create Form
+```bash
+# Build the application
+npm run build
 
-**Endpoint:** `POST /api/form`
+# Login to Azure
+az login
 
-**Request Headers:**
-- `X-Request-Id` (optional): Custom request ID for tracing. If not provided, one will be generated.
-- `Content-Type`: `application/json`
+# Deploy to Function App
+func azure functionapp publish <your-function-app-name>
+```
 
-**Request Body:**
+**Important**: Do NOT use `--publish-local-settings` flag in production to avoid exposing secrets.
 
+### Option 3: VS Code Azure Extension
+
+1. Install "Azure Functions" extension in VS Code
+2. Sign in to Azure
+3. Right-click on Function App → Deploy to Function App
+4. Configure application settings in Azure Portal after deployment
+
+## Frontend Configuration
+
+### Default Configuration
+
+The forms work out of the box with sensible defaults for local development:
+- `apiEndpoint`: `http://localhost:7071/api/form`
+- `statementUrl`: Empty (can be set per form if needed)
+- `orgName`: `Refuge International`
+
+### Production Configuration
+
+For production, add a single configuration block **before** loading your form script:
+
+```html
+<!-- Option 1: Simple one-line configuration -->
+<script>window.FORMS_CONFIG = { apiEndpoint: 'https://your-app.azurewebsites.net/api/form' };</script>
+<script src="./application.js"></script>
+
+<!-- Option 2: With all options -->
+<script>
+  window.FORMS_CONFIG = {
+    apiEndpoint: 'https://your-app.azurewebsites.net/api/form',
+    statementUrl: 'https://your-cdn.com/statement.pdf'  // Optional, for volunteer form
+  };
+</script>
+<script src="./application.js"></script>
+```
+
+That's it! The configuration applies to all forms. Just use the appropriate script filename:
+- `application.js` - Volunteer Application
+- `waiver.js` - Parental Waiver
+- `event.js` - Event Registration
+
+### Example: Complete HTML Setup
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Volunteer Application</title>
+  <link rel="stylesheet" href="./public/application.css">
+</head>
+<body>
+  <div id="volunteer-app"></div>
+  
+  <!-- Single configuration block for production -->
+  <script>
+    window.FORMS_CONFIG = {
+      apiEndpoint: 'https://your-app.azurewebsites.net/api/form'
+    };
+  </script>
+  <script src="./public/application.js"></script>
+</body>
+</html>
+```
+
+For local development, you don't even need the configuration block—just load the script and it uses localhost defaults.
+
+## API Reference
+
+### POST /api/form
+
+Create a new form submission.
+
+**Request Body**:
 ```json
 {
   "FirstName__c": "John",
   "LastName__c": "Doe",
   "Email__c": "john@example.com",
   "Phone__c": "555-1234",
-  "RecordType": "Registration",
-  "Attachments": [
-    {
-      "fileName": "resume.pdf",
-      "contentType": "application/pdf",
-      "base64": "base64encodedcontent"
-    }
-  ],
-  "Notes": [
-    {
-      "Title": "Application Note",
-      "Body": "This applicant was referred by..."
-    }
-  ]
+  "RecordType": "Volunteer Application"
 }
 ```
 
-**Note:** The form accepts any updateable field from the Salesforce `Form__c` object. The API dynamically queries Salesforce to determine which fields are updateable, so you're not limited to a hardcoded list.
-
-**Success Response (201 Created):**
-
+**Response** (201):
 ```json
 {
   "id": "a01xx000003DHzAAM",
@@ -110,160 +273,134 @@ npm run test:watch
 }
 ```
 
-### Get Form
+### GET /api/form?code={formCode}
 
-**Endpoint:** `GET /api/form?code={formCode}`
+Retrieve form by code.
 
-**Query Parameters:**
-- `code`: The 5-character form code (e.g., "abc12")
-
-**Success Response (200 OK):**
-
+**Response** (200):
 ```json
 {
   "Id": "a01xx000003DHzAAM",
   "FormCode__c": "abc12",
   "FirstName__c": "John",
-  "LastName__c": "Doe",
-  "Email__c": "john@example.com",
-  "Phone__c": "555-1234",
-  "CreatedDate": "2025-12-20T10:30:00.000Z"
+  "Email__c": "john@example.com"
 }
 ```
 
-### Update Form
+### POST /api/sendCode
 
-**Endpoint:** `POST /api/form/{id}` or `POST /api/form`
+Send verification code to email.
 
-**Route Parameters:**
-- `id`: Form ID or form code (optional if provided in body)
+**Request Body**:
+```json
+{
+  "email": "user@example.com",
+  "formCode": "abc12"
+}
+```
 
-**Request Body:**
+### POST /api/form (Update)
 
+Update existing form.
+
+**Request Body**:
 ```json
 {
   "formId": "a01xx000003DHzAAM",
-  "FirstName__c": "Jane",
-  "Email__c": "jane@example.com",
-  "Attachments": [
-    {
-      "fileName": "updated_resume.pdf",
-      "contentType": "application/pdf",
-      "base64": "base64encodedcontent"
-    }
-  ],
-  "Notes": [
-    {
-      "Title": "Follow-up Note",
-      "Body": "Candidate accepted position"
-    }
-  ]
-}
-```
-
-**Alternative:** You can also use `formCode` instead of `formId`:
-
-```json
-{
-  "formCode": "abc12",
   "FirstName__c": "Jane"
 }
 ```
 
-**Note:** Like the create endpoint, this accepts any updateable field from the Salesforce `Form__c` object. The API dynamically determines which fields can be updated.
+## Testing
 
-**Success Response (200 OK):**
+```bash
+# Run all tests
+npm test
 
-```json
-{
-  "id": "a01xx000003DHzAAM",
-  "message": "Form updated successfully",
-  "attachmentsCreated": 1,
-  "notesCreated": 1
-}
+# Watch mode
+npm run test:watch
+
+# With coverage
+npm test -- --coverage
 ```
 
-**Error Responses:**
+## Security Best Practices
 
-- `400 Bad Request`: Invalid JSON, invalid fields, or missing required parameters
-- `404 Not Found`: Form not found with provided code or ID
-- `405 Method Not Allowed`: Invalid HTTP method
-- `500 Internal Server Error`: Salesforce authentication or connection error
+1. **Never commit secrets**:
+   - `local.settings.json` is in `.gitignore`
+   - Use Azure Key Vault for production secrets
+   - Rotate credentials regularly
 
-## Logging
+2. **Use Managed Identity** (when possible):
+   - Enable Managed Identity on Function App
+   - Grant access to Azure resources without storing credentials
 
-All requests are logged with:
-- Timestamp
-- Log level (INFO, ERROR, DEBUG)
-- Request ID
-- Invocation ID
-- Sensitive data is masked
+3. **Secure CORS**:
+   - Configure specific allowed origins in production
+   - Avoid using `"*"` for CORS in production
 
-Example log entry:
-```json
-{
-  "timestamp": "2025-12-20T10:30:00.000Z",
-  "level": "INFO",
-  "requestId": "req-123-abc",
-  "invocationId": "inv-456-def",
-  "message": "Form created successfully",
-  "context": {
-    "formId": "a01xx000003DHzAAM"
-  }
-}
-```
+4. **Monitor and Log**:
+   - Enable Application Insights
+   - Review logs regularly for suspicious activity
+   - Set up alerts for errors
 
 ## Project Structure
 
 ```
 ├── src/
 │   ├── functions/
-│   │   ├── createForm/
-│   │   │   ├── index.ts           (HTTP trigger for create/get)
-│   │   │   └── function.json      (Function binding configuration)
-│   │   └── updateForm/
-│   │       ├── index.ts           (HTTP trigger for update)
-│   │       └── function.json      (Function binding configuration)
-│   └── services/
-│       ├── salesforceService.ts   (Salesforce API integration)
-│       └── logger.ts              (Logging utility)
-├── tests/
-│   ├── createForm.test.ts         (Unit tests for create/get)
-│   ├── updateForm.test.ts         (Unit tests for update)
-│   └── salesforceService.test.ts  (Service layer tests)
-├── host.json                      (Azure Functions host config)
-├── package.json                   (Dependencies and scripts)
-├── tsconfig.json                  (TypeScript configuration)
-└── jest.config.js                 (Jest configuration)
+│   │   ├── createForm/        # Create and retrieve forms
+│   │   ├── sendCode/           # Email verification
+│   │   ├── sendCodeDiagnostics/ # Email diagnostics
+│   │   └── updateForm/         # Update existing forms
+│   ├── services/
+│   │   ├── emailService.ts     # Azure Communication Services
+│   │   ├── salesforceService.ts # Salesforce integration
+│   │   └── logger.ts           # Logging utility
+│   └── config/
+│       └── FormConfigLoader.ts # Form configuration
+├── public/
+│   ├── application.js          # Volunteer application form
+│   ├── waiver.js              # Parental waiver form
+│   ├── event.js               # Event registration form
+│   └── *.html                 # Form pages
+├── tests/                      # Unit tests
+├── .env.example               # Environment template
+├── host.json                  # Azure Functions configuration
+└── package.json
 ```
 
-## Development
+## Troubleshooting
 
-- **TypeScript Compilation:** `npm run build`
-- **Watch Mode:** Use VS Code or set up a file watcher
-- **Local Debugging:** `npm start` and attach debugger to Node process
+### Common Issues
 
-## Deployment to Azure
+**Issue**: "Unable to authenticate with Salesforce"
+- Verify `SF_CLIENT_ID` and `SF_CLIENT_SECRET` are correct
+- Check that Client Credentials Flow is enabled in Salesforce Connected App
+- Verify API user has necessary permissions
 
-```bash
-npm run build
-# The build step copies non-TS assets (function.json, host.json) into `dist/`
-# You can publish the contents of `dist/` using the Azure Functions CLI or CI/CD
-func azure functionapp publish <your-function-app-name> --publish-local-settings
-```
+**Issue**: "Email not sending"
+- Verify `EMAIL_FROM` is a verified sender in Azure Communication Services
+- Check `AZURE_COMMUNICATION_CONNECTION_STRING` is correct
+- Review Azure Communication Services logs in Azure Portal
 
-**Important:** Do not commit production secrets to the repository.
-- `local.settings.json` is intended for local development only and **must not** be committed. This repo ignores `local.settings.json` by default. 
-- Store production secrets in **Azure Function App Settings** or **Azure Key Vault** and reference them from the Function App (use Managed Identity for Key Vault access).
+**Issue**: "CORS errors in browser"
+- Update CORS settings in `host.json` or Azure Portal
+- Ensure frontend is using correct API endpoint
 
-### CI/CD
-A GitHub Actions workflow is included (`.github/workflows/ci.yml`) which:
-- Runs tests and builds on push/PR to `main`
-- Archives the build artifact (`dist/`)
-- Optionally deploys to Azure when `AZURE_FUNCTIONAPP_PUBLISH_PROFILE` and `AZURE_FUNCTIONAPP_NAME` are set in repository secrets.
+**Issue**: "Form not found"
+- Verify `FormCode__c` exists in Salesforce
+- Check that form code is being passed correctly
+- Review Salesforce permissions for API user
 
-To enable automatic deployment add the following GitHub repository secrets:
-- `AZURE_FUNCTIONAPP_NAME` — the name of your Function App
-- `AZURE_FUNCTIONAPP_PUBLISH_PROFILE` — the publish profile content (copy from the Azure portal)
+## Support
 
-For higher security, prefer **Key Vault** references instead of storing secrets directly in Function App settings.
+For issues and questions:
+1. Check troubleshooting section above
+2. Review Azure Function logs
+3. Check Salesforce API logs
+4. Review Azure Communication Services message status
+
+## License
+
+[Your License Here]

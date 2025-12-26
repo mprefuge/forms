@@ -7,7 +7,6 @@ package-lock.json
 
 # TypeScript
 dist/
-*.js
 !scripts/*.js
 !jest.config.js
 *.js.map
@@ -20,10 +19,11 @@ extensions.csproj
 bin/
 obj/
 
-# Environment variables
+# Environment variables - NEVER commit these files
 .env
-.env.local
-.env.*.local
+.env.*
+local.settings.json
+*.env
 
 # IDE
 .vscode/
@@ -42,3 +42,8 @@ coverage/
 
 # Build artifacts
 build/
+
+# Sensitive configuration
+config.production.js
+*secrets*
+*credentials*

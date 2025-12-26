@@ -133,17 +133,17 @@ async function updateFormHandler(request: HttpRequest, context: InvocationContex
 
     // Attempt to email a copy of the application to the applicant (do not block update on failure)
     try {
-      let applicantEmail = formFields.Email__c || formFields.email;
-      let applicantName = [formFields.FirstName__c, formFields.LastName__c].filter(Boolean).join(' ').trim();
+      let applicantEmail = formFields?.Email__c || formFields?.email;
+      let applicantName = [formFields?.FirstName__c, formFields?.LastName__c].filter(Boolean).join(' ').trim();
 
       // If the request body didn't include an email, attempt to resolve it from Salesforce by code or id
       if (!applicantEmail && formCode) {
         try {
           logger.debug('Attempting to resolve applicant email from Salesforce record (by code)', { formCode });
           const savedRecord = await salesforceService.getFormByCode(formCode);
-          applicantEmail = applicantEmail || savedRecord.Email__c || savedRecord.email;
+          applicantEmail = applicantEmail || savedRecord?.Email__c || savedRecord?.email;
           formFields = { ...(formFields || {}), ...(savedRecord || {}) };
-          applicantName = applicantName || [formFields.FirstName__c, formFields.LastName__c].filter(Boolean).join(' ').trim();
+          applicantName = applicantName || [formFields?.FirstName__c, formFields?.LastName__c].filter(Boolean).join(' ').trim();
         } catch (err) {
           logger.debug('Failed to resolve applicant email by code', { error: (err && (err as any).message) || err });
         }
@@ -151,9 +151,9 @@ async function updateFormHandler(request: HttpRequest, context: InvocationContex
         try {
           logger.debug('Attempting to resolve applicant email from Salesforce record (by id)', { formId: resolvedFormId });
           const savedRecord = await (salesforceService as any).getFormById(resolvedFormId);
-          applicantEmail = applicantEmail || savedRecord.Email__c || savedRecord.email;
+          applicantEmail = applicantEmail || savedRecord?.Email__c || savedRecord?.email;
           formFields = { ...(formFields || {}), ...(savedRecord || {}) };
-          applicantName = applicantName || [formFields.FirstName__c, formFields.LastName__c].filter(Boolean).join(' ').trim();
+          applicantName = applicantName || [formFields?.FirstName__c, formFields?.LastName__c].filter(Boolean).join(' ').trim();
         } catch (err) {
           logger.debug('Failed to resolve applicant email by id', { error: (err && (err as any).message) || err });
         }
