@@ -308,16 +308,14 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
           updateFields[lastNameField] || updateFields[lastNameSfField]
         ].filter(Boolean).join(' ').trim();
 
-        // Only send email if the flag was set (explicit save/exit or final submission)
-        if (sendEmail && applicantEmail) {
-          logger.info('Dispatching application copy email (explicit save/submit)', { to: applicantEmail, applicantName, formId: resolvedFormId });
+        // Send application copy when an applicant email is present (align with update handler behavior).
+        if (applicantEmail) {
+          logger.info('Dispatching application copy email (update)', { to: applicantEmail, applicantName, formId: resolvedFormId });
           const { EmailService } = await import('../../services/emailService');
           const emailService = new EmailService();
           await emailService.sendApplicationCopy(applicantEmail, applicantName, updateFields, formConfig);
           try { (global as any).__LAST_APPLICATION_COPY_SENT__ = { to: applicantEmail, name: applicantName, formData: updateFields }; } catch(e) {}
           logger.info('Application copy email dispatched', { to: applicantEmail });
-        } else if (!sendEmail) {
-          logger.debug('Email not requested for this update - skipping application copy email');
         } else {
           logger.debug('No applicant email present; skipping application copy email');
         }
@@ -429,18 +427,16 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
       ].filter(Boolean).join(' ').trim();
       let enrichedFormData = { ...filteredData };
 
-      // Only send email if the flag was set (explicit save/exit or final submission)
-      if (sendEmail && applicantEmail) {
+      // Send application copy to applicant when an email address is present.
+      // Default behavior: send on create if applicant email exists (aligns with update flow).
+      if (applicantEmail) {
         logger.debug('Applicant email check', { applicantEmail, formDataKeys: Object.keys(enrichedFormData || {}) });
-        logger.info('Dispatching application copy email (explicit save/submit)', { to: applicantEmail, applicantName, formId: createdFormId });
+        logger.info('Dispatching application copy email (creation)', { to: applicantEmail, applicantName, formId: createdFormId });
         const { EmailService } = await import('../../services/emailService');
         const emailService = new EmailService();
         await emailService.sendApplicationCopy(applicantEmail, applicantName, enrichedFormData, formConfig);
-        // Expose a test-friendly signal for unit tests and local diagnostics
         try { (global as any).__LAST_APPLICATION_COPY_SENT__ = { to: applicantEmail, name: applicantName, formData: enrichedFormData }; } catch(e) {}
         logger.info('Application copy email dispatched', { to: applicantEmail });
-      } else if (!sendEmail) {
-        logger.debug('Email not requested for this creation - skipping application copy email');
       } else {
         logger.debug('No applicant email present; skipping application copy email');
       }

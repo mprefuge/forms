@@ -85,8 +85,15 @@
 
   const injectCSS = () => {
     try {
+      // Skip injecting CSS when running under jsdom (unit tests) to avoid async
+      // resource load errors which surface as global `error` events and fail tests.
+      if (typeof navigator !== 'undefined' && /jsdom/i.test(navigator.userAgent)) return;
+
       const scriptEl = document.currentScript;
-      if (!scriptEl) return;
+      // If script has no `src` (or currentScript is missing) skip injection to
+      // avoid throwing when resolving relative URLs in non-browser environments.
+      if (!scriptEl || !scriptEl.src) return;
+
       const cssHref = new URL("./application.css", scriptEl.src).toString();
       const exists = Array.from(document.styleSheets).some(ss => ss.href && ss.href.includes("application.css"));
       if (exists) return;
