@@ -6,7 +6,8 @@
   // </script>
   const config = window.FORMS_CONFIG || {};
   const ENDPOINT = config.apiEndpoint || "https://rif-hhh8e6e7cbc2hvdw.eastus-01.azurewebsites.net/api/form"; //"http://localhost:7071/api/form";
-  const HOST_ID = "volunteer-app";
+  const PAYMENT_ENDPOINT = config.paymentEndpoint || 'https://payment-processing-function.azurewebsites.net/api/transaction';
+  const HOST_ID = "volunteer-app";  
   const STATEMENT_URL = config.statementUrl || "https://static1.squarespace.com/static/5af0bc3a96d45593d7d7e55b/t/675251913102604777fd712c/1733448082026/Refuge+International+Statement+Of+Faith-Rev.+9_25_23.pdf";
 
 
@@ -1319,12 +1320,53 @@
     throw new Error(json.message || res.statusText || 'Application not found');
   };
 
+  // Compute application fee in cents
+  const computeApplicationFee = () => {
+    const hasCertificate = !!(data.MinistrySafeCertificate || (fileUploads && fileUploads.MinistrySafeCertificate));
+    const price = hasCertificate ? 15 : 20; // dollars
+    return price * 100; // cents
+  };
+
+  const createPaymentSession = async () => {
+    const fc = (formCode || data.FormCode || data.Form_Code__c || data.FormCode__c || '').toString().trim();
+    const payload = {
+      transactionType: "Fee",
+      email: data.Email || '',
+      firstname: data.FirstName || '',
+      lastname: data.LastName || '',
+      phone: data.Phone || '',
+      amount: computeApplicationFee(),
+      frequency: "onetime",
+      category: `Application Fee${fc ? ' - ' + fc : ''}`,
+      // Include form identifiers so payment can be linked to the application
+      formCode: fc,
+      FormCode: fc,
+      address: {
+        line1: data.Street || '',
+        city: data.City || '',
+        state: data.State || '',
+        postal_code: data.Zip || '',
+        country: data.Country || ''
+      }
+    };
+    const res = await fetch(PAYMENT_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(json.error || json.message || res.statusText || 'Payment endpoint error');
+    }
+    return json;
+  };
+
   const doSubmit = async (stay = false) => {
     setStatus("", "");
     if (!validateStep()) return;
     const submitBtn = formEl.querySelector("button[type=submit]");
     if (!submitBtn) return;
-    submitBtn.disabled = true;
+    submitBtn.disabled = true; 
     const label = submitBtn.textContent;
     submitBtn.innerHTML = '<span class="ri-loader"></span>';
 
@@ -1361,12 +1403,49 @@
         renderForm();
       } else if (!stay && currentStep === currentSteps.length - 1) {
         if (currentPhase === 'initial') {
-          setStatus("Application submitted successfully! To monitor your application, go to the application page, click \"Check Progress\", and enter your application code.", "success");
-          // Lock the form UI since status is now submitted
-          try { updateFormInteractivity(); } catch (e) {}
-          setTimeout(() => {
-            showExitModal(formCode);
-          }, 2500);
+          // If the applicant opted to pay, create a payment session and open checkout in a new window
+          if (data.WillPay) {
+            setStatus("Preparing payment...", "info");
+            // Open a blank window synchronously to avoid popup blockers, then navigate it once session is ready
+            let paymentWin = null;
+            try {
+              paymentWin = window.open('', '_blank', 'noopener,noreferrer');
+              const session = await createPaymentSession();
+              if (session && (session.id || session.url)) {
+                const url = session.url || `https://checkout.stripe.com/pay/${session.id}`;
+                if (paymentWin) {
+                  try {
+                    paymentWin.location = url;
+                  } catch (err) {
+                    // Fallback: if setting location fails, try opening a new window
+                    paymentWin = window.open(url, '_blank', 'noopener,noreferrer');
+                  }
+                } else {
+                  window.open(url, '_blank', 'noopener,noreferrer');
+                }
+                setStatus("Payment window opened. Complete the checkout to finish your application.", "success");
+              } else {
+                setStatus("Payment session could not be created. Please try again.", "error");
+                if (paymentWin) paymentWin.close();
+              }
+            } catch (err) {
+              if (paymentWin) paymentWin.close();
+              setStatus("Payment failed: " + (err.message || err), "error");
+            } finally {
+              // Lock the form UI since status is now submitted
+              try { updateFormInteractivity(); } catch (e) {}
+              setTimeout(() => {
+                showExitModal(formCode);
+              }, 2500);
+            }
+          } else {
+            setStatus("Application submitted successfully! To monitor your application, go to the application page, click \"Check Progress\", and enter your application code.", "success");
+            // Lock the form UI since status is now submitted
+            try { updateFormInteractivity(); } catch (e) {}
+            setTimeout(() => {
+              showExitModal(formCode);
+            }, 2500);
+          }
         } else if (currentPhase === 'supplemental') {
           setStatus("Document review phase completed!", "success");
           setTimeout(() => {
