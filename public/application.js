@@ -537,8 +537,42 @@
       if (bannerEl) { bannerEl.style.display = 'none'; bannerEl.innerHTML = ''; }
       if (bannerTimeoutId) { clearTimeout(bannerTimeoutId); bannerTimeoutId = null; }
       renderLanding();
-    }; 
-    const btnGroup = h('div', { class: 'ri-modal-actions' }, copyBtn, closeBtn);
+    };
+    // Add a Pay Now button when payment is requested (user will click to proceed to Stripe)
+    const actionBtns = [copyBtn];
+    if (data.WillPay) {
+      const payBtn = h('button', { class: 'ri-btn ri-btn-primary', type: 'button', text: 'Pay Now' });
+      payBtn.onclick = async () => {
+        let spinnerEl = null;
+        try {
+          payBtn.disabled = true;
+          payBtn.setAttribute('aria-busy', 'true');
+          spinnerEl = h('span', { class: 'ri-inline-spinner', html: '<span class="ri-loader"></span>' });
+          if (payBtn.parentNode) payBtn.parentNode.insertBefore(spinnerEl, payBtn.nextSibling);
+
+          setStatus('Transferring to Stripe...', 'info');
+          try {
+            const session = await createPaymentSession();
+            if (session && (session.id || session.url)) {
+              const url = session.url || `https://checkout.stripe.com/pay/${session.id}`;
+              window.open(url, '_blank', 'noopener,noreferrer');
+              setStatus('Payment window opened. Complete the checkout to finish your application.', 'success');
+            } else {
+              setStatus('Payment session could not be created. Please try again.', 'error');
+            }
+          } catch (err) {
+            setStatus('Payment failed: ' + (err.message || err), 'error');
+          }
+        } finally {
+          if (spinnerEl && spinnerEl.parentNode) spinnerEl.parentNode.removeChild(spinnerEl);
+          payBtn.disabled = false;
+          payBtn.removeAttribute('aria-busy');
+        }
+      };
+      actionBtns.push(payBtn);
+    }
+    actionBtns.push(closeBtn);
+    const btnGroup = h('div', { class: 'ri-modal-actions' }, ...actionBtns);
     content.append(btnGroup);
     modal.append(overlay, content);
     overlay.onclick = () => { document.body.removeChild(modal); };
@@ -595,6 +629,66 @@
         labelEl.append(leftSpan, badge, rightSpan);
         const row = h("div", { class: "ri-checkbox" }, input, labelEl);
         wrapper.append(row);
+
+        // If the checkbox is checked, show an inline Pay Now button so users can pay immediately
+        if (data.WillPay) {
+          const payBtn = h('button', { class: 'ri-btn ri-btn-primary ri-pay-now', type: 'button', text: 'Pay Now' });
+          const payStatusEl = h('div', { class: 'ri-pay-status', text: '', 'aria-live': 'polite' });
+
+          payBtn.onclick = async () => {
+            let spinnerEl = null;
+            try {
+              payBtn.disabled = true;
+              payBtn.setAttribute('aria-busy', 'true');
+              spinnerEl = h('span', { class: 'ri-inline-spinner', html: '<span class="ri-loader"></span>' });
+              if (payBtn.parentNode) payBtn.parentNode.insertBefore(spinnerEl, payBtn.nextSibling);
+
+              // Ensure the application is saved so we have a FormCode to link the payment
+              if (!formCode) {
+                payStatusEl.textContent = 'Saving application before transferring to Stripe...';
+                try {
+                  const res = await saveProgress();
+                  const returnedCode = res?.FormCode || res?.Form_Code__c || res?.formCode || res?.form_code || res?.FormCode__c || '';
+                  if (returnedCode) {
+                    formCode = returnedCode;
+                    showBanner(formCode);
+                    saveToLocalStorage();
+                  }
+                } catch (err) {
+                  payStatusEl.textContent = 'Failed to save application: ' + (err.message || err);
+                  payBtn.disabled = false;
+                  if (spinnerEl && spinnerEl.parentNode) spinnerEl.parentNode.removeChild(spinnerEl);
+                  payBtn.removeAttribute('aria-busy');
+                  return;
+                }
+              }
+
+              // Show inline transferring message
+              payStatusEl.textContent = 'Transferring to Stripe...';
+              try {
+                const session = await createPaymentSession();
+                if (session && (session.id || session.url)) {
+                  const url = session.url || `https://checkout.stripe.com/pay/${session.id}`;
+                  window.open(url, '_blank', 'noopener,noreferrer');
+                  payStatusEl.textContent = 'Stripe payment window opened.';
+                } else {
+                  payStatusEl.textContent = 'Payment session could not be created. Please try again.';
+                }
+              } catch (err) {
+                payStatusEl.textContent = 'Payment failed: ' + (err.message || err);
+              }
+            } finally {
+              if (spinnerEl && spinnerEl.parentNode) spinnerEl.parentNode.removeChild(spinnerEl);
+              payBtn.disabled = false;
+              payBtn.removeAttribute('aria-busy');
+            }
+          };
+
+          const payInline = h('div', { class: 'ri-pay-inline' }, payBtn);
+          // Append the button inline with the label row and the status below the fee text
+          row.append(payInline);
+          wrapper.append(payStatusEl);
+        }
       } else if (name === 'AffirmStatementOfFaith') {
         // Statement of Faith: require opening the statement before the checkbox becomes enabled
         input.disabled = !(data._AffirmStatement_Read || value);
@@ -1330,7 +1424,8 @@
   const createPaymentSession = async () => {
     const fc = (formCode || data.FormCode || data.Form_Code__c || data.FormCode__c || '').toString().trim();
     const payload = {
-      transactionType: "Fee",
+      // Use the 'Donation' transactionType to match the payment service expectation
+      transactionType: "Donation",
       email: data.Email || '',
       firstname: data.FirstName || '',
       lastname: data.LastName || '',
@@ -1346,19 +1441,69 @@
         city: data.City || '',
         state: data.State || '',
         postal_code: data.Zip || '',
-        country: data.Country || ''
+        country: (data.Country || '').toString().trim()
       }
     };
-    const res = await fetch(PAYMENT_ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      throw new Error(json.error || json.message || res.statusText || 'Payment endpoint error');
+
+    // Remove empty-string values from payload recursively so we don't send blank strings that the API rejects
+    const cleanObject = (obj) => {
+      if (!obj || typeof obj !== 'object') return obj;
+      if (Array.isArray(obj)) return obj.map(cleanObject).filter(v => v !== undefined && v !== null);
+      const out = {};
+      Object.entries(obj).forEach(([k, v]) => {
+        if (v === null || v === undefined) return;
+        if (typeof v === 'string') {
+          const t = v.trim();
+          if (t === '') return; // skip empty strings
+          out[k] = t;
+          return;
+        }
+        if (typeof v === 'object') {
+          const cleaned = cleanObject(v);
+          // Only include non-empty objects
+          if (cleaned && (Array.isArray(cleaned) ? cleaned.length > 0 : Object.keys(cleaned).length > 0)) {
+            out[k] = cleaned;
+          }
+          return;
+        }
+        out[k] = v;
+      });
+      return out;
+    };
+
+    const cleanedPayload = cleanObject(payload);
+
+    // Basic validation to provide clearer errors before hitting the endpoint
+    if (!cleanedPayload.email) throw new Error('Email is required to create a payment session');
+    if (!cleanedPayload.amount || typeof cleanedPayload.amount !== 'number' || cleanedPayload.amount <= 0) throw new Error('Invalid payment amount');
+
+    try {
+      console.debug('Payment payload (raw):', payload);
+      console.debug('Payment payload (cleaned):', cleanedPayload);
+
+      const res = await fetch(PAYMENT_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cleanedPayload)
+      });
+
+      // Try parse JSON, but fall back to text
+      const text = await res.text().catch(() => null);
+      let json = {};
+      try { json = text ? JSON.parse(text) : {}; } catch (e) { json = { raw: text }; }
+
+      if (!res.ok) {
+        console.error('Payment session failed', { status: res.status, statusText: res.statusText, response: json });
+        // Show a helpful UI message indicating server-side validation failed
+        setStatus('Payment failed: server validation error. Please ensure required fields (name, email, and address) are filled.', 'error');
+        throw new Error(json?.error || json?.message || (json && json.raw) || `Payment endpoint returned ${res.status}`);
+      }
+
+      return json;
+    } catch (err) {
+      // Surface a clearer message to the UI
+      throw new Error(err.message || 'Failed to create payment session');
     }
-    return json;
   };
 
   const doSubmit = async (stay = false) => {
@@ -1403,49 +1548,14 @@
         renderForm();
       } else if (!stay && currentStep === currentSteps.length - 1) {
         if (currentPhase === 'initial') {
-          // If the applicant opted to pay, create a payment session and open checkout in a new window
-          if (data.WillPay) {
-            setStatus("Preparing payment...", "info");
-            // Open a blank window synchronously to avoid popup blockers, then navigate it once session is ready
-            let paymentWin = null;
-            try {
-              paymentWin = window.open('', '_blank', 'noopener,noreferrer');
-              const session = await createPaymentSession();
-              if (session && (session.id || session.url)) {
-                const url = session.url || `https://checkout.stripe.com/pay/${session.id}`;
-                if (paymentWin) {
-                  try {
-                    paymentWin.location = url;
-                  } catch (err) {
-                    // Fallback: if setting location fails, try opening a new window
-                    paymentWin = window.open(url, '_blank', 'noopener,noreferrer');
-                  }
-                } else {
-                  window.open(url, '_blank', 'noopener,noreferrer');
-                }
-                setStatus("Payment window opened. Complete the checkout to finish your application.", "success");
-              } else {
-                setStatus("Payment session could not be created. Please try again.", "error");
-                if (paymentWin) paymentWin.close();
-              }
-            } catch (err) {
-              if (paymentWin) paymentWin.close();
-              setStatus("Payment failed: " + (err.message || err), "error");
-            } finally {
-              // Lock the form UI since status is now submitted
-              try { updateFormInteractivity(); } catch (e) {}
-              setTimeout(() => {
-                showExitModal(formCode);
-              }, 2500);
-            }
-          } else {
-            setStatus("Application submitted successfully! To monitor your application, go to the application page, click \"Check Progress\", and enter your application code.", "success");
-            // Lock the form UI since status is now submitted
-            try { updateFormInteractivity(); } catch (e) {}
-            setTimeout(() => {
-              showExitModal(formCode);
-            }, 2500);
-          }
+          // Finalize submission but do NOT automatically redirect to payment.
+          setStatus("Application submitted successfully! To monitor your application, go to the application page, click \"Check Progress\", and enter your application code.", "success");
+          // Lock the form UI since status is now submitted
+          try { updateFormInteractivity(); } catch (e) {}
+          setTimeout(() => {
+            showExitModal(formCode);
+          }, 2500);
+        
         } else if (currentPhase === 'supplemental') {
           setStatus("Document review phase completed!", "success");
           setTimeout(() => {
