@@ -51,6 +51,7 @@ describe('createForm HTTP Function', () => {
 
     const mockEmailService = {
       sendApplicationCopy: jest.fn().mockResolvedValue(undefined),
+      sendEventRegistrationConfirmation: jest.fn().mockResolvedValue(undefined),
     };
 
     (EmailService as jest.MockedClass<any>).mockImplementation(() => mockEmailService);
@@ -185,6 +186,49 @@ describe('createForm HTTP Function', () => {
         'attach-request-id',
         testFormConfig
       );
+    });
+
+    it('should send event registration confirmation when campaign exists (event registration)', async () => {
+      // Mock campaign lookup to return an event/campaign
+      mockSalesforceService.getCampaignById = jest.fn().mockResolvedValue({ id: 'camp-1', name: 'Community Meetup', StartDate: '2026-02-14', StartTime: '18:00', Location__c: 'Community Hall', Description: 'Join us' });
+
+      mockRequest = {
+        method: 'POST',
+        headers: {
+          get: jest.fn().mockReturnValue('event-request-id'),
+        },
+        json: jest.fn().mockResolvedValue({
+          FirstName__c: 'Alice',
+          LastName__c: 'Walker',
+          Email: 'alice@example.com',
+          __eventId: 'camp-1',
+          __formConfig: testFormConfig,
+        }),
+      };
+
+      process.env.SF_CLIENT_ID = 'test-client-id';
+      process.env.SF_CLIENT_SECRET = 'test-client-secret';
+
+      const response = await createForm(mockRequest, mockContext);
+
+      expect(response.status).toBe(201);
+
+      // Verify event confirmation email was sent
+      const EmailServiceClass = (await import('../src/services/emailService')).EmailService as jest.MockedClass<any>;
+      const instances = EmailServiceClass.mock.instances || [];
+      const foundCall = instances.some((inst: any) => {
+        if (!inst || !inst.sendEventRegistrationConfirmation || !inst.sendEventRegistrationConfirmation.mock) return false;
+        return inst.sendEventRegistrationConfirmation.mock.calls.some((c: any) => c[0] === 'alice@example.com' && c[1] === 'Alice Walker');
+      });
+      if (!foundCall) {
+        // Fallback: some environments instantiate a non-mocked EmailService; assert via global signal
+        const last = (global as any).__LAST_EVENT_CONFIRMATION_SENT__;
+        expect(last).toBeDefined();
+        expect(last.to).toBe('alice@example.com');
+        expect(last.name).toBe('Alice Walker');
+      } else {
+        expect(foundCall).toBe(true);
+      }
     });
 
     it('should generate X-Request-Id if not provided', async () => {

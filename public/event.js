@@ -17,6 +17,7 @@
   // </script>
   const config = window.FORMS_CONFIG || {};
   const ENDPOINT = config.apiEndpoint || "https://rif-hhh8e6e7cbc2hvdw.eastus-01.azurewebsites.net/api/form"; //"http://localhost:7071/api/form";
+  const PAYMENT_ENDPOINT = config.paymentEndpoint || 'https://payment-processing-function.azurewebsites.net/api/transaction';
   const HOST_ID = "event-app";
 
   const orgTerms = {
@@ -84,7 +85,7 @@
       lookupEmailField: 'Email__c',
       campaignField: 'Campaign__c',  // Field to associate with campaign
       // Event metadata fields to query when eventId is provided
-      eventQueryFields: ['Id','Name','StartDate','EndDate','Description', 'Location__c','StartTime__c','EndTime__c']
+      eventQueryFields: ['Id','Name','StartDate','EndDate','Description', 'Location__c','StartTime__c','EndTime__c','RequiresPayment__c','PaymentAmount__c']
     }
   };
 
@@ -116,9 +117,9 @@
     Phone: { label: "Phone", type: "tel", required: true },
     Street: { label: "Street Address", type: "text", required: true },
     City: { label: "City", type: "text", required: true },
-    State: { label: "State/Province", type: "text", required: true },
+    State: { label: "State/Province", type: "select", options: [], required: true },
     Zip: { label: "Postal Code", type: "text", required: true },
-    Country: { label: "Country/Region", type: "text", required: true },
+    Country: { label: "Country/Region", type: "select", options: [], required: true },
     EventName: { label: "Event Name", type: "text", required: true, placeholder: "Which event are you attending?" },
     EventDate: { label: "Event Date", type: "date", required: false },
     DietaryRestrictions: { 
@@ -223,7 +224,11 @@
     eventId: eventId,  // Store eventId from URL
     campaignInfo: null, // Store campaign info if successfully fetched
     selectedEvent: null, // Store event chosen from list when no eventId in URL
-    availableEvents: null // When no eventId, list of active events
+    availableEvents: null, // When no eventId, list of active events
+    requiresPayment: false, // Store if the campaign requires payment
+    paymentAmount: 0, // Store the payment amount
+    paymentCompleted: false, // Track if payment has been completed
+    paymentError: null // Store any payment-related errors
   };
 
   // ============================================================================
@@ -231,6 +236,9 @@
   // ============================================================================
   const h = (tag, attrs = {}, ...kids) => {
     const el = document.createElement(tag);
+    // Temporarily hold value so we can set it AFTER children (important for <select>)
+    const valueToSet = Object.prototype.hasOwnProperty.call(attrs, 'value') ? attrs.value : undefined;
+
     Object.entries(attrs).forEach(([k, v]) => {
       if (k === 'className') {
         el.className = v;
@@ -240,14 +248,24 @@
         el.addEventListener(k.slice(2).toLowerCase(), v);
       } else if (k === 'style' && typeof v === 'object') {
         Object.assign(el.style, v);
+      } else if (k === 'value') {
+        // skip here; set after children appended to ensure proper selection for <select>
       } else {
+        // fallback to setting attribute for other keys
         el.setAttribute(k, v);
       }
     });
+
     kids.flat().forEach(kid => {
       if (typeof kid === 'string') el.appendChild(document.createTextNode(kid));
       else if (kid) el.appendChild(kid);
     });
+
+    // Now set value property for inputs/selects/textareas so their state persists after re-render
+    if (typeof valueToSet !== 'undefined' && (tag === 'input' || tag === 'select' || tag === 'textarea')) {
+      try { el.value = valueToSet; } catch (e) { /* ignore if not supported */ }
+    }
+
     return el;
   };
 
@@ -325,11 +343,64 @@
 
       // Success - store form code and campaign info
       setState({ 
-        status: 'success', 
         formCode: result.formCode,
-        campaignInfo: result.campaignInfo,  // Backend returns campaign info if associated
+        campaignInfo: result.campaignInfo || state.campaignInfo,  // Backend returns campaign info if associated
         loading: false 
       });
+
+      // If payment is required, initiate payment flow
+      if (state.requiresPayment && state.paymentAmount > 0) {
+        try {
+          setState({ error: null });
+          
+          // Open tab immediately to avoid popup blockers
+          const paymentWindow = window.open('', '_blank');
+          
+          if (!paymentWindow) {
+            console.warn('New tab was blocked by browser');
+            setState({ 
+              status: 'success',
+              paymentError: 'Browser blocked opening new tab. Please allow popups/tabs for this site and try again.'
+            });
+            return;
+          }
+          
+          const session = await createPaymentSession();
+          console.log('Payment session response:', session);
+          
+          // Extract URL from various possible response structures
+          const checkoutUrl = session?.url || session?.sessionUrl || session?.checkout_url || 
+                            (session?.id ? `https://checkout.stripe.com/c/pay/${session.id}` : null);
+          
+          console.log('Extracted checkout URL:', checkoutUrl);
+          
+          if (checkoutUrl) {
+            paymentWindow.location.href = checkoutUrl;
+            setState({ 
+              status: 'success', 
+              paymentCompleted: true,
+              error: null
+            });
+          } else {
+            paymentWindow.close();
+            console.error('No checkout URL found in session response:', session);
+            setState({ 
+              status: 'success',
+              paymentError: 'Payment session could not be created. Your registration is complete but payment was not processed.'
+            });
+          }
+        } catch (err) {
+          // Payment failed, but registration was successful
+          console.error('Payment initiation failed:', err);
+          setState({ 
+            status: 'success',
+            paymentError: 'Payment failed: ' + (err.message || err) + '. Your registration is complete. Please try payment again.'
+          });
+        }
+      } else {
+        // No payment required, show success
+        setState({ status: 'success' });
+      }
 
     } catch (error) {
       console.error('Submission error:', error);
@@ -337,6 +408,101 @@
         error: error.message || 'Failed to submit. Please try again.', 
         loading: false 
       });
+    }
+  };
+
+  // ============================================================================
+  // PAYMENT HANDLING
+  // ============================================================================
+  
+  const createPaymentSession = async () => {
+    const fc = (state.formCode || '').toString().trim();
+    
+    console.log('Creating payment session with state:', {
+      paymentAmount: state.paymentAmount,
+      requiresPayment: state.requiresPayment,
+      formCode: state.formCode,
+      campaignInfo: state.campaignInfo
+    });
+    
+    // Convert amount to cents (Stripe requires integer in cents)
+    const amountInCents = Math.round(state.paymentAmount * 100);
+    
+    const payload = {
+      transactionType: "Donation",
+      email: state.formData.Email || '',
+      firstname: state.formData.FirstName || '',
+      lastname: state.formData.LastName || '',
+      phone: state.formData.Phone || '',
+      amount: amountInCents,
+      frequency: "onetime",
+      category: `Event Registration${state.campaignInfo && state.campaignInfo.name ? ' (' + state.campaignInfo.name + ')' : ''}${fc ? ' - ' + fc : ''}`,
+      formCode: fc,
+      FormCode: fc,
+      address: {
+        line1: state.formData.Street || '',
+        city: state.formData.City || '',
+        state: state.formData.State || '',
+        postal_code: state.formData.Zip || '',
+        country: (state.formData.Country || '').toString().trim()
+      }
+    };
+
+    // Remove empty-string values from payload recursively
+    const cleanObject = (obj) => {
+      if (!obj || typeof obj !== 'object') return obj;
+      if (Array.isArray(obj)) return obj.map(cleanObject).filter(v => v !== undefined && v !== null);
+      const out = {};
+      Object.entries(obj).forEach(([k, v]) => {
+        if (v === null || v === undefined) return;
+        if (typeof v === 'string') {
+          const t = v.trim();
+          if (t === '') return;
+          out[k] = t;
+          return;
+        }
+        if (typeof v === 'object') {
+          const cleaned = cleanObject(v);
+          if (cleaned && (Array.isArray(cleaned) ? cleaned.length > 0 : Object.keys(cleaned).length > 0)) {
+            out[k] = cleaned;
+          }
+          return;
+        }
+        out[k] = v;
+      });
+      return out;
+    };
+
+    const cleanedPayload = cleanObject(payload);
+
+    console.log('Cleaned payment payload:', cleanedPayload);
+    console.log('Amount type:', typeof cleanedPayload.amount, 'Value:', cleanedPayload.amount);
+
+    if (!cleanedPayload.email) throw new Error('Email is required to create a payment session');
+    if (!cleanedPayload.amount || typeof cleanedPayload.amount !== 'number' || cleanedPayload.amount <= 0) throw new Error('Invalid payment amount');
+    if (cleanedPayload.amount < 50) throw new Error('Payment amount must be at least $0.50');
+
+    try {
+      console.debug('Payment payload:', cleanedPayload);
+      const res = await fetch(PAYMENT_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cleanedPayload)
+      });
+
+      const text = await res.text().catch(() => null);
+      let json = {};
+      try { json = text ? JSON.parse(text) : {}; } catch (e) { json = { raw: text }; }
+
+      if (!res.ok) {
+        console.error('Payment session failed', { status: res.status, statusText: res.statusText, response: json });
+        throw new Error(json?.error || json?.message || (json && json.raw) || `Payment endpoint returned ${res.status}`);
+      }
+
+      return json;
+    } catch (err) {
+      console.error('Payment creation error:', err);
+      throw err;
     }
   };
 
@@ -380,14 +546,118 @@
     });
   };
 
+  // Focus management: focus first visible input in the current step to ensure sensible tab order
+  // Do not override a user-focused input (prevents tab restarting at the beginning when fields update)
+  const focusFirstInput = () => {
+    setTimeout(() => {
+      try {
+        const root = document.getElementById(HOST_ID);
+        if (!root) return;
+        const active = document.activeElement;
+        // If the user currently has a ri-input focused inside our root, don't change focus
+        if (active && active !== document.body && root.contains(active) && active.classList && active.classList.contains('ri-input')) {
+          return;
+        }
+        const first = root.querySelector('.ri-step-content .ri-input:not([disabled])');
+        if (first && typeof first.focus === 'function') first.focus();
+      } catch (e) { /* ignore */ }
+    }, 0);
+  };
+
+  // Track the last focused input and its selection so we can restore focus after re-renders
+  let lastFocusedInput = { id: null, start: null, end: null };
+  document.addEventListener('focusin', (e) => {
+    try {
+      const t = e.target;
+      if (t && t.classList && t.classList.contains('ri-input')) {
+        lastFocusedInput.id = t.id || null;
+        lastFocusedInput.start = (typeof t.selectionStart === 'number') ? t.selectionStart : null;
+        lastFocusedInput.end = (typeof t.selectionEnd === 'number') ? t.selectionEnd : null;
+      }
+    } catch (err) { /* ignore */ }
+  });
+
+  // --- Lookup / Address Helpers (load lookup.js like application.js)
+  const LOOKUP_URL = 'https://mprefuge.github.io/site-assets/scripts/lookup.js';
+  let lookupPromise = null;
+  const loadLookup = () => {
+    if (lookupPromise) return lookupPromise;
+    lookupPromise = new Promise((resolve) => {
+      if (window.lookup) return resolve(window.lookup);
+      const script = document.createElement('script');
+      script.src = LOOKUP_URL;
+      script.async = true;
+      script.onload = () => resolve(window.lookup || {});
+      script.onerror = () => resolve({});
+      document.head.appendChild(script);
+    });
+    return lookupPromise;
+  };
+
+  const applyLookupOptions = (lookup) => {
+    if (!lookup) return;
+    const map = {
+      Country: 'countries',
+      State: 'states'
+    };
+    Object.entries(map).forEach(([field, key]) => {
+      const opts = lookup[key];
+      if (Array.isArray(opts) && fieldMeta[field]) {
+        fieldMeta[field].options = opts;
+      }
+    });
+  };
+
+  // Nominatim address search and suggestions (open-source lookup)
+  let addressSearchTimeout = null;
+  let addressSuggestionsEl = null;
+
+  const searchAddress = async (q) => {
+    if (!q || q.length < 3) return [];
+    const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&q=${encodeURIComponent(q)}`;
+    const res = await fetch(url);
+    const json = await res.json().catch(() => []);
+    return Array.isArray(json) ? json : [];
+  };
+
+  const fillAddressFromNominatim = (item) => {
+    if (!item) return;
+    const addr = item.address || {};
+    const street = [addr.house_number, addr.road].filter(Boolean).join(' ');
+    const updates = { ...state.formData };
+    updates.Street = street || (addr.road || '');
+    updates.City = addr.city || addr.town || addr.village || addr.county || '';
+    updates.State = addr.state || '';
+    updates.Zip = addr.postcode || '';
+    updates.Country = addr.country || '';
+    setState({ formData: updates });
+    // close suggestions
+    if (addressSearchTimeout) clearTimeout(addressSearchTimeout);
+    if (addressSuggestionsEl) addressSuggestionsEl.innerHTML = '';
+  };
+
+  const renderAddressSuggestions = (items) => {
+    if (!addressSuggestionsEl) return;
+    addressSuggestionsEl.innerHTML = '';
+    if (!items || items.length === 0) return;
+    items.forEach(it => {
+      const label = it.display_name || [it.address?.road, it.address?.city, it.address?.state].filter(Boolean).join(', ');
+      const node = h('div', { className: 'ri-address-suggestion' }, label);
+      node.addEventListener('click', () => fillAddressFromNominatim(it));
+      addressSuggestionsEl.appendChild(node);
+    });
+  };
+
+
   // ============================================================================
   // RENDER FUNCTIONS
   // ============================================================================
   
-  const renderField = (fieldKey) => {
+  const renderField = (fieldKey, index = 0) => {
     const meta = fieldMeta[fieldKey];
     const value = state.formData[fieldKey] || '';
     const labelText = orgTerms.labels[fieldKey] || meta.label;
+    const tabIndex = (typeof index === 'number' && index >= 0) ? index + 1 : undefined;
 
     return h('div', { className: 'ri-field' },
       h('label', { className: 'ri-label' },
@@ -395,26 +665,45 @@
         meta.required ? h('span', { className: 'ri-required' }, ' *') : null
       ),
       meta.type === 'select' 
-        ? h('select', {
-            className: 'ri-input',
-            value: value,
-            onChange: (e) => updateField(fieldKey, e.target.value),
-          },
-          h('option', { value: '' }, 'Select...'),
-          ...(meta.options || []).map(opt => 
-            h('option', { value: opt }, opt)
-          )
-        )
+        ? (() => {
+            const rawOpts = Array.isArray(meta.options) ? meta.options.slice() : [];
+            const opts = rawOpts.slice();
+            // Ensure current value is present at the front for saved values
+            const includeCurrent = value && !opts.some(o => (typeof o === 'string' ? o : (o && (o.value || o.val || o.code || o.id || o.key || o.name))) == value);
+            if (includeCurrent) opts.unshift(value);
+            // Normalize options to {val, txt}
+            const norm = opts.map(o => {
+              if (typeof o === 'string' || typeof o === 'number') return { val: String(o), txt: String(o) };
+              if (!o) return { val: '', txt: '' };
+              const val = o.value || o.val || o.code || o.id || o.key || o.name || '';
+              const txt = o.text || o.txt || o.label || o.name || String(val);
+              return { val: String(val), txt: String(txt) };
+            });
+            return h('select', {
+              id: `ri-input-${fieldKey}`,
+              className: 'ri-input',
+              tabindex: tabIndex,
+              value: value,
+              onChange: (e) => updateField(fieldKey, e.target.value),
+            },
+              h('option', { value: '' }, 'Select...'),
+              ...norm.map(opt => h('option', { value: opt.val }, opt.txt))
+            );
+          })()
         : meta.type === 'textarea'
         ? h('textarea', {
+            id: `ri-input-${fieldKey}`,
             className: 'ri-input',
+            tabindex: tabIndex,
             value: value,
             placeholder: meta.placeholder || '',
             onChange: (e) => updateField(fieldKey, e.target.value),
           })
         : h('input', {
+            id: `ri-input-${fieldKey}`,
             type: meta.type,
             className: 'ri-input',
+            tabindex: tabIndex,
             value: value,
             placeholder: meta.placeholder || '',
             onChange: (e) => updateField(fieldKey, e.target.value),
@@ -547,7 +836,7 @@
 
       const datePart = (startDate && endDate && !datesSame) ? `${startDate} to ${endDate}` : (startDate || endDate);
 
-      return h('div', { className: 'ri-event-hero ri-card' },
+      const elements = [
         h('div', { className: 'ri-event-title' }, title),
         (loc ? h('div', { className: 'ri-event-meta-line' },
           h('span', { className: 'ri-event-badge ri-event-location' }, '📍'),
@@ -561,8 +850,19 @@
               (timeRange ? ` • ${timeRange}` : null)
             ].filter(Boolean).join('')
           )
+        ) : null),
+        // Display payment information if amount is set
+        (state.paymentAmount > 0 ? h('div', { className: 'ri-event-meta-line ri-event-payment' },
+          h('span', { className: 'ri-event-badge ri-event-payment-badge' }, '💳'),
+          h('span', { className: 'ri-event-meta-text' }, 
+            state.requiresPayment 
+              ? `Price: $${state.paymentAmount.toFixed(2)}`
+              : `Price: $${state.paymentAmount.toFixed(2)} (payment processing not available for amounts under $0.50)`
+          )
         ) : null)
-      );
+      ];
+
+      return h('div', { className: 'ri-event-hero ri-card' }, ...elements.filter(Boolean));
     }
 
     // If eventId present but no metadata yet
@@ -583,6 +883,26 @@
       const endDate = formatDate(endRaw);
       const datesSame = sameCalendarDate(startRaw, endRaw);
       const location = rec.Location__c || rec.Location || rec.Venue__c || rec.City__c || rec.City || null;
+
+      // Extract start/end times for display
+      const startTimeRaw = rec.StartTime__c || rec.startTime || null;
+      const endTimeRaw = rec.EndTime__c || rec.endTime || null;
+      const startTimeText = formatTime(startTimeRaw);
+      const endTimeText = formatTime(endTimeRaw);
+      const timeRange = (startTimeText && endTimeText) ? `${startTimeText} – ${endTimeText}` : (startTimeText || endTimeText || null);
+
+      // Extract payment info (same rules as fetchEventMetadata)
+      const requiresPaymentField = !!(rec.RequiresPayment__c || rec.requiresPayment);
+      let paymentAmount = 0;
+      const rawAmount = rec.PaymentAmount__c || rec.paymentAmount;
+      if (rawAmount !== null && rawAmount !== undefined && rawAmount !== '') {
+        const parsed = parseFloat(rawAmount);
+        if (!isNaN(parsed) && parsed > 0) {
+          paymentAmount = Math.round(parsed * 100) / 100;
+        }
+      }
+      const requiresPayment = requiresPaymentField && paymentAmount >= 0.50;
+
       const onChoose = () => {
         const info = {
           id: rec.Id || rec.id || null,
@@ -603,10 +923,14 @@
       return h('div', { className: 'ri-event-card' },
         h('div', { className: 'ri-event-card-title' }, title),
         (location ? h('div', { className: 'ri-event-card-meta' }, '📍 ', location) : null),
-        (startDate || endDate ? h('div', { className: 'ri-event-card-meta' }, '🗓 ', [
+        ((startDate || endDate || timeRange) ? h('div', { className: 'ri-event-card-meta' }, '🗓 ', [
           (startDate ? `${startDate}` : null),
-          (endDate && !datesSame ? ` to ${endDate}` : null)
-        ].filter(Boolean).join('')) : null),
+          (endDate && !datesSame ? ` to ${endDate}` : null),
+          (timeRange ? `${timeRange}` : null)
+        ].filter(Boolean).join(' • ')) : null),
+        (paymentAmount > 0 ? h('div', { className: 'ri-event-card-meta' },
+          '💳 ', requiresPayment ? `Price: $${paymentAmount.toFixed(2)}` : `Price: $${paymentAmount.toFixed(2)} (payment processing not available for amounts under $0.50)`
+        ) : null),
         h('div', { className: 'ri-event-card-actions' },
           h('button', { className: 'ri-btn ri-btn-primary', onClick: onChoose }, 'Register for this event')
         )
@@ -640,7 +964,34 @@
       stepCount > 1 ? renderStepper() : null,
       h('div', { className: 'ri-step-content' },
         h('h2', { className: 'ri-step-heading' }, currentStep.title),
-        ...currentStep.fields.map(renderField)
+        // Custom responsive layout for Contact Information step
+        ...(
+          currentStep.title === 'Contact Information'
+          ? [ h('div', { className: 'ri-contact-grid' },
+              // Row 1 - First / Last
+              h('div', { style: { display: 'flex', gap: '12px', flexWrap: 'wrap' } },
+                h('div', { style: { flex: '1 1 200px' } }, renderField('FirstName', 0)),
+                h('div', { style: { flex: '1 1 200px' } }, renderField('LastName', 1))
+              ),
+              // Row 2 - Email / Phone
+              h('div', { style: { display: 'flex', gap: '12px', flexWrap: 'wrap' } },
+                h('div', { style: { flex: '1 1 300px' } }, renderField('Email', 2)),
+                h('div', { style: { flex: '1 1 200px' } }, renderField('Phone', 3))
+              ),
+              // Row 3 - Street (full width)
+              h('div', { style: { display: 'flex', gap: '12px', flexWrap: 'wrap' } },
+                h('div', { style: { flex: '1 1 100%' } }, renderField('Street', 4), h('div', { className: 'ri-address-suggestions' }))
+              ),
+              // Row 4 - City / State / Zip / Country
+              h('div', { style: { display: 'flex', gap: '12px', flexWrap: 'wrap' } },
+                h('div', { style: { flex: '1 1 160px' } }, renderField('City', 5)),
+                h('div', { style: { flex: '1 1 160px' } }, renderField('State', 6)),
+                h('div', { style: { flex: '1 1 120px' } }, renderField('Zip', 7)),
+                h('div', { style: { flex: '1 1 160px' } }, renderField('Country', 8))
+              )
+            ) ]
+          : currentStep.fields.map((f, i) => renderField(f, i))
+        )
       ),
       state.error 
         ? h('div', { className: 'ri-error' }, state.error)
@@ -662,7 +1013,7 @@
   };
 
   const renderSuccess = () => {
-    return h('div', { className: 'ri-success-container' },
+    const elements = [
       h('div', { className: 'ri-success-icon' }, '✓'),
       h('div', { className: 'ri-success-title' }, 'Registration Complete!'),
       h('div', { className: 'ri-success-message' },
@@ -680,7 +1031,110 @@
       h('div', { className: 'ri-success-note' },
         'Please save this code. You can use it to retrieve your registration information.'
       )
-    );
+    ];
+
+    // Add payment information if applicable
+    if (state.requiresPayment && state.paymentAmount > 0) {
+      elements.push(
+        h('div', { className: 'ri-payment-section' },
+          h('div', { className: 'ri-payment-section-title' }, '💳 Payment Information'),
+          h('div', { className: 'ri-payment-amount' }, 
+            `Amount Due: $${state.paymentAmount.toFixed(2)}`
+          ),
+          state.paymentError 
+            ? h('div', { className: 'ri-payment-error' }, state.paymentError)
+            : state.paymentCompleted
+            ? h('div', { className: 'ri-payment-success' }, '✓ Payment window opened. Please complete your payment.')
+            : null
+        )
+      );
+    }
+
+    // Add calendar options when campaignInfo is present
+    if (state.campaignInfo) {
+      const ev = state.campaignInfo;
+      const googleDates = (() => {
+        const start = (ev.startDate && ev.startTime) ? new Date(`${ev.startDate} ${ev.startTime}`) : (ev.startDate ? new Date(ev.startDate) : null);
+        const end = (ev.endDate && ev.endTime) ? new Date(`${ev.endDate} ${ev.endTime}`) : (ev.endDate ? new Date(ev.endDate) : null);
+        const fmt = (d) => {
+          if (!d || isNaN(d.getTime())) return '';
+          const pad = (n) => String(n).padStart(2, '0');
+          return `${d.getUTCFullYear()}${pad(d.getUTCMonth()+1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}Z`;
+        };
+        const s = fmt(start);
+        const e = fmt(end) || s;
+        return s && e ? `${s}/${e}` : '';
+      })();
+
+      const googleParams = new URLSearchParams({ action: 'TEMPLATE', text: ev.name || '', details: ev.description || '', location: ev.location || '', dates: googleDates || undefined });
+      const googleUrl = `https://calendar.google.com/calendar/render?${googleParams.toString()}`;
+
+      // Build Outlook web URL (compose deeplink)
+      const fmtIso = (d) => {
+        if (!d || isNaN(d.getTime())) return '';
+        return d.toISOString();
+      };
+      const startDt = (ev.startDate && ev.startTime) ? new Date(`${ev.startDate} ${ev.startTime}`) : (ev.startDate ? new Date(ev.startDate) : null);
+      const endDt = (ev.endDate && ev.endTime) ? new Date(`${ev.endDate} ${ev.endTime}`) : (ev.endDate ? new Date(ev.endDate) : null);
+      const outlookParams = new URLSearchParams();
+      if (startDt) outlookParams.set('startdt', fmtIso(startDt));
+      if (endDt) outlookParams.set('enddt', fmtIso(endDt));
+      outlookParams.set('subject', ev.name || '');
+      if (ev.description) outlookParams.set('body', ev.description);
+      if (ev.location) outlookParams.set('location', ev.location);
+      const outlookUrl = `https://outlook.live.com/calendar/0/deeplink/compose?${outlookParams.toString()}`;
+
+      elements.push(
+        h('div', { className: 'ri-calendar-section' },
+          h('div', { className: 'ri-payment-section-title' }, '📅 Add to your calendar'),
+          h('div', { style: { display: 'flex', gap: '8px', alignItems: 'center', marginTop: '8px' } },
+            h('a', { className: 'ri-btn ri-btn-secondary', href: googleUrl, target: '_blank', rel: 'noopener' }, 'Add to Google Calendar'),
+            h('a', { className: 'ri-btn ri-btn-secondary', href: outlookUrl, target: '_blank', rel: 'noopener' }, 'Add to Outlook.com'),
+            h('button', { className: 'ri-btn ri-btn-secondary', onClick: () => {
+              // Download .ics (works for Apple Calendar, Outlook desktop, etc.)
+              try {
+                const start = startDt;
+                const end = endDt;
+                const uid = `${Date.now()}@event`;
+                const dtstamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
+                const fmt = (d) => {
+                  if (!d || isNaN(d.getTime())) return '';
+                  const pad = (n) => String(n).padStart(2, '0');
+                  return `${d.getUTCFullYear()}${pad(d.getUTCMonth()+1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}Z`;
+                };
+                const lines = [
+                  'BEGIN:VCALENDAR',
+                  'VERSION:2.0',
+                  `PRODID:-//${orgTerms.orgName}//Event//EN`,
+                  'CALSCALE:GREGORIAN',
+                  'BEGIN:VEVENT',
+                  `UID:${uid}`,
+                  `DTSTAMP:${dtstamp}`,
+                ];
+                if (start) lines.push(`DTSTART:${fmt(start)}`);
+                if (end) lines.push(`DTEND:${fmt(end)}`);
+                lines.push(`SUMMARY:${(ev.name || '').replace(/\n/g,'\\n')}`);
+                if (ev.description) lines.push(`DESCRIPTION:${(ev.description || '').replace(/\n/g,'\\n')}`);
+                if (ev.location) lines.push(`LOCATION:${(ev.location || '').replace(/\n/g,'\\n')}`);
+                lines.push('END:VEVENT','END:VCALENDAR');
+                const ics = lines.join('\r\n');
+                const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${(ev.name || 'event').replace(/[^a-z0-9_-]/gi,'_')}.ics`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 5000);
+              } catch (e) { console.error('Failed to download ics', e); }
+            } }, 'Add to Apple / Download .ics')
+          )
+        )
+      );
+    }
+
+    return h('div', { className: 'ri-success-container' }, ...elements.filter(Boolean));
   };
 
   // ============================================================================
@@ -691,6 +1145,10 @@
     const root = document.getElementById(HOST_ID);
     if (!root) return;
 
+    // Capture the last focused input id and selection so we can attempt to restore it
+    const restoreId = lastFocusedInput.id;
+    const restoreSelection = { start: lastFocusedInput.start, end: lastFocusedInput.end };
+
     root.innerHTML = '';
     
     if (state.status === 'success') {
@@ -698,6 +1156,42 @@
     } else {
       root.appendChild(renderForm());
     }
+
+    // Restore focus to previously focused input if present; otherwise focus the first input
+    if (restoreId) {
+      try {
+        const el = document.getElementById(restoreId);
+        if (el && typeof el.focus === 'function') {
+          el.focus();
+          try {
+            if (restoreSelection.start !== null && restoreSelection.end !== null && typeof el.setSelectionRange === 'function') {
+              el.setSelectionRange(restoreSelection.start, restoreSelection.end);
+            }
+          } catch (e) { /* ignore */ }
+        }
+        // Intentionally do NOT call focusFirstInput() when we attempted a restore to avoid stealing focus
+      } catch (e) { /* ignore */ }
+    } else {
+      // Ensure first input is focused when there was no prior focused input
+      focusFirstInput();
+    }
+
+    try {
+      addressSuggestionsEl = root.querySelector('.ri-address-suggestions');
+      const streetInput = document.getElementById('ri-input-Street');
+      if (streetInput && !streetInput._riHandlerAttached) {
+        streetInput._riHandlerAttached = true;
+        streetInput.addEventListener('input', (e) => {
+          const q = (e.target.value || '').toString().trim();
+          if (addressSearchTimeout) clearTimeout(addressSearchTimeout);
+          addressSearchTimeout = setTimeout(async () => {
+            if (!q || q.length < 3) { if (addressSuggestionsEl) addressSuggestionsEl.innerHTML = ''; return; }
+            const items = await searchAddress(q);
+            renderAddressSuggestions(items);
+          }, 300);
+        });
+      }
+    } catch (e) { /* ignore */ }
   };
 
   // ============================================================================
@@ -728,11 +1222,29 @@
           startTime: c.StartTime__c || c.startTime || null,
           endTime: c.EndTime__c || c.endTime || null,
         };
+        // Extract payment information from campaign
+        const requiresPaymentField = !!(c.RequiresPayment__c || c.requiresPayment);
+        // Parse currency field - ensure it's a valid number and round to 2 decimal places
+        let paymentAmount = 0;
+        const rawAmount = c.PaymentAmount__c || c.paymentAmount;
+        console.debug('Raw payment amount from Salesforce:', rawAmount);
+        if (rawAmount !== null && rawAmount !== undefined && rawAmount !== '') {
+          const parsed = parseFloat(rawAmount);
+          if (!isNaN(parsed) && parsed > 0) {
+            // Round to 2 decimal places to handle floating point precision
+            paymentAmount = Math.round(parsed * 100) / 100;
+          }
+        }
+        console.debug('Parsed payment amount:', paymentAmount);
+        
+        // Only require payment if checkbox is checked AND amount meets Stripe minimum of $0.50
+        const requiresPayment = requiresPaymentField && paymentAmount >= 0.50;
+        
         // Pre-fill event name/date when available
         const updates = { ...state.formData };
         if (info.name && !updates.EventName) updates.EventName = info.name;
         if (info.startDate && !updates.EventDate) updates.EventDate = info.startDate;
-        setState({ campaignInfo: info, formData: updates });
+        setState({ campaignInfo: info, formData: updates, requiresPayment, paymentAmount });
       }
     } catch (e) {
       // Silent failure; form continues as normal
@@ -751,7 +1263,20 @@
       const data = await res.json();
       const list = data && Array.isArray(data.campaigns) ? data.campaigns : [];
       if (list.length > 0) {
-        setState({ availableEvents: list });
+        // Sort events by start date (oldest first). Use parseLocalDate to handle multiple formats.
+        const getStartTime = (rec) => {
+          const d = parseLocalDate(rec.StartDate || rec.startDate);
+          return d ? d.getTime() : Infinity;
+        };
+        const sorted = list.slice().sort((a, b) => {
+          const ta = getStartTime(a);
+          const tb = getStartTime(b);
+          if (ta !== tb) return ta - tb;
+          const an = (a.Name || a.name || '').toString();
+          const bn = (b.Name || b.name || '').toString();
+          return an.localeCompare(bn);
+        });
+        setState({ availableEvents: sorted });
       }
     } catch (e) {
       console.warn('Active events fetch failed', e);
@@ -798,11 +1323,39 @@
   if (typeof window !== 'undefined') {
     window.addEventListener('DOMContentLoaded', () => {
       applyCustomFields();
-      render();
-      // Fetch campaign metadata after initial render so banner can update
-      fetchEventMetadata();
-      // If no event selected, fetch active events
-      fetchActiveEvents();
+      // Load lookup options (countries/states) and apply
+      loadLookup().then(lookup => {
+        applyLookupOptions(lookup);
+        render();
+        // Attach address suggestion handlers after render
+        setTimeout(() => {
+          const root = document.getElementById(HOST_ID);
+          if (!root) return;
+          addressSuggestionsEl = root.querySelector('.ri-address-suggestions');
+          const streetInput = document.getElementById('ri-input-Street');
+          if (streetInput) {
+            streetInput.addEventListener('input', (e) => {
+              const q = (e.target.value || '').toString().trim();
+              if (addressSearchTimeout) clearTimeout(addressSearchTimeout);
+              addressSearchTimeout = setTimeout(async () => {
+                if (!q || q.length < 3) { if (addressSuggestionsEl) addressSuggestionsEl.innerHTML = ''; return; }
+                const items = await searchAddress(q);
+                renderAddressSuggestions(items);
+              }, 300);
+            });
+          }
+        }, 0);
+
+        // Fetch campaign metadata after initial render so banner can update
+        fetchEventMetadata();
+        // If no event selected, fetch active events
+        fetchActiveEvents();
+      }).catch(() => {
+        // Even if lookup fails, proceed
+        render();
+        fetchEventMetadata();
+        fetchActiveEvents();
+      });
     });
     
     // For testing

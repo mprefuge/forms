@@ -302,10 +302,10 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
         const firstNameSfField = hasMapping ? (formConfig.salesforceMapping[firstNameField] || 'FirstName__c') : 'FirstName__c';
         const lastNameSfField = hasMapping ? (formConfig.salesforceMapping[lastNameField] || 'LastName__c') : 'LastName__c';
         
-        let applicantEmail = updateFields[emailField] || updateFields[emailSfField];
+        let applicantEmail = updateFields[emailField] || updateFields[emailSfField] || (formData && (formData[emailField] || formData[emailSfField]));
         let applicantName = [
-          updateFields[firstNameField] || updateFields[firstNameSfField],
-          updateFields[lastNameField] || updateFields[lastNameSfField]
+          updateFields[firstNameField] || updateFields[firstNameSfField] || formData[firstNameField] || formData[firstNameSfField],
+          updateFields[lastNameField] || updateFields[lastNameSfField] || formData[lastNameField] || formData[lastNameSfField]
         ].filter(Boolean).join(' ').trim();
 
         // Send application copy when an applicant email is present (align with update handler behavior).
@@ -420,23 +420,44 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
       const firstNameSfField = hasMapping ? (formConfig.salesforceMapping[firstNameField] || 'FirstName__c') : 'FirstName__c';
       const lastNameSfField = hasMapping ? (formConfig.salesforceMapping[lastNameField] || 'LastName__c') : 'LastName__c';
       
-      let applicantEmail = filteredData[emailField] || filteredData[emailSfField];
+      let applicantEmail = filteredData[emailField] || filteredData[emailSfField] || formData[emailField] || formData[emailSfField];
       let applicantName = [
-        filteredData[firstNameField] || filteredData[firstNameSfField],
-        filteredData[lastNameField] || filteredData[lastNameSfField]
+        filteredData[firstNameField] || filteredData[firstNameSfField] || formData[firstNameField] || formData[firstNameSfField],
+        filteredData[lastNameField] || filteredData[lastNameSfField] || formData[lastNameField] || formData[lastNameSfField]
       ].filter(Boolean).join(' ').trim();
-      let enrichedFormData = { ...filteredData };
+      let enrichedFormData = { ...filteredData, ...formData };
+
+      // Debug info: whether we have an applicant email and whether campaign info was resolved
+      logger.debug('Applicant email check (creation)', { applicantEmail, campaignInfoPresent: !!campaignInfo, campaignInfo, formDataKeys: Object.keys(enrichedFormData || {}) });
 
       // Send application copy to applicant when an email address is present.
       // Default behavior: send on create if applicant email exists (aligns with update flow).
       if (applicantEmail) {
-        logger.debug('Applicant email check', { applicantEmail, formDataKeys: Object.keys(enrichedFormData || {}) });
-        logger.info('Dispatching application copy email (creation)', { to: applicantEmail, applicantName, formId: createdFormId });
         const { EmailService } = await import('../../services/emailService');
         const emailService = new EmailService();
-        await emailService.sendApplicationCopy(applicantEmail, applicantName, enrichedFormData, formConfig);
-        try { (global as any).__LAST_APPLICATION_COPY_SENT__ = { to: applicantEmail, name: applicantName, formData: enrichedFormData }; } catch(e) {}
-        logger.info('Application copy email dispatched', { to: applicantEmail });
+
+        if (campaignInfo) {
+          // Send a concise event registration confirmation instead of the general application copy
+          logger.info('Dispatching event registration confirmation email (creation)', { to: applicantEmail, applicantName, formId: createdFormId, campaign: campaignInfo });
+          try {
+            await emailService.sendEventRegistrationConfirmation(applicantEmail, applicantName, campaignInfo, generatedFormCode);
+            try { (global as any).__LAST_EVENT_CONFIRMATION_SENT__ = { to: applicantEmail, name: applicantName, campaign: campaignInfo }; } catch (e) {}
+            logger.info('Event confirmation email dispatched', { to: applicantEmail });
+          } catch (e: any) {
+            logger.error('Failed to send event confirmation email', e, { errorMessage: e?.message });
+          }
+        } else {
+          // Default behavior: send application copy
+          logger.info('Dispatching application copy email (creation)', { to: applicantEmail, applicantName, formId: createdFormId });
+          try {
+            await emailService.sendApplicationCopy(applicantEmail, applicantName, enrichedFormData, formConfig);
+            try { (global as any).__LAST_APPLICATION_COPY_SENT__ = { to: applicantEmail, name: applicantName, formData: enrichedFormData }; } catch(e) {}
+            logger.info('Application copy email dispatched', { to: applicantEmail });
+          } catch (e: any) {
+            logger.error('Failed to send application copy email', e, { errorMessage: e?.message });
+          }
+        }
+
       } else {
         logger.debug('No applicant email present; skipping application copy email');
       }
