@@ -41,6 +41,7 @@ describe('updateForm Function', () => {
     // Provide a mocked EmailService instance for tests that expect email dispatch
     const mockEmailService = {
       sendApplicationCopy: jest.fn().mockResolvedValue(undefined),
+      sendEmail: jest.fn().mockResolvedValue(undefined),
     };
     (EmailService as unknown as jest.MockedClass<any>).mockImplementation(() => mockEmailService);
 
@@ -244,6 +245,14 @@ describe('updateForm Function', () => {
         FirstName__c: 'John',
         LastName__c: 'Doe',
         Email__c: 'john.update@example.com',
+        __sendEmail: true,
+        __emailTemplates: {
+          applicationCopy: {
+            subject: 'Your application',
+            text: 'Thanks for your submission',
+            html: '<p>Thanks for your submission</p>'
+          }
+        }
       }),
       headers: {
         get: jest.fn().mockReturnValue('update-req-id'),

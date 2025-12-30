@@ -39,7 +39,14 @@ describe('sendCode function', () => {
     mockRequest = {
       method: 'POST',
       headers: { get: jest.fn().mockReturnValue('rid-1') },
-      json: jest.fn().mockResolvedValue({ email: 'joe@example.com' }),
+      json: jest.fn().mockResolvedValue({
+        email: 'joe@example.com',
+        template: {
+          subject: 'Your code',
+          text: 'Here is your code: {{code}}',
+          html: '<p>Here is your code: <strong>{{code}}</strong></p>'
+        }
+      }),
     };
 
     const res = await sendCode(mockRequest, mockContext);
@@ -48,7 +55,7 @@ describe('sendCode function', () => {
     expect(body.message).toBe('Email sent');
     expect(mockSf.authenticate).toHaveBeenCalled();
     expect(mockSf.getFormByEmail).toHaveBeenCalledWith('joe@example.com');
-    expect(mockEmailService.sendApplicationCode).toHaveBeenCalledWith('joe@example.com', 'abc12');
+    expect(mockEmailService.sendApplicationCode).toHaveBeenCalledWith('joe@example.com', 'abc12', expect.objectContaining({ subject: 'Your code' }));
   });
 
   it('returns 500 when email sending fails and includes detail and errorId in non-production', async () => {
@@ -57,7 +64,14 @@ describe('sendCode function', () => {
     mockRequest = {
       method: 'POST',
       headers: { get: jest.fn().mockReturnValue('rid-3') },
-      json: jest.fn().mockResolvedValue({ email: 'joe@example.com' }),
+      json: jest.fn().mockResolvedValue({
+        email: 'joe@example.com',
+        template: {
+          subject: 'Your code',
+          text: 'Here is your code: {{code}}',
+          html: '<p>Here is your code: <strong>{{code}}</strong></p>'
+        }
+      }),
     };
 
     const res = await sendCode(mockRequest, mockContext);

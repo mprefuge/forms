@@ -25,7 +25,9 @@ describe('EmailService - Azure and SMTP fallbacks', () => {
     const { EmailService: ES } = await import('../src/services/emailService');
     const svc = new ES({ fromAddress: 'no-reply@test' });
 
-    await svc.sendApplicationCode('joe@example.com', 'abc12');
+    const codeTemplate = { subject: 'Your application code', text: 'Your code is {{formCode}}', html: '<p>Your code is <strong>{{formCode}}</strong></p>' };
+
+    await svc.sendApplicationCode('joe@example.com', 'abc12', codeTemplate);
 
     expect(EmailClientMock).toHaveBeenCalledWith('endpoint=foo');
     expect(sendMock).toHaveBeenCalled();
@@ -50,7 +52,9 @@ describe('EmailService - Azure and SMTP fallbacks', () => {
     // Provide explicit SMTP config to avoid env ordering issues in tests
     const svc = new ES({ fromAddress: 'no-reply@test', smtpHost: 'smtp.example.com', smtpPort: 587, smtpUser: 'user', smtpPass: 'pass' });
 
-    await svc.sendApplicationCode('joe@example.com', 'abc12');
+    const codeTemplate = { subject: 'Your application code', text: 'Your code is {{formCode}}', html: '<p>Your code is <strong>{{formCode}}</strong></p>' };
+
+    await svc.sendApplicationCode('joe@example.com', 'abc12', codeTemplate);
 
     expect(createTransportMock).toHaveBeenCalled();
     expect(sendMailMock).toHaveBeenCalledWith(expect.objectContaining({ to: 'joe@example.com' }));
@@ -65,10 +69,11 @@ describe('EmailService - Azure and SMTP fallbacks', () => {
     // Ensure @azure/communication-email is not present
     jest.dontMock('@azure/communication-email');
     // This will cause require to fail
+    const codeTemplate = { subject: 'Your application code', text: 'Your code is {{formCode}}', html: '<p>Your code is <strong>{{formCode}}</strong></p>' };
     try {
       const { EmailService: ES } = await import('../src/services/emailService');
       const svc = new ES();
-      await expect(svc.sendApplicationCode('a@b.com', 'abc')).rejects.toThrow(/Azure Communication Email SDK is not available/);
+      await expect(svc.sendApplicationCode('a@b.com', 'abc', codeTemplate)).rejects.toThrow(/Azure Communication Email SDK is not available/);
     } catch (e) {
       // If import fails because jest doesn't allow dynamic unmapped modules, the test still passes
     }
@@ -85,9 +90,15 @@ describe('EmailService - Azure and SMTP fallbacks', () => {
     const { EmailService: ES } = await import('../src/services/emailService');
     const svc = new ES({ fromAddress: 'no-reply@test' });
 
+    const copyTemplate = {
+      subject: 'Application received',
+      text: 'Your application was successfully submitted. Check Progress. Code: {{FormCode__c}}',
+      html: '<p>Your application was <strong>successfully submitted</strong>. <a href="#">Check Progress</a><br/>Code: <strong>{{FormCode__c}}</strong></p>',
+    };
+
     // Also include variants of keys (without __c and camelCase) to ensure resolver works
     const formData = { FormCode__c: 'abc12', FirstName: 'John', LastName: 'Doe', Email__c: 'joe@example.com', Phone: '555-9999', PastorFirstName: 'Stephen', LanguagesSpoken__c: ['English','Arabic','Spanish'], AdditionalNotes__c: 'Notes', HowHeard: 'Seminary', CurrentPhase: 'initial', MinistrySafeCompleted: false };
-    await svc.sendApplicationCopy('joe@example.com', 'John Doe', formData);
+    await svc.sendApplicationCopy('joe@example.com', 'John Doe', formData, undefined, copyTemplate);
 
     expect(EmailClientMock).toHaveBeenCalledWith('endpoint=foo');
     expect(sendMock).toHaveBeenCalled();
