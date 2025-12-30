@@ -5,7 +5,7 @@
   //   window.FORMS_CONFIG = { apiEndpoint: 'https://your-app.azurewebsites.net/api/form' };
   // </script>
   const config = window.FORMS_CONFIG || {};
-  const ENDPOINT = config.apiEndpoint || "https://rif-hhh8e6e7cbc2hvdw.eastus-01.azurewebsites.net/api/form"; //"http://localhost:7071/api/form";
+  const ENDPOINT = config.apiEndpoint || "https://rif-hhh8e6e7cbc2hvdw.eastus-01.azurewebsites.net/api/form";  //"http://localhost:7071/api/form";
   const HOST_ID = "waiver-app";
 
   // Organization terminology
@@ -24,12 +24,27 @@
   // ============================================================================
   // FORM CONFIGURATION (Parental Waiver)
   // ============================================================================
+
+  const EMAIL_TEMPLATES = {
+    waiverCopy: {
+      subject: 'Parental Waiver Form Submission',
+      text: 'Hello {{ParentFirstName__c}},\n\nYour waiver for {{FirstName__c}} has been successfully submitted. Your confirmation code is {{codeText}}.\n\nThank you,\nRefuge International',
+      html: '<p>Hello {{ParentFirstName__c}},</p><p>Your waiver for <strong>{{FirstName__c}}</strong> has been successfully submitted. Your confirmation code is <strong>{{codeHtml}}</strong>.</p><p>Thank you,<br/>Refuge International</p>'
+    },
+    applicationCode: {
+      subject: 'Your Waiver Code',
+      text: 'Hello,\n\nWe received a request to retrieve your waiver code. Your waiver code is: {{FormCode__c}}\n\nYou can use this code to view or update your waiver at our website. If you did not request this email, please ignore it.\n\nThank you',
+      html: '<p>Hello,</p><p>We received a request to retrieve your waiver code. <strong>Your waiver code is: <code>{{FormCode__c}}</code></strong></p><p>You can use this code to view or update your waiver at our website. If you did not request this email, please ignore it.</p><p>Thank you</p>'
+    }
+  };
+
   const FORM_CONFIG = {
     id: 'waiver',
     name: 'Parental Waiver & Consent Form',
     salesforce: {
       objectName: 'Form__c',
       recordTypeName: 'Parental Waiver',
+      skipContactCreation: true, // Waiver form doesn't need contact records
       allowedFields: [
         // Parent/Guardian Information
         'ParentFirstName__c', 'ParentLastName__c', 'Email__c', 'Phone__c',
@@ -306,7 +321,11 @@
     try {
       const payload = {
         ...formData,
-        __formConfig: FORM_CONFIG
+        __formConfig: FORM_CONFIG,
+        __sendEmail: true,
+        __emailTemplates: {
+          waiverCopy: EMAIL_TEMPLATES.waiverCopy
+        }
       };
 
       const response = await fetch(ENDPOINT, {

@@ -47,6 +47,8 @@ describe('createForm HTTP Function', () => {
       createNotes: jest.fn().mockResolvedValue([]),
       // Support update operations in the createForm update branch
       updateForm: jest.fn().mockResolvedValue(undefined),
+        // Contact matching for form linking
+        findContact: jest.fn().mockResolvedValue(null),
     } as any;
 
     const mockEmailService = {

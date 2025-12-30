@@ -1,7 +1,7 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
 import { Logger } from '../../services/logger';
 import { SalesforceService } from '../../services/salesforceService';
-import { EmailService } from '../../services/emailService';
+import { EmailService, EmailTemplate } from '../../services/emailService';
 
 async function sendCodeHandler(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
   let reqObj: any = request;
@@ -168,7 +168,7 @@ async function sendCodeHandler(request: HttpRequest, context: InvocationContext)
     const salesforceService = new SalesforceService(sfConfig);
     await salesforceService.authenticate();
 
-    // Lookup by email
+    // Lookup by email to retrieve application code
     logger.info('Looking up application by email', { email });
     let form: any;
     try {
@@ -184,10 +184,20 @@ async function sendCodeHandler(request: HttpRequest, context: InvocationContext)
       return { status: 500, body: JSON.stringify({ error: 'Application found but no application code present' }), headers: { 'Content-Type': 'application/json' } };
     }
 
-    // Send email
+    // Send email using template supplied by caller (front-end)
     try {
       const emailService = new EmailService();
-      await emailService.sendApplicationCode(email, code);
+
+      const emailTemplate = (body && body.template) as EmailTemplate | undefined;
+      if (!emailTemplate || !emailTemplate.subject || !emailTemplate.text || !emailTemplate.html) {
+        return {
+          status: 400,
+          body: JSON.stringify({ error: 'Missing email template. Provide subject, text, and html fields.' }),
+          headers: { 'Content-Type': 'application/json' },
+        };
+      }
+
+      await emailService.sendApplicationCode(email, code, emailTemplate);
     } catch (err: any) {
       // Generate a short error correlation id to help trace logs
       const errorId = (typeof require('crypto')?.randomUUID === 'function') ? require('crypto').randomUUID() : `${Date.now()}-${Math.floor(Math.random()*1000)}`;

@@ -3,6 +3,7 @@ import { SalesforceService } from '../../services/salesforceService';
 import { Logger } from '../../services/logger';
 import { initializeFormRegistry, getFormConfig } from '../../config/FormConfigLoader';
 import { convertToSalesforceFormat, filterAllowedFields } from '../../config/FormConfigUtils';
+import { EmailTemplate } from '../../services/emailService';
 
 // Ensure sendCode (and its diagnostics) are registered by importing its module so its top-level app.http calls run
 import '../sendCode';
@@ -201,6 +202,115 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
       logger.debug('Email flag detected - will send confirmation email');
     }
 
+    // Extract email templates supplied by the caller (front-end)
+    const emailTemplates: any = formData.__emailTemplates || {};
+    if (formData.__emailTemplates) delete formData.__emailTemplates;
+
+      // Determine which copy template is provided (applicationCopy, waiverCopy, etc)
+      let copyTemplateKey: string | undefined;
+    if (sendEmail) {
+      // Allow form-specific templates (e.g., waiverCopy, eventRegistration, applicationCopy)
+      // Determine which copy template is provided by checking what exists
+        copyTemplateKey = Object.keys(emailTemplates).find(k => 
+        k.endsWith('Copy') || k === 'applicationCopy' || k === 'waiverCopy'
+      );
+        const hasCopyTemplate = copyTemplateKey && emailTemplates[copyTemplateKey] && 
+        emailTemplates[copyTemplateKey].subject && 
+        emailTemplates[copyTemplateKey].text && 
+        emailTemplates[copyTemplateKey].html;
+      
+        const hasEventTemplate = emailTemplates.eventRegistration ? (emailTemplates.eventRegistration.subject && emailTemplates.eventRegistration.text && emailTemplates.eventRegistration.html) : false;
+        if (!hasCopyTemplate && !hasEventTemplate) {
+          return { status: 400, body: JSON.stringify({ error: 'Missing email template for submission confirmation' }), headers: { 'Content-Type': 'application/json' } };
+      }
+      // event template validated later when campaign info exists
+    }
+
+      const buildEmailVariables = (formPayload: any, campaignInfo?: any, formConfig?: any, generatedFormCode?: string) => {
+        const orgName = (formConfig && formConfig.terms && formConfig.terms.orgName) || 'our organization';
+        const rawCode = generatedFormCode || formPayload?.FormCode__c || formPayload?.formCode || formPayload?.FormCode;
+        const code = rawCode ? String(rawCode).toUpperCase() : '';
+        // Client timezone (IANA) if provided by the browser
+        const userTimeZone = formPayload?.__clientTimeZone || formPayload?.clientTimeZone || undefined;
+        const baseVars: any = {
+          ...formPayload,
+          ...(campaignInfo || {}),
+          orgName,
+          userTimeZone,
+          // Common code-related variables
+          FormCode__c: code || '',
+          codeText: code ? `: ${code}` : '',
+          codeHtml: code ? `: <strong>${code}</strong>` : '',
+          confirmationCode: code ? ` Your confirmation code is: ${code}` : '',
+          confirmationCodeHtml: code ? ` Your confirmation code is: <strong>${code}</strong>` : '',
+          // Common name variables
+          Name: (campaignInfo?.Name || campaignInfo?.name || ''),
+          eventName: (campaignInfo?.Name || campaignInfo?.name || ''),
+          attendeeName: (formPayload?.FirstName__c || formPayload?.FirstName || formPayload?.firstName || ''),
+          // Map Salesforce field names to template-friendly names
+          FirstName: formPayload?.FirstName__c || formPayload?.FirstName || '',
+          LastName: formPayload?.LastName__c || formPayload?.LastName || '',
+          Email: formPayload?.Email__c || formPayload?.Email || '',
+          Phone: formPayload?.Phone__c || formPayload?.Phone || ''
+        };
+
+        if (campaignInfo) {
+          const { EmailService } = require('../../services/emailService');
+          const svc = new EmailService();
+          const { googleUrl, icsDataUri } = svc.generateEventCalendarData({
+            name: campaignInfo.Name || campaignInfo.name,
+            startDate: campaignInfo.StartDate__c || campaignInfo.StartDate || campaignInfo.startDate,
+            endDate: campaignInfo.EndDate__c || campaignInfo.EndDate || campaignInfo.endDate,
+            startTime: campaignInfo.StartTime__c || campaignInfo.StartTime || campaignInfo.startTime,
+            endTime: campaignInfo.EndTime__c || campaignInfo.EndTime || campaignInfo.endTime,
+            description: campaignInfo.Description || campaignInfo.description,
+            location: campaignInfo.Location__c || campaignInfo.Location || campaignInfo.location,
+            orgName,
+            userTimeZone
+          });
+          let eventDetailsText = '';
+          const whenDate = campaignInfo.StartDate__c || campaignInfo.StartDate || campaignInfo.startDate;
+          const whenTime = campaignInfo.StartTime__c || campaignInfo.StartTime || campaignInfo.startTime;
+          const whereLoc = campaignInfo.Location__c || campaignInfo.Location || campaignInfo.location;
+          const notes = campaignInfo.Description || campaignInfo.description;
+          if (whenDate) eventDetailsText += `When: ${whenDate}${whenTime ? ' ' + whenTime : ''}\n`;
+          if (whereLoc) eventDetailsText += `Where: ${whereLoc}\n`;
+          if (notes) eventDetailsText += `Notes: ${notes}\n`;
+          const htmlDetails: string[] = [];
+          if (whenDate) htmlDetails.push(`<div><strong>When:</strong> ${whenDate}${whenTime ? ' ' + whenTime : ''}</div>`);
+          if (whereLoc) htmlDetails.push(`<div><strong>Where:</strong> ${whereLoc}</div>`);
+          if (notes) htmlDetails.push(`<div><strong>Notes:</strong><br/>${(notes || '').replace(/\n/g, '<br/>')}</div>`);
+          baseVars.googleUrl = googleUrl;
+          baseVars.icsDataUri = icsDataUri;
+          baseVars.icsUrl = (svc.generateEventCalendarData({
+            name: campaignInfo.Name || campaignInfo.name,
+            startDate: campaignInfo.StartDate__c || campaignInfo.StartDate || campaignInfo.startDate,
+            endDate: campaignInfo.EndDate__c || campaignInfo.EndDate || campaignInfo.endDate,
+            startTime: campaignInfo.StartTime__c || campaignInfo.StartTime || campaignInfo.startTime,
+            endTime: campaignInfo.EndTime__c || campaignInfo.EndTime || campaignInfo.endTime,
+            description: campaignInfo.Description || campaignInfo.description,
+            location: campaignInfo.Location__c || campaignInfo.Location || campaignInfo.location,
+            orgName,
+            userTimeZone
+          }).icsUrl);
+          baseVars.outlookUrl = (svc.generateEventCalendarData({
+            name: campaignInfo.Name || campaignInfo.name,
+            startDate: campaignInfo.StartDate__c || campaignInfo.StartDate || campaignInfo.startDate,
+            endDate: campaignInfo.EndDate__c || campaignInfo.EndDate || campaignInfo.endDate,
+            startTime: campaignInfo.StartTime__c || campaignInfo.StartTime || campaignInfo.startTime,
+            endTime: campaignInfo.EndTime__c || campaignInfo.EndTime || campaignInfo.endTime,
+            description: campaignInfo.Description || campaignInfo.description,
+            location: campaignInfo.Location__c || campaignInfo.Location || campaignInfo.location,
+            orgName,
+            userTimeZone
+          }).outlookUrl);
+          baseVars.appleIcsUrl = baseVars.icsUrl;
+          baseVars.eventDetails = eventDetailsText;
+          baseVars.eventDetailsHtml = htmlDetails.join('');
+        }
+        return baseVars;
+      };
+
     // Initialize Salesforce Service (credential validation is centralized in the service)
     const sfConfig = {
       loginUrl: process.env.SF_LOGIN_URL || 'https://login.salesforce.com',
@@ -309,15 +419,41 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
         ].filter(Boolean).join(' ').trim();
 
         // Send application copy when an applicant email is present (align with update handler behavior).
-        if (applicantEmail) {
-          logger.info('Dispatching application copy email (update)', { to: applicantEmail, applicantName, formId: resolvedFormId });
-          const { EmailService } = await import('../../services/emailService');
-          const emailService = new EmailService();
-          await emailService.sendApplicationCopy(applicantEmail, applicantName, updateFields, formConfig);
-          try { (global as any).__LAST_APPLICATION_COPY_SENT__ = { to: applicantEmail, name: applicantName, formData: updateFields }; } catch(e) {}
-          logger.info('Application copy email dispatched', { to: applicantEmail });
+        if (!sendEmail) {
+          logger.debug('Email flag not set; skipping application copy email');
         } else {
-          logger.debug('No applicant email present; skipping application copy email');
+          // Always fetch the complete record from Salesforce to populate all email template variables
+          let savedRecord: any = null;
+          try {
+            logger.debug('Fetching full record from Salesforce for email', { formId: resolvedFormId });
+            savedRecord = await salesforceService.getFormByCode(formCode, formConfig);
+          } catch (err) {
+            logger.debug('Failed to fetch full record for email', { error: (err && (err as any).message) || err });
+          }
+
+          // Merge saved record with update fields to get complete data
+          const emailData = { ...(savedRecord || {}), ...(updateFields || {}) };
+          applicantEmail = applicantEmail || emailData[emailField] || emailData[emailSfField];
+          applicantName = applicantName || [
+            emailData[firstNameField] || emailData[firstNameSfField],
+            emailData[lastNameField] || emailData[lastNameSfField]
+          ].filter(Boolean).join(' ').trim();
+
+          if (applicantEmail) {
+            const appTemplate = copyTemplateKey ? emailTemplates[copyTemplateKey] : (emailTemplates.applicationCopy || emailTemplates.waiverCopy || emailTemplates.eventRegistration);
+            if (!appTemplate || !appTemplate.subject || !appTemplate.text || !appTemplate.html) {
+              return { status: 400, body: JSON.stringify({ error: 'Missing email template for submission confirmation' }), headers: { 'Content-Type': 'application/json' } };
+            }
+
+            logger.info('Dispatching application copy email (update)', { to: applicantEmail, applicantName, formId: resolvedFormId });
+            const { EmailService } = await import('../../services/emailService');
+            const emailService = new EmailService();
+            await emailService.sendApplicationCopy(applicantEmail, applicantName, emailData, formConfig, appTemplate);
+            try { (global as any).__LAST_APPLICATION_COPY_SENT__ = { to: applicantEmail, name: applicantName, formData: emailData }; } catch(e) {}
+            logger.info('Application copy email dispatched', { to: applicantEmail });
+          } else {
+            logger.debug('No applicant email present; skipping application copy email');
+          }
         }
       } catch (e: any) {
         logger.error('Failed to send application copy email', e, { errorMessage: e?.message });
@@ -340,14 +476,18 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
     logger.info('Creating new form in Salesforce', { formConfigId: formConfig.id, recordType: formConfig.salesforce.recordTypeName });
     
     // Check if eventId was provided for campaign association
-    let campaignInfo: { id: string; name: string } | null = null;
+    let campaignInfo: any | null = null;
     const eventId = formData.__eventId;
-    
+
     if (eventId) {
       logger.info('Event ID provided, attempting campaign lookup', { eventId });
       try {
-        campaignInfo = await salesforceService.getCampaignById(eventId);
-        if (campaignInfo) {
+        const fields = (formConfig && formConfig.salesforce && Array.isArray(formConfig.salesforce.eventQueryFields))
+          ? formConfig.salesforce.eventQueryFields
+          : ['Id','Name','StartDate','EndDate','Description','Location__c','StartTime__c','EndTime__c'];
+        const rawCampaign: any = await salesforceService.getCampaignByIdWithFields(eventId, fields);
+        if (rawCampaign) {
+          campaignInfo = { ...rawCampaign, id: rawCampaign.Id || rawCampaign.id, name: rawCampaign.Name || rawCampaign.name };
           logger.info('Campaign found for event', { campaignId: campaignInfo.id, campaignName: campaignInfo.name });
           // Add campaign reference to form data if the config supports it
           if (formConfig.salesforce.campaignField) {
@@ -363,6 +503,31 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
       }
       // Remove __eventId from payload before processing
       delete formData.__eventId;
+    }
+
+    // Merge client-provided selected event metadata, if any, to enrich campaignInfo for emails
+    if (formData.__selectedEvent && typeof formData.__selectedEvent === 'object') {
+      try {
+        const sel = formData.__selectedEvent as any;
+        const norm: any = {
+          Name: sel.Name || sel.name,
+          name: sel.name || sel.Name,
+          StartDate: sel.StartDate || sel.startDate,
+          EndDate: sel.EndDate || sel.endDate,
+          StartTime__c: sel.StartTime__c || sel.startTime,
+          EndTime__c: sel.EndTime__c || sel.endTime,
+          Description: sel.Description || sel.description,
+          Location__c: sel.Location__c || sel.Location || sel.location || sel.Venue__c || sel.City__c || sel.City,
+          startDate: sel.startDate || sel.StartDate,
+          endDate: sel.endDate || sel.EndDate,
+          startTime: sel.startTime || sel.StartTime__c,
+          endTime: sel.endTime || sel.EndTime__c,
+          description: sel.description || sel.Description,
+          location: sel.location || sel.Location__c || sel.Location || sel.Venue__c || sel.City__c || sel.City,
+        };
+        campaignInfo = { ...(campaignInfo || {}), ...norm };
+      } catch {}
+      delete formData.__selectedEvent;
     }
     
     // Filter and convert form data to Salesforce format
@@ -390,6 +555,164 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
     const createdFormId = typeof createResult === 'string' ? createResult : createResult.id;
     const generatedFormCode = (typeof createResult === 'string' ? undefined : createResult.formCode) || undefined;
     logger.info('Form created successfully', { formId: createdFormId, formCode: generatedFormCode });
+
+    // Attempt to find and link existing Contact to the form (skip if configured)
+    try {
+      // Skip contact creation if configured to do so (e.g., for waiver forms)
+      if (formConfig.salesforce.skipContactCreation === true) {
+        logger.info('Skipping contact creation per form configuration', { formId: formConfig.id, formName: formConfig.name });
+      } else {
+        const contactMatchCriteria: any = {};
+      
+        // Extract fields for contact matching (support both client and Salesforce field names)
+        const firstNameField = 'FirstName';
+        const lastNameField = 'LastName';
+        const emailField = 'Email';
+        const phoneField = 'Phone';
+        const secondaryEmailField = 'Secondary_Email';
+      
+        const hasMapping = formConfig.salesforceMapping && Object.keys(formConfig.salesforceMapping).length > 0;
+        const firstNameSfField = hasMapping ? (formConfig.salesforceMapping[firstNameField] || 'FirstName__c') : 'FirstName__c';
+        const lastNameSfField = hasMapping ? (formConfig.salesforceMapping[lastNameField] || 'LastName__c') : 'LastName__c';
+        const emailSfField = hasMapping ? (formConfig.salesforceMapping[emailField] || 'Email__c') : 'Email__c';
+        const phoneSfField = hasMapping ? (formConfig.salesforceMapping[phoneField] || 'Phone__c') : 'Phone__c';
+        const secondaryEmailSfField = hasMapping ? (formConfig.salesforceMapping[secondaryEmailField] || 'Secondary_Email__c') : 'Secondary_Email__c';
+
+        // Gather contact matching criteria from form data
+        contactMatchCriteria.firstName = filteredData[firstNameField] || filteredData[firstNameSfField] || formData[firstNameField] || formData[firstNameSfField];
+        contactMatchCriteria.lastName = filteredData[lastNameField] || filteredData[lastNameSfField] || formData[lastNameField] || formData[lastNameSfField];
+        contactMatchCriteria.email = filteredData[emailField] || filteredData[emailSfField] || formData[emailField] || formData[emailSfField];
+        contactMatchCriteria.phone = filteredData[phoneField] || filteredData[phoneSfField] || formData[phoneField] || formData[phoneSfField];
+        contactMatchCriteria.secondaryEmail = filteredData[secondaryEmailField] || filteredData[secondaryEmailSfField] || formData[secondaryEmailField] || formData[secondaryEmailSfField];
+
+        logger.debug('Contact match criteria extracted', { 
+        hasFirstName: !!contactMatchCriteria.firstName,
+        hasLastName: !!contactMatchCriteria.lastName,
+        hasEmail: !!contactMatchCriteria.email,
+        hasPhone: !!contactMatchCriteria.phone,
+        hasSecondaryEmail: !!contactMatchCriteria.secondaryEmail
+      });
+
+      // Attempt contact matching if we have at least one criterion
+      const hasAnyCriteria = contactMatchCriteria.email || contactMatchCriteria.phone || 
+                           contactMatchCriteria.secondaryEmail || 
+                           (contactMatchCriteria.firstName && contactMatchCriteria.lastName);
+      
+      if (hasAnyCriteria) {
+        let contactId: string | null = null;
+        
+        // First, try to find existing contact
+        const contactMatch = await salesforceService.findContact(contactMatchCriteria, 70); // 70% confidence threshold
+        
+        if (contactMatch) {
+          logger.info('Matching Contact found with high confidence', { 
+            contactId: contactMatch.contactId, 
+            contactName: contactMatch.contactName,
+            confidenceScore: contactMatch.confidenceScore,
+            matchedFields: contactMatch.matchedFields
+          });
+          contactId = contactMatch.contactId;
+        } else {
+          // No match found - create new contact if we have email
+          if (contactMatchCriteria.email) {
+            logger.info('No matching Contact found - creating new contact', { email: contactMatchCriteria.email });
+            try {
+              // Extract address fields if present
+              const streetField = 'Street';
+              const cityField = 'City';
+              const stateField = 'State';
+              const zipField = 'Zip';
+              
+              const streetSfField = hasMapping ? (formConfig.salesforceMapping[streetField] || 'Street__c') : 'Street__c';
+              const citySfField = hasMapping ? (formConfig.salesforceMapping[cityField] || 'City__c') : 'City__c';
+              const stateSfField = hasMapping ? (formConfig.salesforceMapping[stateField] || 'State__c') : 'State__c';
+              const zipSfField = hasMapping ? (formConfig.salesforceMapping[zipField] || 'Zip__c') : 'Zip__c';
+              
+              const street = filteredData[streetField] || filteredData[streetSfField] || formData[streetField] || formData[streetSfField];
+              const city = filteredData[cityField] || filteredData[citySfField] || formData[cityField] || formData[citySfField];
+              const state = filteredData[stateField] || filteredData[stateSfField] || formData[stateField] || formData[stateSfField];
+              const zip = filteredData[zipField] || filteredData[zipSfField] || formData[zipField] || formData[zipSfField];
+              
+              contactId = await salesforceService.createContact({
+                firstName: contactMatchCriteria.firstName,
+                lastName: contactMatchCriteria.lastName,
+                email: contactMatchCriteria.email,
+                phone: contactMatchCriteria.phone,
+                secondaryEmail: contactMatchCriteria.secondaryEmail,
+                street: street,
+                city: city,
+                state: state,
+                zip: zip
+              });
+              logger.info('New Contact created successfully', { contactId });
+            } catch (createError: any) {
+              logger.error('Failed to create new Contact', createError, { errorMessage: createError?.message });
+            }
+          } else {
+            logger.debug('No high-confidence Contact match found and no email to create new contact', { formId: createdFormId });
+          }
+        }
+        
+        // Link the Contact to the Form as Person__c if we have a contactId
+        if (contactId) {
+          try {
+            // Check if the form config supports Person field linking
+            const personField = 'Person__c';
+            const personSfField = hasMapping ? (formConfig.salesforceMapping[personField] || 'Person__c') : 'Person__c';
+            
+            logger.debug('Attempting to link Contact to Form', { 
+              formId: createdFormId, 
+              contactId: contactId, 
+              personField: personSfField,
+              formConfigId: formConfig.id
+            });
+            
+            // Update the form with the Person__c field
+            await salesforceService.updateForm(createdFormId, { [personSfField]: contactId }, requestId, formConfig);
+            logger.info('Form linked to Contact', { formId: createdFormId, contactId: contactId, personField: personSfField });
+          } catch (linkError: any) {
+            // Log the error but don't fail the form creation
+            logger.error('Failed to link Contact to Form', linkError, { 
+              formId: createdFormId, 
+              contactId: contactId, 
+              personField: 'Person__c',
+              errorMessage: linkError?.message 
+            });
+          }
+          
+          // Create Campaign Member if this is an event registration
+          if (contactId && campaignInfo && campaignInfo.id) {
+            try {
+              logger.info('Creating Campaign Member for event registration', { 
+                campaignId: campaignInfo.id, 
+                contactId: contactId,
+                campaignName: campaignInfo.name || campaignInfo.Name
+              });
+              
+              const campaignMemberId = await salesforceService.createCampaignMember(campaignInfo.id, contactId, 'Registered');
+              logger.info('Campaign Member created successfully', { 
+                campaignMemberId, 
+                campaignId: campaignInfo.id, 
+                contactId: contactId 
+              });
+            } catch (campaignMemberError: any) {
+              // Log but don't fail - the form and contact are already created
+              logger.error('Failed to create Campaign Member', campaignMemberError, { 
+                campaignId: campaignInfo.id, 
+                contactId: contactId,
+                errorMessage: campaignMemberError?.message 
+              });
+            }
+          }
+        }
+      } else {
+        logger.debug('Insufficient data for contact matching', { formId: createdFormId });
+      }
+      } // End of skipContactCreation else block
+    } catch (contactMatchError: any) {
+      // Log but don't fail the form creation
+      logger.error('Contact matching failed', contactMatchError, { formId: createdFormId, errorMessage: contactMatchError?.message });
+    }
 
     // Handle uploaded files as attachments
     if (Object.keys(uploadedFiles).length > 0) {
@@ -432,29 +755,41 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
 
       // Send application copy to applicant when an email address is present.
       // Default behavior: send on create if applicant email exists (aligns with update flow).
-      if (applicantEmail) {
+      if (!sendEmail) {
+        logger.debug('Email flag not set; skipping application email on create');
+      } else if (applicantEmail) {
         const { EmailService } = await import('../../services/emailService');
         const emailService = new EmailService();
 
         if (campaignInfo) {
-          // Send a concise event registration confirmation instead of the general application copy
-          logger.info('Dispatching event registration confirmation email (creation)', { to: applicantEmail, applicantName, formId: createdFormId, campaign: campaignInfo });
+          const selectedTemplate = emailTemplates.eventRegistration || (copyTemplateKey ? emailTemplates[copyTemplateKey] : undefined);
+          if (!selectedTemplate || !selectedTemplate.subject || !selectedTemplate.text || !selectedTemplate.html) {
+            return { status: 400, body: JSON.stringify({ error: 'Missing email template for submission confirmation' }), headers: { 'Content-Type': 'application/json' } };
+          }
+
+          const variables = buildEmailVariables(enrichedFormData, campaignInfo, formConfig, generatedFormCode);
+          logger.info('Dispatching event registration email (creation)', { to: applicantEmail, applicantName, formId: createdFormId, campaign: campaignInfo });
           try {
-            await emailService.sendEventRegistrationConfirmation(applicantEmail, applicantName, campaignInfo, generatedFormCode);
+            await emailService.sendEmail(applicantEmail, selectedTemplate, variables);
             try { (global as any).__LAST_EVENT_CONFIRMATION_SENT__ = { to: applicantEmail, name: applicantName, campaign: campaignInfo }; } catch (e) {}
             logger.info('Event confirmation email dispatched', { to: applicantEmail });
           } catch (e: any) {
             logger.error('Failed to send event confirmation email', e, { errorMessage: e?.message });
           }
         } else {
-          // Default behavior: send application copy
-          logger.info('Dispatching application copy email (creation)', { to: applicantEmail, applicantName, formId: createdFormId });
+          const selectedTemplate = copyTemplateKey ? emailTemplates[copyTemplateKey] : (emailTemplates.applicationCopy || emailTemplates.waiverCopy || emailTemplates.eventRegistration);
+          if (!selectedTemplate || !selectedTemplate.subject || !selectedTemplate.text || !selectedTemplate.html) {
+            return { status: 400, body: JSON.stringify({ error: 'Missing email template for submission confirmation' }), headers: { 'Content-Type': 'application/json' } };
+          }
+
+          const variables = buildEmailVariables(enrichedFormData, undefined, formConfig, generatedFormCode);
+          logger.info('Dispatching submission email (creation)', { to: applicantEmail, applicantName, formId: createdFormId });
           try {
-            await emailService.sendApplicationCopy(applicantEmail, applicantName, enrichedFormData, formConfig);
+            await emailService.sendEmail(applicantEmail, selectedTemplate, variables);
             try { (global as any).__LAST_APPLICATION_COPY_SENT__ = { to: applicantEmail, name: applicantName, formData: enrichedFormData }; } catch(e) {}
-            logger.info('Application copy email dispatched', { to: applicantEmail });
+            logger.info('Submission email dispatched', { to: applicantEmail });
           } catch (e: any) {
-            logger.error('Failed to send application copy email', e, { errorMessage: e?.message });
+            logger.error('Failed to send submission email', e, { errorMessage: e?.message });
           }
         }
 

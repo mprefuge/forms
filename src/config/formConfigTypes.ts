@@ -47,6 +47,9 @@ export interface SalesforceConfig {
   // Code generation
   codeGenerationEnabled?: boolean; // Whether to auto-generate form codes
   codeLength?: number; // Length of generated code (default: 5)
+  
+  // Contact management
+  skipContactCreation?: boolean; // Skip contact matching and creation for this form type (e.g., for waivers where form submission is sufficient)
 }
 
 export interface FormStep {

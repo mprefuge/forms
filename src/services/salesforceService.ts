@@ -7,6 +7,7 @@ import {
   buildSoqlSelectClause,
   getUpdateableFields 
 } from '../config/FormConfigUtils';
+import { ContactMatchService, ContactMatchCriteria, ContactMatchResult } from './contactMatchService';
 
 export interface SalesforceServiceConfig {
   loginUrl: string;
@@ -598,6 +599,18 @@ export class SalesforceService {
       // Get metadata for picklist handling
       const describedFields = await this.describeFormFields(formConfig);
       fieldMetaMap = new Map(describedFields.map(f => [f.name, f]));
+      
+      // Add Person__c if it's being updated and is updateable in Salesforce (regardless of form config)
+      if (formData['Person__c'] !== undefined && !updateableFieldsList.includes('Person__c')) {
+        // Check if Person__c exists and is updateable in Salesforce
+        const personField = describedFields.find(f => f.name === 'Person__c');
+        if (personField && personField.createable) {
+          updateableFieldsList.push('Person__c');
+          console.log('Added Person__c to updateable fields list');
+        } else {
+          console.log('Person__c field not found or not updateable in Salesforce schema');
+        }
+      }
     } else {
       // Legacy: get updateable fields from Salesforce schema
       const desc: any = await this.connection.sobject('Form__c').describe();
@@ -611,6 +624,9 @@ export class SalesforceService {
 
       fieldMetaMap = new Map((desc.fields || []).map((f: any) => [f.name, f]));
     }
+    
+    console.log('Updateable fields list:', updateableFieldsList);
+    console.log('Fields to update:', Object.keys(formData));
 
     // Copy only updateable fields
     for (const field of updateableFieldsList) {
@@ -724,6 +740,141 @@ export class SalesforceService {
     } catch (error: any) {
       console.error(`Active Event campaigns query failed:`, error?.message || error);
       return [];
+    }
+  }
+
+  /**
+   * Find a matching Contact record based on form data.
+   * Searches for Contact matches using email, phone, secondary email, and names.
+   * Returns the best match if confidence score meets minimum threshold.
+   * 
+   * @param criteria Contact matching criteria (firstName, lastName, email, phone, secondaryEmail)
+   * @param minConfidence Minimum confidence threshold (0-100, default 70)
+   * @returns ContactMatchResult if high confidence match found, null otherwise
+   */
+  async findContact(
+    criteria: ContactMatchCriteria,
+    minConfidence: number = 70
+  ): Promise<ContactMatchResult | null> {
+    try {
+      // Validate that at least one criterion is provided
+      if (!criteria.email && !criteria.phone && !criteria.secondaryEmail && 
+          (!criteria.firstName || !criteria.lastName)) {
+        console.log('Contact search: No criteria provided');
+        return null;
+      }
+
+      // Build search query
+      const matchService = new ContactMatchService();
+      const query = matchService.buildContactSearchQuery(criteria);
+      
+      console.log('Contact search query:', query);
+
+      // Execute query
+      const result: any = await this.connection.query(query);
+      const contacts = result.records || [];
+      
+      console.log(`Contact search results: Found ${contacts.length} contacts`);
+      if (contacts.length > 0) {
+        console.log('First contact:', JSON.stringify(contacts[0]));
+      }
+
+      if (contacts.length === 0) {
+        return null;
+      }
+
+      // Find and return best match
+      const match = matchService.findBestMatch(criteria, contacts, minConfidence);
+      
+      if (match) {
+        console.log(`Contact match found: ID=${match.contactId}, confidence=${match.confidenceScore}`);
+      } else {
+        console.log(`No match met confidence threshold of ${minConfidence}`);
+      }
+      
+      return match;
+    } catch (error: any) {
+      console.error(`Contact lookup failed:`, error?.message || error, error);
+      return null;
+    }
+  }
+
+  /**
+   * Create a new Contact record in Salesforce
+   * 
+   * @param contactData Contact data including firstName, lastName, email, phone, etc.
+   * @returns Contact ID of created record
+   */
+  async createContact(contactData: {
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    phone?: string;
+    secondaryEmail?: string;
+    street?: string;
+    city?: string;
+    state?: string;
+    zip?: string;
+  }): Promise<string> {
+    const contactRecord: any = {
+      attributes: { type: 'Contact' },
+      RecordTypeId: '0124x000000ySucAAE', // Contact record type
+    };
+
+    if (contactData.firstName) contactRecord.FirstName = contactData.firstName;
+    if (contactData.lastName) contactRecord.LastName = contactData.lastName;
+    if (contactData.email) contactRecord.Email = contactData.email;
+    if (contactData.phone) contactRecord.Phone = contactData.phone;
+    if (contactData.secondaryEmail) contactRecord.Secondary_Email__c = contactData.secondaryEmail;
+    if (contactData.street) contactRecord.MailingStreet = contactData.street;
+    if (contactData.city) contactRecord.MailingCity = contactData.city;
+    if (contactData.state) contactRecord.MailingState = contactData.state;
+    if (contactData.zip) contactRecord.MailingPostalCode = contactData.zip;
+
+    // LastName is required for Contact in Salesforce
+    if (!contactRecord.LastName) {
+      contactRecord.LastName = 'Unknown';
+    }
+
+    try {
+      const result = await this.connection.sobject('Contact').create(contactRecord);
+      
+      if (result.success) {
+        return result.id;
+      } else {
+        throw new Error(`Failed to create contact: ${result.errors?.join(', ') || 'Unknown error'}`);
+      }
+    } catch (error: any) {
+      throw new Error(`Salesforce error creating contact: ${error.message || 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Create a Campaign Member linking a Contact to a Campaign
+   * 
+   * @param campaignId Campaign ID
+   * @param contactId Contact ID
+   * @param status Campaign Member Status (default: 'Registered')
+   * @returns Campaign Member ID of created record
+   */
+  async createCampaignMember(campaignId: string, contactId: string, status: string = 'Registered'): Promise<string> {
+    const campaignMemberRecord: any = {
+      attributes: { type: 'CampaignMember' },
+      CampaignId: campaignId,
+      ContactId: contactId,
+      Status: status,
+    };
+
+    try {
+      const result = await this.connection.sobject('CampaignMember').create(campaignMemberRecord);
+      
+      if (result.success) {
+        return result.id;
+      } else {
+        throw new Error(`Failed to create campaign member: ${result.errors?.join(', ') || 'Unknown error'}`);
+      }
+    } catch (error: any) {
+      throw new Error(`Salesforce error creating campaign member: ${error.message || 'Unknown error'}`);
     }
   }
 }

@@ -1,6 +1,7 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
 import { SalesforceService } from '../../services/salesforceService';
 import { Logger } from '../../services/logger';
+import { EmailTemplate } from '../../services/emailService';
 
 async function updateFormHandler(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
   // Resolve incoming request object (the runtime sometimes swaps params)
@@ -60,6 +61,42 @@ async function updateFormHandler(request: HttpRequest, context: InvocationContex
         body: JSON.stringify({ error: 'Invalid JSON in request body' }),
         headers: { 'Content-Type': 'application/json' },
       };
+    }
+
+    // Extract email controls
+    let sendEmail = false;
+    let emailTemplates: any = {};
+
+    if (updateData && updateData.__sendEmail === true) {
+      sendEmail = true;
+      delete updateData.__sendEmail;
+      logger.debug('Email flag detected - will send confirmation email');
+    }
+
+    if (updateData && updateData.__emailTemplates) {
+      emailTemplates = updateData.__emailTemplates;
+      delete updateData.__emailTemplates;
+    }
+
+    // Determine which copy template is provided (applicationCopy, waiverCopy, etc)
+    let copyTemplateKey: string | undefined;
+    if (sendEmail) {
+      // Allow form-specific templates (e.g., waiverCopy, applicationCopy)
+      copyTemplateKey = Object.keys(emailTemplates).find(k => 
+        k.endsWith('Copy') || k === 'applicationCopy' || k === 'waiverCopy'
+      );
+      const hasCopyTemplate = copyTemplateKey && emailTemplates[copyTemplateKey] && 
+        emailTemplates[copyTemplateKey].subject && 
+        emailTemplates[copyTemplateKey].text && 
+        emailTemplates[copyTemplateKey].html;
+      const hasEventTemplate = emailTemplates.eventRegistration ? (emailTemplates.eventRegistration.subject && emailTemplates.eventRegistration.text && emailTemplates.eventRegistration.html) : false;
+      if (!hasCopyTemplate && !hasEventTemplate) {
+        return {
+          status: 400,
+          body: JSON.stringify({ error: 'Missing email template for submission confirmation' }),
+          headers: { 'Content-Type': 'application/json' },
+        };
+      }
     }
 
     // Get form identifier from route parameter or request body
@@ -132,45 +169,71 @@ async function updateFormHandler(request: HttpRequest, context: InvocationContex
     }
 
     // Attempt to email a copy of the application to the applicant (do not block update on failure)
-    try {
-      let applicantEmail = formFields?.Email__c || formFields?.email;
-      let applicantName = [formFields?.FirstName__c, formFields?.LastName__c].filter(Boolean).join(' ').trim();
-
-      // If the request body didn't include an email, attempt to resolve it from Salesforce by code or id
-      if (!applicantEmail && formCode) {
-        try {
-          logger.debug('Attempting to resolve applicant email from Salesforce record (by code)', { formCode });
-          const savedRecord = await salesforceService.getFormByCode(formCode);
-          applicantEmail = applicantEmail || savedRecord?.Email__c || savedRecord?.email;
-          formFields = { ...(formFields || {}), ...(savedRecord || {}) };
-          applicantName = applicantName || [formFields?.FirstName__c, formFields?.LastName__c].filter(Boolean).join(' ').trim();
-        } catch (err) {
-          logger.debug('Failed to resolve applicant email by code', { error: (err && (err as any).message) || err });
+    if (!sendEmail) {
+      logger.debug('Email flag not set; skipping application copy email (update)');
+    } else {
+      try {
+        // Always fetch the full record from Salesforce to populate email template variables
+        let savedRecord: any = null;
+        if (formCode) {
+          try {
+            logger.debug('Fetching full record from Salesforce for email (by code)', { formCode });
+            savedRecord = await salesforceService.getFormByCode(formCode);
+          } catch (err) {
+            logger.debug('Failed to fetch record by code', { error: (err && (err as any).message) || err });
+          }
+        } else if (resolvedFormId && typeof (salesforceService as any).getFormById === 'function') {
+          try {
+            logger.debug('Fetching full record from Salesforce for email (by id)', { formId: resolvedFormId });
+            savedRecord = await (salesforceService as any).getFormById(resolvedFormId);
+          } catch (err) {
+            logger.debug('Failed to fetch record by id', { error: (err && (err as any).message) || err });
+          }
         }
-      } else if (!applicantEmail && resolvedFormId && typeof (salesforceService as any).getFormById === 'function') {
-        try {
-          logger.debug('Attempting to resolve applicant email from Salesforce record (by id)', { formId: resolvedFormId });
-          const savedRecord = await (salesforceService as any).getFormById(resolvedFormId);
-          applicantEmail = applicantEmail || savedRecord?.Email__c || savedRecord?.email;
-          formFields = { ...(formFields || {}), ...(savedRecord || {}) };
-          applicantName = applicantName || [formFields?.FirstName__c, formFields?.LastName__c].filter(Boolean).join(' ').trim();
-        } catch (err) {
-          logger.debug('Failed to resolve applicant email by id', { error: (err && (err as any).message) || err });
-        }
-      }
 
-      if (applicantEmail) {
-        logger.info('Dispatching application copy email (update)', { to: applicantEmail, applicantName, formId: resolvedFormId });
-        const { EmailService } = await import('../../services/emailService');
-        const emailService = new EmailService();
-        await emailService.sendApplicationCopy(applicantEmail, applicantName, formFields);
-        try { (global as any).__LAST_APPLICATION_COPY_SENT__ = { to: applicantEmail, name: applicantName, formData: formFields }; } catch(e) {}
-        logger.info('Application copy email dispatched (update)', { to: applicantEmail });
-      } else {
-        logger.debug('No applicant email present; skipping application copy email (update)');
+        // Merge the saved record with any fields from the request to get complete data for email
+        const emailData = { ...(savedRecord || {}), ...(formFields || {}) };
+        let applicantEmail = emailData?.Email__c || emailData?.email;
+        let applicantName = [emailData?.FirstName__c, emailData?.LastName__c].filter(Boolean).join(' ').trim();
+
+        if (applicantEmail) {
+          logger.info('Dispatching application copy email (update)', { to: applicantEmail, applicantName, formId: resolvedFormId });
+          const { EmailService } = await import('../../services/emailService');
+          const emailService = new EmailService();
+          const emailTemplate: EmailTemplate = copyTemplateKey ? emailTemplates[copyTemplateKey] : (emailTemplates.applicationCopy || emailTemplates.waiverCopy || emailTemplates.eventRegistration);
+
+          if (!emailTemplate || !emailTemplate.subject || !emailTemplate.text || !emailTemplate.html) {
+            return {
+              status: 400,
+              body: JSON.stringify({ error: 'Missing email template for submission confirmation' }),
+              headers: { 'Content-Type': 'application/json' },
+            };
+          }
+
+          const orgName = 'our organization';
+          const code = emailData?.FormCode__c || emailData?.formCode || formCode;
+          const variables = {
+            ...emailData,
+            // Map Salesforce field names to template-friendly names
+            FirstName: emailData?.FirstName__c || emailData?.FirstName || '',
+            LastName: emailData?.LastName__c || emailData?.LastName || '',
+            Email: emailData?.Email__c || emailData?.Email || '',
+            Phone: emailData?.Phone__c || emailData?.Phone || '',
+            orgName,
+            FormCode__c: code || '',
+            codeText: code ? `: ${code}` : '',
+            codeHtml: code ? `: <strong>${code}</strong>` : ''
+          };
+
+          await emailService.sendEmail(applicantEmail, emailTemplate, variables);
+          try { (global as any).__LAST_APPLICATION_COPY_SENT__ = { to: applicantEmail, name: applicantName, formData: emailData }; } catch(e) {}
+          logger.info('Application copy email dispatched (update)', { to: applicantEmail });
+        } else {
+          logger.debug('No applicant email present; skipping application copy email (update)');
+        }
+      } catch (e: any) {
+        logger.error('Failed to send application copy email (update)', e, { errorMessage: e?.message });
       }
-    } catch (e: any) {
-      logger.error('Failed to send application copy email (update)', e, { errorMessage: e?.message });
     }
 
     // Return success response

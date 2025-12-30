@@ -6,6 +6,16 @@ export interface EmailServiceConfig {
   fromAddress?: string;
 }
 
+export interface EmailTemplate {
+  subject: string;
+  text: string;
+  html: string;
+}
+
+export interface EmailVariables {
+  [key: string]: string | number | boolean | undefined;
+}
+
 /**
  * EmailService supports two providers:
  * 1) Azure Communication Services Email - enabled when AZURE_COMMUNICATION_CONNECTION_STRING is set
@@ -111,34 +121,79 @@ export class EmailService {
     }
   }
 
-  async sendApplicationCode(toEmail: string, formCode: string): Promise<void> {
-    if (!toEmail || !formCode) throw new Error('Invalid parameters for sendApplicationCode');
+  /**
+   * Send an email with template variable substitution.
+   * Variables in the template are replaced using {{variableName}} syntax.
+   * Supports nested access like {{data.fieldName}} or direct field names {{fieldName}}.
+   * @param toEmail Recipient email address
+   * @param template Email template with subject, text, and html
+   * @param variables Key-value pairs to substitute in the template
+   */
+  async sendEmail(toEmail: string, template: EmailTemplate, variables: EmailVariables = {}): Promise<void> {
+    if (!toEmail) throw new Error('Missing recipient email');
+    if (!template || !template.subject) throw new Error('Invalid email template');
 
-    const subject = 'Your Application Code';
-    // Normalize code to uppercase for readability in email
-    const codeToSend = String(formCode).toUpperCase();
+    // Replace variables in template
+    // Supports {{variableName}} or {{data.fieldName}} syntax
+    const replaceVariables = (str: string): string => {
+      return str.replace(/\{\{([\w\.]+)\}\}/g, (match, path) => {
+        // Split path by dots to support nested access (e.g., data.FirstName__c)
+        const keys = path.split('.');
+        let value: any = variables;
+        
+        for (const key of keys) {
+          value = value?.[key];
+          if (value === undefined) break;
+        }
+        
+        return value !== undefined ? String(value) : match;
+      });
+    };
 
-    const text = `Hello,\n\nWe received a request to retrieve your application code. Your application code is: ${codeToSend}\n\nYou can use this code to resume your application at our website. If you did not request this email, please ignore it.\n\nThank you`;
-    const html = `<p>Hello,</p><p>We received a request to retrieve your application code. <strong>Your application code is: <code>${codeToSend}</code></strong></p><p>You can use this code to resume your application at our website. If you did not request this email, please ignore it.</p><p>Thank you</p>`;
+    const subject = replaceVariables(template.subject);
+    const text = replaceVariables(template.text);
+    const html = replaceVariables(template.html);
 
     await this.sendRawEmail(toEmail, subject, text, html);
   }
 
-  async sendApplicationCopy(toEmail: string, applicantName: string, formData: any, formConfig?: any): Promise<void> {
+  /**
+   * @deprecated Use sendEmail directly with your own template. This method is kept for backward compatibility.
+   */
+  async sendApplicationCode(toEmail: string, formCode: string, template?: EmailTemplate): Promise<void> {
+    if (!toEmail || !formCode) throw new Error('Invalid parameters for sendApplicationCode');
+    if (!template) throw new Error('Email template is required. Define the template in the calling function.');
+
+    const codeToSend = String(formCode).toUpperCase();
+    await this.sendEmail(toEmail, template, { formCode: codeToSend });
+  }
+
+  /**
+   * @deprecated Use sendEmail directly with your own template. This method is kept for backward compatibility.
+   */
+  async sendApplicationCopy(toEmail: string, applicantName: string, formData: any, formConfig?: any, template?: EmailTemplate): Promise<void> {
     if (!toEmail) throw new Error('Missing recipient email');
+    if (!template) throw new Error('Email template is required. Define the template in the calling function.');
 
-    // Get organization name from form config or use generic text
     const orgName = (formConfig && formConfig.terms && formConfig.terms.orgName) || 'our organization';
+    const code = (formData && (formData.FormCode__c || formData.formCode || formData.FormCode || formData.form_code)) ? String(formData.FormCode__c || formData.formCode || formData.FormCode || formData.form_code).toUpperCase() : undefined;
 
-    // New behavior: short confirmation email with optional application code
-    const subject = `Your ${orgName} Application Submission`;
-    const code = (formData && (formData.FormCode__c || formData.formCode || formData.FormCode || formData.form_code)) ? String(formData.FormCode__c || formData.formCode || formData.FormCode || formData.form_code) : undefined;
+    // Include all formData fields so they can be referenced in templates
+    const variables: EmailVariables = {
+      ...formData,
+      applicantName: applicantName || '',
+      orgName,
+      codeText: code ? `: ${code}` : '',
+      codeHtml: code ? `: <strong>${code}</strong>` : '',
+      FormCode__c: code || '',
+      // Map Salesforce field names to template-friendly names
+      FirstName: formData?.FirstName__c || formData?.FirstName || '',
+      LastName: formData?.LastName__c || formData?.LastName || '',
+      Email: formData?.Email__c || formData?.Email || '',
+      Phone: formData?.Phone__c || formData?.Phone || ''
+    };
 
-    const text = `Hello ${applicantName || ''},\n\nThank you — your application has been successfully submitted. You can monitor its progress by navigating to the application page and selecting "Check Progress", then entering your application code${code ? `: ${code.toUpperCase()}` : '.'}\n\nIf you cannot locate your application code, use the "Forgot your code?" link on the application page.\n\nThank you,\n${orgName}`;
-
-    const html = `<p>Hello ${applicantName || ''},</p><p>Thank you — your application has been <strong>successfully submitted</strong>. You can monitor its progress by navigating to the application page and selecting <strong>Check Progress</strong>, then entering your application code${code ? `: <strong>${code.toUpperCase()}</strong>` : '.'}</p><p>If you cannot locate your application code, use the <em>Forgot your code?</em> link on the application page.</p><p>Thank you,<br/>${orgName}</p>`;
-
-    await this.sendRawEmail(toEmail, subject, text, html);
+    await this.sendEmail(toEmail, template, variables);
   }
 
   // Helper to format Date to Google/ICS friendly strings
@@ -171,17 +226,49 @@ export class EmailService {
     }
   }
 
-  // Send a concise event registration confirmation with calendar links
-  async sendEventRegistrationConfirmation(toEmail: string, attendeeName: string, eventInfo: any, formCode?: string): Promise<void> {
-    if (!toEmail) throw new Error('Missing recipient email');
-    if (!eventInfo || !eventInfo.name) throw new Error('Missing event information');
+  /**
+   * Helper to format Date to Google/ICS friendly strings
+   */
+  formatDateTimeForCalendar(dStr?: string, tStr?: string): string | null {
+    return this._formatDateTimeForCalendar(dStr, tStr);
+  }
 
+  /**
+   * Build a local "floating" date-time in YYYYMMDDTHHMMSS (no timezone conversion, no trailing Z)
+   * Interprets dStr as YYYY-MM-DD and tStr as HH:mm[:ss][Z]; ignores any timezone designator.
+   */
+  private _formatDateTimeLocal(dStr?: string, tStr?: string): string | null {
+    if (!dStr) return null;
+    try {
+      const d = String(dStr).trim();
+      const m = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (!m) return null;
+      const Y = m[1];
+      const M = m[2];
+      const D = m[3];
+      let hh = '00', mm = '00', ss = '00';
+      if (tStr) {
+        const t = String(tStr).trim().replace(/Z$/i, '');
+        const parts = t.split(':');
+        if (parts.length >= 1) hh = parts[0].padStart(2, '0');
+        if (parts.length >= 2) mm = parts[1].padStart(2, '0');
+        if (parts.length >= 3) ss = parts[2].split('.')[0].padStart(2, '0');
+      }
+      return `${Y}${M}${D}T${hh}${mm}${ss}`;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Helper to generate calendar links and data for event emails
+   */
+  generateEventCalendarData(eventInfo: any): { googleUrl: string; icsDataUri: string; icsUrl: string; outlookUrl: string; appleIcsUrl: string } {
     const orgName = (eventInfo.orgName) || 'our organization';
-    const subject = `Registration Confirmed: ${eventInfo.name}`;
-
-    // Prepare start/end in calendar format
-    const start = this._formatDateTimeForCalendar(eventInfo.startDate, eventInfo.startTime);
-    const end = this._formatDateTimeForCalendar(eventInfo.endDate, eventInfo.endTime) || start;
+    const userTz = eventInfo.userTimeZone || eventInfo.timeZone || eventInfo.tz || undefined;
+    // Use floating local times so recipients see the provided times in their local zone.
+    const startLocal = this._formatDateTimeLocal(eventInfo.startDate, eventInfo.startTime);
+    const endLocal = this._formatDateTimeLocal(eventInfo.endDate, eventInfo.endTime) || startLocal;
 
     // Create ICS content
     const uid = `${Date.now()}@${(this.config.fromAddress || 'no-reply')}`;
@@ -196,8 +283,9 @@ export class EmailService {
       `DTSTAMP:${dtstamp}`,
     ];
 
-    if (start) icsLines.push(`DTSTART:${start}`);
-    if (end) icsLines.push(`DTEND:${end}`);
+    // Floating local DTSTART/DTEND (no Z) so clients render in user's local time
+    if (startLocal) icsLines.push(`DTSTART:${startLocal}`);
+    if (endLocal) icsLines.push(`DTEND:${endLocal}`);
     icsLines.push(`SUMMARY:${(eventInfo.name || '').replace(/\n/g, '\\n')}`);
     if (eventInfo.description) icsLines.push(`DESCRIPTION:${(eventInfo.description || '').replace(/\n/g, '\\n')}`);
     if (eventInfo.location) icsLines.push(`LOCATION:${(eventInfo.location || '').replace(/\n/g, '\\n')}`);
@@ -207,8 +295,8 @@ export class EmailService {
     const icsDataUri = `data:text/calendar;charset=utf-8,${encodeURIComponent(ics)}`;
 
     // Google Calendar link
-    const gcStart = start || '';
-    const gcEnd = end || '';
+    const gcStart = startLocal || '';
+    const gcEnd = endLocal || '';
     const gcParams = new URLSearchParams({
       action: 'TEMPLATE',
       text: eventInfo.name || '',
@@ -216,22 +304,100 @@ export class EmailService {
       location: eventInfo.location || '',
       dates: gcStart && gcEnd ? `${gcStart}/${gcEnd}` : undefined,
     } as any);
+    if (userTz) {
+      gcParams.set('ctz', userTz);
+    }
     const googleUrl = `https://calendar.google.com/calendar/render?${gcParams.toString()}`;
 
-    const text = `Hello ${attendeeName || ''},\n\nThank you — your registration for ${eventInfo.name} has been confirmed.${formCode ? ` Your confirmation code is: ${String(formCode).toUpperCase()}` : ''}\n\nEvent details:\n${eventInfo.startDate ? `When: ${eventInfo.startDate}${eventInfo.startTime ? ' ' + eventInfo.startTime : ''}\n` : ''}${eventInfo.location ? `Where: ${eventInfo.location}\n` : ''}${eventInfo.description ? `Notes: ${eventInfo.description}\n` : ''}\nTo add this event to your calendar, use the following link: ${googleUrl}\n\nThank you,\n${orgName}`;
+    // Hosted ICS link (API will serve the file with proper headers)
+    const base = (process.env.PUBLIC_BASE_URL
+      || (process.env.WEBSITE_HOSTNAME ? `https://${process.env.WEBSITE_HOSTNAME}` : undefined)
+      || 'http://localhost:7071').replace(/\/$/, '');
+    const icsParams = new URLSearchParams({
+      name: eventInfo.name || '',
+      startDate: eventInfo.startDate || '',
+      endDate: eventInfo.endDate || '',
+      startTime: eventInfo.startTime || '',
+      endTime: eventInfo.endTime || '',
+      description: eventInfo.description || '',
+      location: eventInfo.location || '',
+      tz: userTz || ''
+    } as any);
+    const icsUrl = `${base}/api/calendar?${icsParams.toString()}`;
 
-    const htmlParts = [`<p>Hello ${attendeeName || ''},</p><p>Thank you — your registration for <strong>${eventInfo.name}</strong> has been confirmed.${formCode ? ` Your confirmation code is: <strong>${String(formCode).toUpperCase()}</strong>` : ''}</p>`];
-    const details = [];
-    if (eventInfo.startDate) details.push(`<div><strong>When:</strong> ${eventInfo.startDate}${eventInfo.startTime ? ' ' + eventInfo.startTime : ''}</div>`);
-    if (eventInfo.location) details.push(`<div><strong>Where:</strong> ${eventInfo.location}</div>`);
-    if (eventInfo.description) details.push(`<div><strong>Notes:</strong><br/>${(eventInfo.description || '').replace(/\n/g, '<br/>')}</div>`);
+    // Outlook (web) deep link
+    const isoLocal = (d?: string, t?: string) => {
+      if (!d) return '';
+      const m = String(d).trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (!m) return '';
+      let hh = '00', mm = '00', ss = '00';
+      if (t) {
+        const tt = String(t).trim().replace(/Z$/i, '');
+        const parts = tt.split(':');
+        if (parts.length >= 1) hh = parts[0].padStart(2, '0');
+        if (parts.length >= 2) mm = parts[1].padStart(2, '0');
+        if (parts.length >= 3) ss = parts[2].split('.')[0].padStart(2, '0');
+      }
+      return `${m[1]}-${m[2]}-${m[3]}T${hh}:${mm}:${ss}`;
+    };
+    const outlookParams = new URLSearchParams({
+      path: '/calendar/action/compose',
+      rru: 'addevent',
+      startdt: isoLocal(eventInfo.startDate, eventInfo.startTime),
+      enddt: isoLocal(eventInfo.endDate, eventInfo.endTime),
+      subject: eventInfo.name || '',
+      body: eventInfo.description || '',
+      location: eventInfo.location || '',
+      allday: 'false'
+    } as any);
+    const outlookUrl = `https://outlook.live.com/calendar/0/deeplink/compose?${outlookParams.toString()}`;
 
-    htmlParts.push(`<div>${details.join('')}</div>`);
-    htmlParts.push(`<p><a href="${googleUrl}" target="_blank">Add to Google Calendar</a> | <a href="${icsDataUri}" download="event.ics">Download .ics</a></p>`);
-    htmlParts.push(`<p>Thank you,<br/>${orgName}</p>`);
+    // Apple Calendar uses ICS; provide a friendly alias
+    const appleIcsUrl = icsUrl;
 
-    const html = htmlParts.join('');
+    return { googleUrl, icsDataUri, icsUrl, outlookUrl, appleIcsUrl };
+  }
 
-    await this.sendRawEmail(toEmail, subject, text, html);
+  /**
+   * @deprecated Use sendEmail directly with your own template. This method is kept for backward compatibility.
+   */
+  async sendEventRegistrationConfirmation(toEmail: string, attendeeName: string, eventInfo: any, formCode?: string, template?: EmailTemplate): Promise<void> {
+    if (!toEmail) throw new Error('Missing recipient email');
+    if (!eventInfo || !eventInfo.name) throw new Error('Missing event information');
+    if (!template) throw new Error('Email template is required. Define the template in the calling function.');
+
+    const orgName = (eventInfo.orgName) || 'our organization';
+    const { googleUrl, icsDataUri } = this.generateEventCalendarData(eventInfo);
+
+    // Build event details
+    let eventDetailsText = '';
+    if (eventInfo.startDate) eventDetailsText += `When: ${eventInfo.startDate}${eventInfo.startTime ? ' ' + eventInfo.startTime : ''}\n`;
+    if (eventInfo.location) eventDetailsText += `Where: ${eventInfo.location}\n`;
+    if (eventInfo.description) eventDetailsText += `Notes: ${eventInfo.description}\n`;
+
+    const htmlDetails = [];
+    if (eventInfo.startDate) htmlDetails.push(`<div><strong>When:</strong> ${eventInfo.startDate}${eventInfo.startTime ? ' ' + eventInfo.startTime : ''}</div>`);
+    if (eventInfo.location) htmlDetails.push(`<div><strong>Where:</strong> ${eventInfo.location}</div>`);
+    if (eventInfo.description) htmlDetails.push(`<div><strong>Notes:</strong><br/>${(eventInfo.description || '').replace(/\n/g, '<br/>')}</div>`);
+
+    // Include all eventInfo fields so they can be referenced in templates
+    const variables: EmailVariables = {
+      ...eventInfo,
+      attendeeName: attendeeName || '',
+      orgName,
+      confirmationCode: formCode ? ` Your confirmation code is: ${String(formCode).toUpperCase()}` : '',
+      confirmationCodeHtml: formCode ? ` Your confirmation code is: <strong>${String(formCode).toUpperCase()}</strong>` : '',
+      eventDetails: eventDetailsText,
+      eventDetailsHtml: htmlDetails.join(''),
+      eventStartDate: eventInfo.startDate || '',
+      eventStartTime: eventInfo.startTime ? ' ' + eventInfo.startTime : '',
+      eventLocation: eventInfo.location || '',
+      eventDescriptionHtml: (eventInfo.description || '').replace(/\n/g, '<br/>'),
+      googleUrl,
+      icsDataUri,
+      FormCode__c: formCode ? String(formCode).toUpperCase() : ''
+    };
+
+    await this.sendEmail(toEmail, template, variables);
   }
 }

@@ -45,9 +45,23 @@
   // Each form (Donor, Survey, etc.) has its own dedicated .js file with its own config.
   // ============================================================================
 
+  const EMAIL_TEMPLATES = {
+    applicationCopy: {
+      subject: 'Your {{orgName}} Application Submission',
+      text: 'Hello {{FirstName}},\n\nThank you — your application has been successfully submitted. You can monitor its progress by navigating to the application page and selecting "Check Progress", then entering your application code{{codeText}}.\n\nIf you cannot locate your application code, use the "Forgot your code?" link on the application page.\n\nThank you,\n{{orgName}}',
+      html: '<p>Hello {{FirstName}},</p><p>Thank you — your application has been <strong>successfully submitted</strong>. You can monitor its progress by navigating to the application page and selecting <strong>Check Progress</strong>, then entering your application code{{codeHtml}}.</p><p>If you cannot locate your application code, use the <em>Forgot your code?</em> link on the application page.</p><p>Thank you,<br/>{{orgName}}</p>'
+    },
+    applicationCode: {
+      subject: 'Your Application Code',
+      text: 'Hello,\n\nWe received a request to retrieve your application code. Your application code is: {{FormCode__c}}\n\nYou can use this code to resume your application at our website. If you did not request this email, please ignore it.\n\nThank you',
+      html: '<p>Hello,</p><p>We received a request to retrieve your application code. <strong>Your application code is: <code>{{FormCode__c}}</code></strong></p><p>You can use this code to resume your application at our website. If you did not request this email, please ignore it.</p><p>Thank you</p>'
+    }
+  };
+
   const FORM_CONFIG = {
     id: 'volunteer',
     name: 'Volunteer Application',
+    terms: { orgName: "Refuge International" },
     salesforce: {
       objectName: 'Form__c',
       recordTypeName: 'Volunteer Application',
@@ -61,23 +75,28 @@
         'EmergencyContactRelationship__c', 'GospelDetails__c', 'TestimonyDetails__c',
         'ServingAreasInterest__c', 'ServingAreaPrimaryInterest__c', 'Availability__c',
         'HowHeard__c', 'WillPay__c', 'AdditionalNotes__c', 'AffirmStatementOfFaith__c',
-        'RecentMinistrySafe__c', 'MinistrySafeCompletionDate__c', 'MinistrySafeCertificate__c',
-        'PastoralReferenceStatus__c', 'PastoralReferenceNotes__c', 'BackgroundCheckStatus__c',
-        'BackgroundCheckDate__c', 'BackgroundCheckNotes__c', 'AdditionalDocumentsNotes__c',
-        'PlacementArea__c', 'PlacementStartDate__c', 'PlacementNotes__c'
+        'RecentMinistrySafe__c', 'CurrentStatus__c', 'ItemsReceived__c'
       ],
       queryFields: [
         'Id', 'FormCode__c', 'FirstName__c', 'LastName__c', 'Email__c',
-        'Phone__c', 'Country__c', 'LanguagesSpoken__c', 'Church__c',
-        'GospelDetails__c', 'TestimonyDetails__c', 'AffirmStatementOfFaith__c',
+        'Phone__c', 'Salutation__c', 'Street__c', 'City__c', 'State__c', 'Zip__c',
+        'Country__c', 'Gender__c', 'MaritalStatus__c', 'Birthdate__c', 
+        'CountryOfOrigin__c', 'PrimaryLanguage__c', 'LanguagesSpoken__c', 'Skills__c',
+        'Church__c', 'ChurchServingDetails__c', 'PastorSalutation__c', 
+        'PastorFirstName__c', 'PastorLastName__c', 'PastorEmail__c',
+        'EmergencyContactFirstName__c', 'EmergencyContactLastName__c', 
+        'EmergencyContactPhone__c', 'EmergencyContactRelationship__c',
+        'GospelDetails__c', 'TestimonyDetails__c', 'ServingAreasInterest__c',
+        'ServingAreaPrimaryInterest__c', 'Availability__c', 'HowHeard__c',
+        'WillPay__c', 'AdditionalNotes__c', 'AffirmStatementOfFaith__c',
+        'RecentMinistrySafe__c','CurrentStatus__c', 'ItemsReceived__c',
         'CreatedDate', 'RecordTypeId'
       ],
       updateFields: [
         'PlacementArea__c', 'PlacementNotes__c', 'PlacementStartDate__c',
         'PastoralReferenceStatus__c', 'PastoralReferenceNotes__c',
         'BackgroundCheckDate__c', 'BackgroundCheckNotes__c', 'BackgroundCheckStatus__c',
-        'RecentMinistrySafe__c', 'MinistrySafeCompletionDate__c',
-        'MinistrySafeCertificate__c', 'Availability__c', 'AdditionalDocumentsNotes__c'
+        'RecentMinistrySafe__c', 'Availability__c', 'AdditionalDocumentsNotes__c'
       ],
       searchField: 'FormCode__c',
       lookupEmailField: 'Email__c'
@@ -148,7 +167,6 @@
       steps: [
         { title: "Pastoral Reference Review", description: "Status and notes from pastoral reference", fields: ["PastoralReferenceStatus","PastoralReferenceNotes"] },
         { title: "Background Check", description: "Background screening results", fields: ["BackgroundCheckStatus","BackgroundCheckDate","BackgroundCheckNotes"] },
-        { title: "Additional Documents", description: "Any other relevant information", fields: ["AdditionalDocumentsNotes"] },
       ]
     },
     placement: {
@@ -208,7 +226,6 @@
     BackgroundCheckNotes: { label: "Notes", type: "textarea", required: false },
     MinistrySafeCompleted: { label: "I have completed MinistrySafe training in the past 5 years", type: "checkbox", required: false },
     MinistrySafeCertificate: { label: "Upload Certificate", type: "file", accept: ".pdf,.jpg,.jpeg,.png", required: false },
-    AdditionalDocumentsNotes: { label: "Additional Documents Notes", type: "textarea", required: false },
     PlacementArea: { label: "Placement Area", type: "text", required: false },
     PlacementStartDate: { label: "Start Date", type: "date", required: false },
     PlacementNotes: { label: "Placement Notes", type: "textarea", required: false },
@@ -257,15 +274,11 @@
     BackgroundCheckDate: 'BackgroundCheckDate__c',
     BackgroundCheckNotes: 'BackgroundCheckNotes__c',
     MinistrySafeCompleted: 'RecentMinistrySafe__c',
-    MinistrySafeCompletionDate: 'MinistrySafeCompletionDate__c',
-    MinistrySafeCertificate: 'MinistrySafeCertificate__c',
-    AdditionalDocumentsNotes: 'AdditionalDocumentsNotes__c',
     PlacementArea: 'PlacementArea__c',
     PlacementStartDate: 'PlacementStartDate__c',
     PlacementNotes: 'PlacementNotes__c',
     FormCode: 'FormCode__c',
-    CurrentStatus: 'CurrentStatus__c',
-    CurrentPhase: 'CurrentPhase__c'
+    CurrentStatus: 'CurrentStatus__c'
   }; 
 
   // Inverted mapping: SF API name -> client field key (for loading responses)
@@ -1150,7 +1163,8 @@
     return true;
   };
 
-  const saveProgress = async () => {
+  const saveProgress = async (options = {}) => {
+    const { sendEmail = false } = options;
     const payload = {};
     const currentSteps = phases[currentPhase].steps;
     const stepFields = (currentSteps[currentStep] && currentSteps[currentStep].fields) ? currentSteps[currentStep].fields : Object.keys(data);
@@ -1169,18 +1183,17 @@
       }
     });
 
-    // If this is a create (no formCode yet), set the Record Type explicitly
+    // If this is a create (no formCode yet), set the Record Type explicitly and set status to Pending
     if (!formCode) {
       payload['RecordType__c'] = FORM_CONFIG.salesforce.recordTypeName;
       payload['RecordType'] = FORM_CONFIG.salesforce.recordTypeName;
       payload['RecordTypeName'] = FORM_CONFIG.salesforce.recordTypeName;
+      payload['CurrentStatus__c'] = 'Pending';
     }
 
     if (formCode) {
       payload['FormCode__c'] = formCode;
     }
-
-    payload['CurrentPhase__c'] = currentPhase;
 
     // Ensure CurrentStatus is included when present (e.g., after a final submit)
     const _statusVal = data.CurrentStatus || data.CurrentStatus__c || null;
@@ -1200,6 +1213,14 @@
 
     // Attach form config to all requests
     payload['__formConfig'] = FORM_CONFIG;
+
+    // When sending emails (final submit), include templates in the payload
+    if (sendEmail) {
+      payload['__sendEmail'] = true;
+      payload['__emailTemplates'] = {
+        applicationCopy: EMAIL_TEMPLATES.applicationCopy
+      };
+    }
 
     // Handle file uploads
     if (Object.keys(fileUploads).length > 0) {
@@ -1525,7 +1546,7 @@
     }
 
     try {
-      const res = await saveProgress();
+      const res = await saveProgress({ sendEmail: isFinalSubmit });
       const returnedCode = res?.FormCode || res?.Form_Code__c || res?.formCode || res?.form_code || res?.Form_Code || res?.form_code__c;
       if (returnedCode) {
         formCode = returnedCode;
@@ -1933,11 +1954,13 @@
           findBtn.innerHTML = '<span class="ri-loader"></span>';
           setStatus('Requesting that we email your application code...', '');
           try {
+            const template = EMAIL_TEMPLATES.applicationCode;
+
             const url = `${ENDPOINT}/send-code`;
             const res = await fetch(url, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ email }),
+              body: JSON.stringify({ email, template }),
             });
             const json = await res.json().catch(() => ({}));
             if (!res.ok) {
