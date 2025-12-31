@@ -293,6 +293,10 @@
   // ============================================================================
   
   const submitForm = async () => {
+    // Collect current form values from DOM
+    const currentValues = collectFormValues();
+    state.formData = { ...state.formData, ...currentValues };
+    
     const currentPhase = phases[state.phase];
     const allFields = currentPhase.steps.flatMap(s => s.fields);
     
@@ -537,6 +541,10 @@
   // ============================================================================
   
   const nextStep = () => {
+    // Collect current form values from DOM
+    const currentValues = collectFormValues();
+    state.formData = { ...state.formData, ...currentValues };
+    
     const currentPhase = phases[state.phase];
     const currentStep = currentPhase.steps[state.step];
     
@@ -566,42 +574,25 @@
   };
 
   const updateField = (fieldKey, value) => {
-    setState({ 
-      formData: { ...state.formData, [fieldKey]: value },
-      error: null 
+    // Update state without triggering re-render to preserve focus and tab navigation
+    state.formData[fieldKey] = value;
+  };
+
+  // Helper to collect current form values from DOM
+  const collectFormValues = () => {
+    const values = {};
+    const root = document.getElementById(HOST_ID);
+    if (!root) return values;
+    
+    root.querySelectorAll('.ri-input').forEach(input => {
+      const id = input.id;
+      if (!id || !id.startsWith('ri-input-')) return;
+      const fieldKey = id.replace('ri-input-', '');
+      values[fieldKey] = input.value || '';
     });
+    
+    return values;
   };
-
-  // Focus management: focus first visible input in the current step to ensure sensible tab order
-  // Do not override a user-focused input (prevents tab restarting at the beginning when fields update)
-  const focusFirstInput = () => {
-    setTimeout(() => {
-      try {
-        const root = document.getElementById(HOST_ID);
-        if (!root) return;
-        const active = document.activeElement;
-        // If the user currently has a ri-input focused inside our root, don't change focus
-        if (active && active !== document.body && root.contains(active) && active.classList && active.classList.contains('ri-input')) {
-          return;
-        }
-        const first = root.querySelector('.ri-step-content .ri-input:not([disabled])');
-        if (first && typeof first.focus === 'function') first.focus();
-      } catch (e) { /* ignore */ }
-    }, 0);
-  };
-
-  // Track the last focused input and its selection so we can restore focus after re-renders
-  let lastFocusedInput = { id: null, start: null, end: null };
-  document.addEventListener('focusin', (e) => {
-    try {
-      const t = e.target;
-      if (t && t.classList && t.classList.contains('ri-input')) {
-        lastFocusedInput.id = t.id || null;
-        lastFocusedInput.start = (typeof t.selectionStart === 'number') ? t.selectionStart : null;
-        lastFocusedInput.end = (typeof t.selectionEnd === 'number') ? t.selectionEnd : null;
-      }
-    } catch (err) { /* ignore */ }
-  });
 
   // --- Lookup / Address Helpers (load lookup.js like application.js)
   const LOOKUP_URL = 'https://mprefuge.github.io/site-assets/scripts/lookup.js';
@@ -679,11 +670,10 @@
   // RENDER FUNCTIONS
   // ============================================================================
   
-  const renderField = (fieldKey, index = 0) => {
+  const renderField = (fieldKey) => {
     const meta = fieldMeta[fieldKey];
     const value = state.formData[fieldKey] || '';
     const labelText = orgTerms.labels[fieldKey] || meta.label;
-    const tabIndex = (typeof index === 'number' && index >= 0) ? index + 1 : undefined;
 
     return h('div', { className: 'ri-field' },
       h('label', { className: 'ri-label' },
@@ -708,9 +698,8 @@
             return h('select', {
               id: `ri-input-${fieldKey}`,
               className: 'ri-input',
-              tabindex: tabIndex,
               value: value,
-              onChange: (e) => updateField(fieldKey, e.target.value),
+              onInput: (e) => updateField(fieldKey, e.target.value),
             },
               h('option', { value: '' }, 'Select...'),
               ...norm.map(opt => h('option', { value: opt.val }, opt.txt))
@@ -720,19 +709,17 @@
         ? h('textarea', {
             id: `ri-input-${fieldKey}`,
             className: 'ri-input',
-            tabindex: tabIndex,
             value: value,
             placeholder: meta.placeholder || '',
-            onChange: (e) => updateField(fieldKey, e.target.value),
+            onInput: (e) => updateField(fieldKey, e.target.value),
           })
         : h('input', {
             id: `ri-input-${fieldKey}`,
             type: meta.type,
             className: 'ri-input',
-            tabindex: tabIndex,
             value: value,
             placeholder: meta.placeholder || '',
-            onChange: (e) => updateField(fieldKey, e.target.value),
+            onInput: (e) => updateField(fieldKey, e.target.value),
           })
     );
   };
@@ -996,27 +983,27 @@
           ? [ h('div', { className: 'ri-contact-grid' },
               // Row 1 - First / Last
               h('div', { style: { display: 'flex', gap: '12px', flexWrap: 'wrap' } },
-                h('div', { style: { flex: '1 1 200px' } }, renderField('FirstName', 0)),
-                h('div', { style: { flex: '1 1 200px' } }, renderField('LastName', 1))
+                h('div', { style: { flex: '1 1 200px' } }, renderField('FirstName')),
+                h('div', { style: { flex: '1 1 200px' } }, renderField('LastName'))
               ),
               // Row 2 - Email / Phone
               h('div', { style: { display: 'flex', gap: '12px', flexWrap: 'wrap' } },
-                h('div', { style: { flex: '1 1 300px' } }, renderField('Email', 2)),
-                h('div', { style: { flex: '1 1 200px' } }, renderField('Phone', 3))
+                h('div', { style: { flex: '1 1 300px' } }, renderField('Email')),
+                h('div', { style: { flex: '1 1 200px' } }, renderField('Phone'))
               ),
               // Row 3 - Street (full width)
               h('div', { style: { display: 'flex', gap: '12px', flexWrap: 'wrap' } },
-                h('div', { style: { flex: '1 1 100%' } }, renderField('Street', 4), h('div', { className: 'ri-address-suggestions' }))
+                h('div', { style: { flex: '1 1 100%' } }, renderField('Street'), h('div', { className: 'ri-address-suggestions' }))
               ),
               // Row 4 - City / State / Zip / Country
               h('div', { style: { display: 'flex', gap: '12px', flexWrap: 'wrap' } },
-                h('div', { style: { flex: '1 1 160px' } }, renderField('City', 5)),
-                h('div', { style: { flex: '1 1 160px' } }, renderField('State', 6)),
-                h('div', { style: { flex: '1 1 120px' } }, renderField('Zip', 7)),
-                h('div', { style: { flex: '1 1 160px' } }, renderField('Country', 8))
+                h('div', { style: { flex: '1 1 160px' } }, renderField('City')),
+                h('div', { style: { flex: '1 1 160px' } }, renderField('State')),
+                h('div', { style: { flex: '1 1 120px' } }, renderField('Zip')),
+                h('div', { style: { flex: '1 1 160px' } }, renderField('Country'))
               )
             ) ]
-          : currentStep.fields.map((f, i) => renderField(f, i))
+          : currentStep.fields.map(f => renderField(f))
         )
       ),
       state.error 
@@ -1171,10 +1158,6 @@
     const root = document.getElementById(HOST_ID);
     if (!root) return;
 
-    // Capture the last focused input id and selection so we can attempt to restore it
-    const restoreId = lastFocusedInput.id;
-    const restoreSelection = { start: lastFocusedInput.start, end: lastFocusedInput.end };
-
     root.innerHTML = '';
     
     if (state.status === 'success') {
@@ -1182,25 +1165,7 @@
     } else {
       root.appendChild(renderForm());
     }
-
-    // Restore focus to previously focused input if present; otherwise focus the first input
-    if (restoreId) {
-      try {
-        const el = document.getElementById(restoreId);
-        if (el && typeof el.focus === 'function') {
-          el.focus();
-          try {
-            if (restoreSelection.start !== null && restoreSelection.end !== null && typeof el.setSelectionRange === 'function') {
-              el.setSelectionRange(restoreSelection.start, restoreSelection.end);
-            }
-          } catch (e) { /* ignore */ }
-        }
-        // Intentionally do NOT call focusFirstInput() when we attempted a restore to avoid stealing focus
-      } catch (e) { /* ignore */ }
-    } else {
-      // Ensure first input is focused when there was no prior focused input
-      focusFirstInput();
-    }
+  
 
     try {
       addressSuggestionsEl = root.querySelector('.ri-address-suggestions');
