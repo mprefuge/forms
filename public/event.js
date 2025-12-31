@@ -312,6 +312,14 @@
       return;
     }
 
+    // Validate eventId is present
+    const selected = state.selectedEvent || state.campaignInfo || null;
+    const selectedId = selected && (selected.id || selected.Id || null);
+    if (!state.eventId && !selectedId) {
+      setState({ error: 'An event must be selected to submit this form.' });
+      return;
+    }
+
     setState({ loading: true, error: null });
 
     try {
@@ -539,6 +547,34 @@
   // ============================================================================
   // NAVIGATION
   // ============================================================================
+  
+  // Helper to check if current step can proceed
+  const canProceed = () => {
+    const currentValues = collectFormValues();
+    const currentFormData = { ...state.formData, ...currentValues };
+    
+    const currentPhase = phases[state.phase];
+    const currentStep = currentPhase.steps[state.step];
+    
+    // Check if all required fields in current step are filled
+    const hasAllRequiredFields = currentStep.fields.every(fKey => {
+      const meta = fieldMeta[fKey];
+      if (!meta.required) return true;
+      const value = currentFormData[fKey];
+      return value && value.trim() !== '';
+    });
+    
+    if (!hasAllRequiredFields) return false;
+    
+    // If this is the last step (submit step), also check for eventId
+    if (state.step >= currentPhase.steps.length - 1) {
+      const selected = state.selectedEvent || state.campaignInfo || null;
+      const selectedId = selected && (selected.id || selected.Id || null);
+      if (!state.eventId && !selectedId) return false;
+    }
+    
+    return true;
+  };
   
   const nextStep = () => {
     // Collect current form values from DOM
@@ -1019,7 +1055,7 @@
         h('button', {
           className: 'ri-btn ri-btn-primary',
           onClick: nextStep,
-          disabled: state.loading,
+          disabled: state.loading || !canProceed(),
         }, state.loading ? 'Submitting...' : state.step < currentPhase.steps.length - 1 ? 'Next' : 'Submit')
       )
     );
