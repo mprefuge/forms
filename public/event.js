@@ -668,7 +668,12 @@
   const searchAddress = async (q) => {
     if (!q || q.length < 3) return [];
     const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&q=${encodeURIComponent(q)}`;
-    const res = await fetch(url);
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'EventRegistrationForm/1.0',
+        'Accept': 'application/json'
+      }
+    });
     const json = await res.json().catch(() => []);
     return Array.isArray(json) ? json : [];
   };
@@ -699,6 +704,180 @@
       node.addEventListener('click', () => fillAddressFromNominatim(it));
       addressSuggestionsEl.appendChild(node);
     });
+  };
+
+  // Leaflet + Nominatim map helpers for event location
+  let leafletPromise = null;
+  const loadLeaflet = () => {
+    if (leafletPromise) return leafletPromise;
+    leafletPromise = new Promise((resolve) => {
+      // Inject CSS once
+      const existingCss = Array.from(document.styleSheets).some(ss => ss.href && ss.href.includes('leaflet.css'));
+      if (!existingCss) {
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+        document.head.appendChild(link);
+      }
+      // Inject JS once
+      if (window.L) return resolve(window.L);
+      const script = document.createElement('script');
+      script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+      script.async = true;
+      script.onload = () => resolve(window.L);
+      script.onerror = () => resolve(null);
+      document.head.appendChild(script);
+    });
+    return leafletPromise;
+  };
+
+  const geocodeLocation = async (q) => {
+    if (!q || q.length < 3) return null;
+    
+    // Helper to extract address from strings like "Title - Address" or "Title: Address"
+    const extractAddress = (str) => {
+      const variants = [];
+      
+      // Try original string first
+      variants.push(str.trim());
+      
+      // Try splitting by common separators (dash, colon, pipe, comma followed by space)
+      const separators = [' - ', ' – ', ' — ', ': ', ' | ', ', '];
+      for (const sep of separators) {
+        if (str.includes(sep)) {
+          const parts = str.split(sep);
+          // Take parts that look like addresses (contain numbers or common address keywords)
+          for (let i = parts.length - 1; i >= 0; i--) {
+            const part = parts[i].trim();
+            if (/\d/.test(part) && part.length > 5) {
+              variants.push(part);
+              // Also try joining remaining parts from this point
+              if (i < parts.length - 1) {
+                variants.push(parts.slice(i).join(' ').trim());
+              }
+            }
+          }
+          // Also try everything after first separator
+          const afterFirst = parts.slice(1).join(sep).trim();
+          if (afterFirst.length > 3) variants.push(afterFirst);
+        }
+      }
+      
+      // Try to find part with street number pattern (digits followed by street name)
+      const streetNumberMatch = str.match(/(\d+\s+[A-Z][a-z]+(?:\s+(?:St|Ave|Avenue|Rd|Road|Blvd|Boulevard|Dr|Drive|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway))?.+(?:\d{5}(?:-\d{4})?)?)/i);
+      if (streetNumberMatch && streetNumberMatch[1]) {
+        variants.push(streetNumberMatch[1].trim());
+      }
+      
+      return [...new Set(variants)]; // Remove duplicates
+    };
+    
+    try {
+      const addressVariants = extractAddress(q);
+      
+      // Try Photon API first (CORS-friendly, Nominatim-based)
+      for (const addr of addressVariants) {
+        try {
+          const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(addr)}&limit=1`;
+          const res = await fetch(url);
+          
+          if (res.ok) {
+            const data = await res.json();
+            if (data.features && data.features.length > 0) {
+              const feature = data.features[0];
+              const coords = feature.geometry?.coordinates;
+              if (coords && coords.length >= 2) {
+                const [lon, lat] = coords;
+                if (!Number.isNaN(lat) && !Number.isNaN(lon)) {
+                  return { 
+                    lat, 
+                    lon, 
+                    label: feature.properties?.name || addr 
+                  };
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('Photon geocode attempt failed', e);
+        }
+        
+        // Delay between attempts to respect rate limits
+        if (addressVariants.indexOf(addr) < addressVariants.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+      
+      return null;
+    } catch (e) {
+      console.warn('Geocode failed', e);
+      return null;
+    }
+  };
+
+  let eventMapInstance = null;
+  let eventMapMarker = null;
+  let eventMapRenderedFor = null;
+
+  const getCurrentEventLocation = () => {
+    const src = state.campaignInfo || state.selectedEvent || null;
+    if (!src) return null;
+    return src.location || src.Location__c || src.Location || src.Venue__c || src.City__c || src.City || null;
+  };
+
+  const renderEventMap = async () => {
+    const container = document.getElementById('ri-event-map');
+    const locationText = (getCurrentEventLocation() || '').trim();
+
+    if (!container || !locationText) {
+      eventMapRenderedFor = null;
+      if (eventMapInstance && eventMapInstance.remove) eventMapInstance.remove();
+      eventMapInstance = null;
+      eventMapMarker = null;
+      return;
+    }
+
+    if (eventMapRenderedFor === locationText && eventMapInstance) return;
+    eventMapRenderedFor = locationText;
+    container.innerHTML = 'Loading map...';
+
+    const coords = await geocodeLocation(locationText);
+    if (!coords) { 
+      // Fallback: show a link to Google Maps instead of embedded map
+      container.innerHTML = '';
+      const link = h('a', {
+        href: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationText)}`,
+        target: '_blank',
+        style: { 
+          display: 'inline-block', 
+          padding: '10px 16px', 
+          backgroundColor: '#4285f4', 
+          color: 'white', 
+          textDecoration: 'none', 
+          borderRadius: '6px',
+          fontSize: '14px',
+          fontWeight: '500'
+        }
+      }, '📍 View on Map');
+      container.appendChild(link);
+      return; 
+    }
+    
+    const L = await loadLeaflet();
+    if (!L) { container.innerHTML = ''; return; }
+
+    // Reset any prior map
+    if (eventMapInstance && eventMapInstance.remove) eventMapInstance.remove();
+    eventMapInstance = null;
+    eventMapMarker = null;
+    container.innerHTML = '';
+
+    eventMapInstance = L.map(container).setView([coords.lat, coords.lon], 14);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '\u00a9 OpenStreetMap contributors'
+    }).addTo(eventMapInstance);
+    eventMapMarker = L.marker([coords.lat, coords.lon]).addTo(eventMapInstance);
+    eventMapMarker.bindPopup(coords.label || locationText).openPopup();
   };
 
 
@@ -908,7 +1087,13 @@
               ? `Price: $${state.paymentAmount.toFixed(2)}`
               : `Price: $${state.paymentAmount.toFixed(2)} (payment processing not available for amounts under $0.50)`
           )
-        ) : null)
+        ) : null),
+        // Map container (rendered only when a location exists)
+        (loc ? h('div', { 
+          id: 'ri-event-map', 
+          className: 'ri-event-map',
+          style: { height: '260px', marginTop: '12px', border: '1px solid #e5e5e5', borderRadius: '10px', overflow: 'hidden' }
+        }, h('div', { className: 'ri-map-placeholder' }, 'Loading map...')) : null)
       ];
 
       return h('div', { className: 'ri-event-hero ri-card' }, ...elements.filter(Boolean));
@@ -1202,6 +1387,8 @@
       root.appendChild(renderForm());
     }
   
+    // Render event map (async; no-op when location missing)
+    renderEventMap();
 
     try {
       addressSuggestionsEl = root.querySelector('.ri-address-suggestions');
