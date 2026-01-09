@@ -211,9 +211,10 @@ body {
 
 /* Success */
 .ri-success-container { text-align: center; padding: 24px; }
-.ri-success-icon { font-size: 32px; }
 .ri-success-title { margin-top: 8px; font-size: 22px; font-weight: 800; }
+.ri-success-sub { margin-top: 12px; color: var(--muted); font-weight: 600; }
 .ri-code-display { margin-top: 10px; font-size: 18px; font-weight: 900; color: var(--accent-600); }
+.ri-success-calendar { margin-top: 16px; }
 .ri-success-note { margin-top: 10px; color: var(--muted); }
 
 @media (max-width: 640px) {

@@ -1287,24 +1287,12 @@
   };
 
   const renderSuccess = () => {
+    const eventName = state.campaignInfo && state.campaignInfo.name ? state.campaignInfo.name : null;
+
     const elements = [
-      h('div', { className: 'ri-success-icon' }, '✓'),
-      h('div', { className: 'ri-success-title' }, 'Registration Complete!'),
-      h('div', { className: 'ri-success-message' },
-        'Thank you for registering. Your confirmation code is:'
-      ),
-      h('div', { className: 'ri-code-display' }, state.formCode || 'N/A'),
-      state.campaignInfo 
-        ? h('div', { className: 'ri-campaign-success' },
-            h('div', { className: 'ri-campaign-success-icon' }, '🎉'),
-            h('div', { className: 'ri-campaign-success-text' },
-              `Successfully registered for: ${state.campaignInfo.name}`
-            )
-          )
-        : null,
-      h('div', { className: 'ri-success-note' },
-        'Please save this code. You can use it to retrieve your registration information.'
-      )
+      h('div', { className: 'ri-success-title' }, eventName ? `You have successfully registered for ${eventName}!` : 'You have successfully registered!'),
+      h('div', { className: 'ri-success-sub' }, 'Your confirmation code is:'),
+      h('div', { className: 'ri-code-display' }, state.formCode || 'N/A')
     ];
 
     // Add payment information if applicable
@@ -1359,51 +1347,48 @@
       const outlookUrl = `https://outlook.live.com/calendar/0/deeplink/compose?${outlookParams.toString()}`;
 
       elements.push(
-        h('div', { className: 'ri-calendar-section' },
-          h('div', { className: 'ri-payment-section-title' }, '📅 Add to your calendar'),
-          h('div', { style: { display: 'flex', gap: '8px', alignItems: 'center', marginTop: '8px' } },
-            h('a', { className: 'ri-btn ri-btn-secondary', href: googleUrl, target: '_blank', rel: 'noopener' }, 'Add to Google Calendar'),
-            h('a', { className: 'ri-btn ri-btn-secondary', href: outlookUrl, target: '_blank', rel: 'noopener' }, 'Add to Outlook.com'),
-            h('button', { className: 'ri-btn ri-btn-secondary', onClick: () => {
-              // Download .ics (works for Apple Calendar, Outlook desktop, etc.)
-              try {
-                const start = startDt;
-                const end = endDt;
-                const uid = `${Date.now()}@event`;
-                const dtstamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
-                const fmt = (d) => {
-                  if (!d || isNaN(d.getTime())) return '';
-                  const pad = (n) => String(n).padStart(2, '0');
-                  return `${d.getUTCFullYear()}${pad(d.getUTCMonth()+1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}Z`;
-                };
-                const lines = [
-                  'BEGIN:VCALENDAR',
-                  'VERSION:2.0',
-                  `PRODID:-//${orgTerms.orgName}//Event//EN`,
-                  'CALSCALE:GREGORIAN',
-                  'BEGIN:VEVENT',
-                  `UID:${uid}`,
-                  `DTSTAMP:${dtstamp}`,
-                ];
-                if (start) lines.push(`DTSTART:${fmt(start)}`);
-                if (end) lines.push(`DTEND:${fmt(end)}`);
-                lines.push(`SUMMARY:${(ev.name || '').replace(/\n/g,'\\n')}`);
-                if (ev.description) lines.push(`DESCRIPTION:${(ev.description || '').replace(/\n/g,'\\n')}`);
-                if (ev.location) lines.push(`LOCATION:${(ev.location || '').replace(/\n/g,'\\n')}`);
-                lines.push('END:VEVENT','END:VCALENDAR');
-                const ics = lines.join('\r\n');
-                const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `${(ev.name || 'event').replace(/[^a-z0-9_-]/gi,'_')}.ics`;
-                document.body.appendChild(a);
-                a.click();
-                a.remove();
-                setTimeout(() => URL.revokeObjectURL(url), 5000);
-              } catch (e) { console.error('Failed to download ics', e); }
-            } }, 'Add to Apple / Download .ics')
-          )
+        h('div', { className: 'ri-success-calendar', style: { display: 'flex', gap: '12px', justifyContent: 'center', marginTop: '18px' } },
+          h('a', { className: 'ri-btn ri-btn-secondary', href: googleUrl, target: '_blank', rel: 'noopener' }, 'Add to Google Calendar'),
+          h('a', { className: 'ri-btn ri-btn-secondary', href: outlookUrl, target: '_blank', rel: 'noopener' }, 'Add to Outlook.com'),
+          h('button', { className: 'ri-btn ri-btn-secondary', onClick: () => {
+            // Download .ics (works for Apple Calendar, Outlook desktop, etc.)
+            try {
+              const start = startDt;
+              const end = endDt;
+              const uid = `${Date.now()}@event`;
+              const dtstamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
+              const fmt = (d) => {
+                if (!d || isNaN(d.getTime())) return '';
+                const pad = (n) => String(n).padStart(2, '0');
+                return `${d.getUTCFullYear()}${pad(d.getUTCMonth()+1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}Z`;
+              };
+              const lines = [
+                'BEGIN:VCALENDAR',
+                'VERSION:2.0',
+                `PRODID:-//${orgTerms.orgName}//Event//EN`,
+                'CALSCALE:GREGORIAN',
+                'BEGIN:VEVENT',
+                `UID:${uid}`,
+                `DTSTAMP:${dtstamp}`,
+              ];
+              if (start) lines.push(`DTSTART:${fmt(start)}`);
+              if (end) lines.push(`DTEND:${fmt(end)}`);
+              lines.push(`SUMMARY:${(ev.name || '').replace(/\n/g,'\\n')}`);
+              if (ev.description) lines.push(`DESCRIPTION:${(ev.description || '').replace(/\n/g,'\\n')}`);
+              if (ev.location) lines.push(`LOCATION:${(ev.location || '').replace(/\n/g,'\\n')}`);
+              lines.push('END:VEVENT','END:VCALENDAR');
+              const ics = lines.join('\r\n');
+              const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `${(ev.name || 'event').replace(/[^a-z0-9_-]/gi,'_')}.ics`;
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              setTimeout(() => URL.revokeObjectURL(url), 5000);
+            } catch (e) { console.error('Failed to download ics', e); }
+          } }, 'Add to Apple / Download .ics')
         )
       );
     }
