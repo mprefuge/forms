@@ -997,7 +997,7 @@
     try {
       const dt = parseLocalDate(d);
       if (!dt) return String(d);
-      return dt.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+      return dt.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
     } catch { return String(d); }
   };
 
@@ -1077,11 +1077,9 @@
         ) : null),
         (datePart || timeRange ? h('div', { className: 'ri-event-meta-line' },
           h('span', { className: 'ri-event-badge ri-event-calendar' }, '🗓'),
-          h('span', { className: 'ri-event-meta-text' },
-            [
-              (datePart ? `${datePart}` : null),
-              (timeRange ? ` • ${timeRange}` : null)
-            ].filter(Boolean).join('')
+          h('div', { className: 'ri-event-meta-text' },
+            datePart ? h('div', { className: 'ri-event-date' }, `${datePart}`) : null,
+            timeRange ? h('div', { className: 'ri-event-time' }, `${timeRange}`) : null
           )
         ) : null),
         // Display payment information if amount is set
@@ -1185,12 +1183,20 @@
       return h('div', { className: 'ri-event-card', tabindex: '0', onKeydown: onCardKeyDown, role: 'button', 'aria-label': `Choose ${mainTitle}` },
         h('div', { className: 'ri-event-card-title' }, mainTitle),
         (titleSubtitle ? h('div', { className: 'ri-event-card-subtitle' }, titleSubtitle) : null),
-        ((startDate || endDate || timeRange) ? h('div', { className: 'ri-event-card-date' }, '🗓 ', h('strong', {}, [
-          (startDate ? `${startDate}` : null),
-          (endDate && !datesSame ? ` to ${endDate}` : null),
-          (timeRange ? `${timeRange}` : null)
-        ].filter(Boolean).join(' • '))) : null),
-        (mainLocation ? h('div', { className: 'ri-event-card-location' }, '📍 ', mainLocation) : null),
+        ((startDate || endDate || timeRange) ? h('div', { className: 'ri-event-card-date' },
+          h('span', { className: 'ri-event-icon' }, '🗓'),
+          h('div', { className: 'ri-event-card-date-content' },
+            (startDate || endDate ? h('div', { className: 'ri-event-date' }, [
+              (startDate ? `${startDate}` : null),
+              (endDate && !datesSame ? ` to ${endDate}` : null)
+            ].filter(Boolean).join('')) : null),
+            (timeRange ? h('div', { className: 'ri-event-time' }, `${timeRange}`) : null)
+          )
+        ) : null),
+        (mainLocation ? h('div', { className: 'ri-event-card-location' },
+          h('span', { className: 'ri-event-icon' }, '📍'),
+          h('div', { className: 'ri-event-card-location-content' }, mainLocation)
+        ) : null),
         (rec.Description || rec.description ? h('div', { className: 'ri-event-card-desc' }, (rec.Description || rec.description)) : null),
         (paymentAmount > 0 ? h('div', { className: 'ri-event-card-optional ri-event-card-price' },
           '💳 ', requiresPayment ? `Price: $${paymentAmount.toFixed(2)}` : `Price: $${paymentAmount.toFixed(2)} (payment processing not available for amounts under $0.50)`

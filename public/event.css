@@ -102,11 +102,14 @@ body {
 
 /* Event hero */
 .ri-event-hero { margin: 8px 0 16px; }
-.ri-event-title { font-size: 28px; font-weight: 900; color: var(--accent-600); margin-bottom: 8px; }
-.ri-event-hero-desc { color: var(--muted); font-size: 15px; margin: 6px 0 6px 0; }
-.ri-event-meta-line { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+.ri-event-title { font-size: 34px; font-weight: 900; color: var(--accent-600); margin-bottom: 6px; }
+.ri-event-hero-desc { color: var(--muted); font-size: 15px; margin: 6px 0 12px 0; }
+.ri-event-meta-line { display: flex; align-items: flex-start; gap: 12px; margin-top: 6px; }
 .ri-event-badge { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 12px; background: rgba(189,33,53,0.08); color: var(--accent-600); font-weight: 900; }
-.ri-event-meta-text { font-weight: 700; color: #333; }
+.ri-event-meta-text { display: block; }
+.ri-event-date { color: var(--muted); font-size: 14px; font-weight: 600; }
+.ri-event-time { color: var(--text); font-size: 15px; font-weight: 800; margin-top: 6px; }
+.ri-event-location { display: block; color: var(--muted); font-size: 14px; margin-top: 8px; }
 
 /* Event list */
 .ri-event-list { margin: 12px 0 20px; }
@@ -175,9 +178,13 @@ body {
 /* Date emphasis and spacing rules */
 /* Keep the date visible at all times while other meta lines reveal on hover */
 .ri-event-card-meta { color: var(--muted); font-weight: 600; font-size: 15px; display: flex; gap: 10px; align-items: center; }
-.ri-event-card-date { font-weight: 800; color: var(--text); font-size: 15px; opacity: 1; transform: none; max-height: none; margin: 0 0 6px 0; display: block; }
+.ri-event-card-date, .ri-event-card-location { display: flex; gap: 10px; align-items: flex-start; margin: 0 0 6px 0; }
+.ri-event-icon { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; font-size: 16px; margin-top: 2px; }
+.ri-event-card-date .ri-event-card-date-content { display: block; }
+.ri-event-card-date .ri-event-date { font-weight: 700; color: var(--text); font-size: 15px; }
+.ri-event-card-date .ri-event-time { font-weight: 700; color: var(--muted); font-size: 14px; margin-top: 4px; }
 .ri-event-card-subtitle { color: var(--muted-2); font-size: 14px; font-weight: 700; opacity: 1; margin: 0 0 6px 0; display: block; }
-.ri-event-card-location { color: var(--muted); font-size: 15px; margin: 0 0 6px 0; display: block; }
+.ri-event-card-location .ri-event-card-location-content { color: var(--muted); font-size: 15px; }
 .ri-event-card-meta + .ri-event-card-meta { margin-top: 8px; }
 
 /* reveal description and the action (register) on hover/focus */
@@ -205,7 +212,7 @@ body {
 .ri-event-card .ri-btn-primary { width: 100%; justify-content: center; }
 
 /* When a card expands, provide a slightly larger min-height for content */
-.ri-event-card:hover, .ri-event-card:focus-within { /* no size jump; only reveal actions */ }
+
 
 /* Small screens adjustments */
 @media (max-width: 640px) {
