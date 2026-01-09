@@ -103,6 +103,7 @@ body {
 /* Event hero */
 .ri-event-hero { margin: 8px 0 16px; }
 .ri-event-title { font-size: 28px; font-weight: 900; color: var(--accent-600); margin-bottom: 8px; }
+.ri-event-hero-desc { color: var(--muted); font-size: 15px; margin: 6px 0 6px 0; }
 .ri-event-meta-line { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
 .ri-event-badge { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 12px; background: rgba(189,33,53,0.08); color: var(--accent-600); font-weight: 900; }
 .ri-event-meta-text { font-weight: 700; color: #333; }
@@ -179,12 +180,25 @@ body {
 .ri-event-card-location { color: var(--muted); font-size: 15px; margin: 0 0 6px 0; display: block; }
 .ri-event-card-meta + .ri-event-card-meta { margin-top: 8px; }
 
-/* reveal only the action (register) on hover/focus; optional meta remains hidden */
+/* reveal description and the action (register) on hover/focus */
+.ri-event-card:hover .ri-event-card-desc,
+.ri-event-card:focus-within .ri-event-card-desc,
 .ri-event-card:hover .ri-event-card-actions,
 .ri-event-card:focus-within .ri-event-card-actions {
   opacity: 1;
   transform: none;
   max-height: 400px;
+}
+
+.ri-event-card-desc {
+  color: var(--muted-2);
+  font-size: 13px;
+  line-height: 1.4;
+  margin-top: 8px;
+  opacity: 0;
+  max-height: 0;
+  overflow: hidden;
+  transition: opacity 200ms ease, transform 200ms ease, max-height 260ms cubic-bezier(.2,.9,.2,1);
 }
 
 /* Make card button full-width and visually consistent */

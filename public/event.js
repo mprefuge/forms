@@ -1094,6 +1094,7 @@
           )
         ) : null),
         // Map container (rendered only when a location exists)
+        (loc ? h('div', { className: 'ri-event-hero-desc', style: { marginBottom: '10px', color: 'var(--muted)' } }, state.campaignInfo && state.campaignInfo.description ? state.campaignInfo.description : null) : null),
         (loc ? h('div', { 
           id: 'ri-event-map', 
           className: 'ri-event-map',
@@ -1190,6 +1191,7 @@
           (timeRange ? `${timeRange}` : null)
         ].filter(Boolean).join(' • '))) : null),
         (mainLocation ? h('div', { className: 'ri-event-card-location' }, '📍 ', mainLocation) : null),
+        (rec.Description || rec.description ? h('div', { className: 'ri-event-card-desc' }, (rec.Description || rec.description)) : null),
         (paymentAmount > 0 ? h('div', { className: 'ri-event-card-optional ri-event-card-price' },
           '💳 ', requiresPayment ? `Price: $${paymentAmount.toFixed(2)}` : `Price: $${paymentAmount.toFixed(2)} (payment processing not available for amounts under $0.50)`
         ) : null),
