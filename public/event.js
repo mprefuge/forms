@@ -1200,9 +1200,6 @@
     };
 
     return h('div', { className: 'ri-event-list ri-card' },
-      h('div', { className: 'ri-event-list-header' },
-        h('div', { className: 'ri-event-list-title' }, 'Choose an Event')
-      ),
       h('div', { className: 'ri-event-list-grid' },
         ...state.availableEvents.map(makeCard)
       )
