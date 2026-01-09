@@ -28,7 +28,7 @@
       Country: "Country/Region",
     },
     phaseNames: {
-      initial: "Event Registration",
+      initial: "Events Calendar",
     }
   };
 
@@ -54,6 +54,9 @@
     eventId = urlParams.get('eventId');
   }
 
+  // Remember whether we started with an eventId provided; used to decide whether to show "Back" UI
+  const initialEventId = eventId;
+
   // ============================================================================
   // FORM CONFIGURATION
   // ============================================================================
@@ -73,7 +76,7 @@
 
   const FORM_CONFIG = {
     id: 'event',
-    name: 'Event Registration',
+    name: 'Events Calendar',
     salesforce: {
       objectName: 'Form__c',
       recordTypeName: 'Event Registration',
@@ -108,13 +111,13 @@
   // ============================================================================
   const phases = {
     initial: {
-      name: "Event Registration",
+      name: "Events Calendar",
       description: "Your contact details",
       estimatedTime: 2,
       steps: [
         {
           title: "Contact Information",
-          description: "Please provide your details",
+          description: "",
           fields: ["FirstName", "LastName", "Email", "Phone", "Street", "City", "State", "Zip", "Country"]
         }
       ]
@@ -474,7 +477,7 @@
       phone: state.formData.Phone || '',
       amount: amountInCents,
       frequency: "onetime",
-      category: `Event Registration${state.campaignInfo && state.campaignInfo.name ? ' (' + state.campaignInfo.name + ')' : ''}${fc ? ' - ' + fc : ''}`,
+      category: `Events Calendar${state.campaignInfo && state.campaignInfo.name ? ' (' + state.campaignInfo.name + ')' : ''}${fc ? ' - ' + fc : ''}`,
       formCode: fc,
       FormCode: fc,
       address: {
@@ -822,7 +825,9 @@
   const getCurrentEventLocation = () => {
     const src = state.campaignInfo || state.selectedEvent || null;
     if (!src) return null;
-    return src.location || src.Location__c || src.Location || src.Venue__c || src.City__c || src.City || null;
+    // Prefer an explicit mapLocation (derived from address after ' - ') when available,
+    // otherwise fall back to the readable location/venue string used in the card.
+    return src.mapLocation || src.location || src.Location__c || src.Location || src.Venue__c || src.City__c || src.City || null;
   };
 
   const renderEventMap = async () => {
@@ -1111,12 +1116,21 @@
 
     const makeCard = (rec) => {
       const title = rec.Name || rec.name || 'Event';
+      // Split title into main header and optional subtitle if a ' - ' exists
+      const titleParts = (title || '').split(/\s*-\s*/);
+      const mainTitle = titleParts[0] ? titleParts[0].trim() : title;
+      const titleSubtitle = titleParts.length > 1 ? titleParts.slice(1).join(' - ').trim() : null;
+
       const startRaw = rec.StartDate || rec.startDate;
       const endRaw = rec.EndDate || rec.endDate;
       const startDate = formatDate(startRaw);
       const endDate = formatDate(endRaw);
       const datesSame = sameCalendarDate(startRaw, endRaw);
       const location = rec.Location__c || rec.Location || rec.Venue__c || rec.City__c || rec.City || null;
+      // Split location into a short venue and a more specific address (used for map/address display)
+      const locationParts = (location || '').split(/\s*-\s*/);
+      const mainLocation = locationParts[0] ? locationParts[0].trim() : location;
+      const locationAddress = locationParts.length > 1 ? locationParts.slice(1).join(' - ').trim() : null;
 
       // Extract start/end times for display
       const startTimeRaw = rec.StartTime__c || rec.startTime || null;
@@ -1140,29 +1154,43 @@
       const onChoose = () => {
         const info = {
           id: rec.Id || rec.id || null,
+          // keep full original name for backend, but provide displayName/subtitle for UI
           name: title,
+          displayName: mainTitle,
+          subtitle: titleSubtitle,
           startDate: startRaw || null,
           endDate: endRaw || null,
           description: rec.Description || rec.description || null,
-          location,
+          // expose both a short venue and a full address string suitable for map links
+          location: mainLocation,
+          mapLocation: locationAddress || location,
           startTime: rec.StartTime__c || rec.startTime || null,
           endTime: rec.EndTime__c || rec.endTime || null,
         };
         const updates = { ...state.formData };
+        // Keep EventName (backend field) as the original full title unless already set
         if (info.name && !updates.EventName) updates.EventName = info.name;
         if (info.startDate && !updates.EventDate) updates.EventDate = info.startDate;
         setState({ eventId: info.id, campaignInfo: info, selectedEvent: info, formData: updates });
       };
 
-      return h('div', { className: 'ri-event-card' },
-        h('div', { className: 'ri-event-card-title' }, title),
-        (location ? h('div', { className: 'ri-event-card-meta' }, '📍 ', location) : null),
-        ((startDate || endDate || timeRange) ? h('div', { className: 'ri-event-card-meta' }, '🗓 ', [
+      const onCardKeyDown = (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onChoose();
+        }
+      };
+
+      return h('div', { className: 'ri-event-card', tabindex: '0', onKeydown: onCardKeyDown, role: 'button', 'aria-label': `Choose ${mainTitle}` },
+        h('div', { className: 'ri-event-card-title' }, mainTitle),
+        (titleSubtitle ? h('div', { className: 'ri-event-card-subtitle' }, titleSubtitle) : null),
+        ((startDate || endDate || timeRange) ? h('div', { className: 'ri-event-card-date' }, '🗓 ', h('strong', {}, [
           (startDate ? `${startDate}` : null),
           (endDate && !datesSame ? ` to ${endDate}` : null),
           (timeRange ? `${timeRange}` : null)
-        ].filter(Boolean).join(' • ')) : null),
-        (paymentAmount > 0 ? h('div', { className: 'ri-event-card-meta' },
+        ].filter(Boolean).join(' • '))) : null),
+        (mainLocation ? h('div', { className: 'ri-event-card-location' }, '📍 ', mainLocation) : null),
+        (paymentAmount > 0 ? h('div', { className: 'ri-event-card-optional ri-event-card-price' },
           '💳 ', requiresPayment ? `Price: $${paymentAmount.toFixed(2)}` : `Price: $${paymentAmount.toFixed(2)} (payment processing not available for amounts under $0.50)`
         ) : null),
         h('div', { className: 'ri-event-card-actions' },
@@ -1181,6 +1209,13 @@
     );
   };
 
+  const clearSelection = () => {
+    // Clear local selection and campaign info so the user returns to the event overview
+    setState({ eventId: null, campaignInfo: null, selectedEvent: null, step: 0 });
+    // scroll back to top of the event list for clarity
+    try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) { /* ignore */ }
+  };
+
   const renderForm = () => {
     const currentPhase = phases[state.phase];
     const currentStep = currentPhase.steps[state.step];
@@ -1188,61 +1223,69 @@
 
     return h('div', { className: 'ri-form-container' },
       h('div', { className: 'ri-header' },
+        // Back button: show only when there was NO initial eventId provided and the user has selected an event
+        (!initialEventId && state.selectedEvent)
+          ? h('button', { className: 'ri-back', onClick: clearSelection, 'aria-label': 'Back to events' }, '← Back')
+          : null,
         h('div', { className: 'ri-title' }, FORM_CONFIG.name),
-        h('div', { className: 'ri-subtitle' }, currentStep.description || '')
+        (currentStep.description ? h('div', { className: 'ri-subtitle' }, currentStep.description) : null)
       ),
       // If an event has not been selected, show available events
       renderEventList(),
       renderEventHero(),
       stepCount > 1 ? renderProgress() : null,
       stepCount > 1 ? renderStepper() : null,
-      h('div', { className: 'ri-step-content' },
-        h('h2', { className: 'ri-step-heading' }, currentStep.title),
-        // Custom responsive layout for Contact Information step
-        ...(
-          currentStep.title === 'Contact Information'
-          ? [ h('div', { className: 'ri-contact-grid' },
-              // Row 1 - First / Last
-              h('div', { style: { display: 'flex', gap: '12px', flexWrap: 'wrap' } },
-                h('div', { style: { flex: '1 1 200px' } }, renderField('FirstName')),
-                h('div', { style: { flex: '1 1 200px' } }, renderField('LastName'))
-              ),
-              // Row 2 - Email / Phone
-              h('div', { style: { display: 'flex', gap: '12px', flexWrap: 'wrap' } },
-                h('div', { style: { flex: '1 1 300px' } }, renderField('Email')),
-                h('div', { style: { flex: '1 1 200px' } }, renderField('Phone'))
-              ),
-              // Row 3 - Street (full width)
-              h('div', { style: { display: 'flex', gap: '12px', flexWrap: 'wrap' } },
-                h('div', { style: { flex: '1 1 100%' } }, renderField('Street'), h('div', { className: 'ri-address-suggestions' }))
-              ),
-              // Row 4 - City / State / Zip / Country
-              h('div', { style: { display: 'flex', gap: '12px', flexWrap: 'wrap' } },
-                h('div', { style: { flex: '1 1 160px' } }, renderField('City')),
-                h('div', { style: { flex: '1 1 160px' } }, renderField('State')),
-                h('div', { style: { flex: '1 1 120px' } }, renderField('Zip')),
-                h('div', { style: { flex: '1 1 160px' } }, renderField('Country'))
-              )
-            ) ]
-          : currentStep.fields.map(f => renderField(f))
-        )
-      ),
+      (state.eventId || state.selectedEvent)
+        ? h('div', { className: 'ri-step-content' },
+            h('h2', { className: 'ri-step-heading' }, currentStep.title),
+            // Custom responsive layout for Contact Information step
+            ...(
+              currentStep.title === 'Contact Information'
+              ? [ h('div', { className: 'ri-contact-grid' },
+                  // Row 1 - First / Last
+                  h('div', { style: { display: 'flex', gap: '12px', flexWrap: 'wrap' } },
+                    h('div', { style: { flex: '1 1 200px' } }, renderField('FirstName')),
+                    h('div', { style: { flex: '1 1 200px' } }, renderField('LastName'))
+                  ),
+                  // Row 2 - Email / Phone
+                  h('div', { style: { display: 'flex', gap: '12px', flexWrap: 'wrap' } },
+                    h('div', { style: { flex: '1 1 300px' } }, renderField('Email')),
+                    h('div', { style: { flex: '1 1 200px' } }, renderField('Phone'))
+                  ),
+                  // Row 3 - Street (full width)
+                  h('div', { style: { display: 'flex', gap: '12px', flexWrap: 'wrap' } },
+                    h('div', { style: { flex: '1 1 100%' } }, renderField('Street'), h('div', { className: 'ri-address-suggestions' }))
+                  ),
+                  // Row 4 - City / State / Zip / Country
+                  h('div', { style: { display: 'flex', gap: '12px', flexWrap: 'wrap' } },
+                    h('div', { style: { flex: '1 1 160px' } }, renderField('City')),
+                    h('div', { style: { flex: '1 1 160px' } }, renderField('State')),
+                    h('div', { style: { flex: '1 1 120px' } }, renderField('Zip')),
+                    h('div', { style: { flex: '1 1 160px' } }, renderField('Country'))
+                  )
+                ) ]
+              : currentStep.fields.map(f => renderField(f))
+            )
+          )
+        : null,
       state.error 
         ? h('div', { className: 'ri-error' }, state.error)
         : null,
-      h('div', { className: 'ri-actions' },
-        state.step > 0 
-          ? h('button', {
-              className: 'ri-btn ri-btn-secondary',
-              onClick: prevStep,
-            }, 'Previous')
-          : null,
-        h('button', {
-          className: 'ri-btn ri-btn-primary',
-          onClick: nextStep,
-          disabled: state.loading || !canProceed(),
-        }, state.loading ? 'Submitting...' : state.step < currentPhase.steps.length - 1 ? 'Next' : 'Submit')
-      )
+      (state.eventId || state.selectedEvent)
+        ? h('div', { className: 'ri-actions' },
+            state.step > 0 
+              ? h('button', {
+                  className: 'ri-btn ri-btn-secondary',
+                  onClick: prevStep,
+                }, 'Previous')
+              : null,
+            h('button', {
+              className: 'ri-btn ri-btn-primary',
+              onClick: nextStep,
+              disabled: state.loading || !canProceed(),
+            }, state.loading ? 'Submitting...' : state.step < currentPhase.steps.length - 1 ? 'Next' : 'Submit')
+          )
+        : null
     );
   };
 

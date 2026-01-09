@@ -1,16 +1,23 @@
-/* Refuge Event Registration - brand-aligned styles */
+/* Refuge Events Calendar - brand-aligned styles */
 :root {
   --accent: #BD2135;
   --accent-600: #9a1a2b;
+  --accent-400: #d34a51;
   --muted: #6b7280;
+  --muted-2: #9CA3AF;
   --text: #0b1720;
   --surface: #ffffff;
   --surface-muted: #f9fafb;
+  --bg-gradient-start: #fbfcfd;
+  --bg-gradient-end: #ffffff;
   --border: #e5e7eb;
-  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.08);
-  --shadow-sm: 0 3px 10px rgba(0, 0, 0, 0.06);
+  --radius: 16px;
+  --card-padding: 18px;
+  --gap: 14px;
+  --shadow-lg: 0 14px 40px rgba(10, 20, 30, 0.08);
+  --shadow-sm: 0 6px 20px rgba(10, 20, 30, 0.06);
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-}
+} 
 
 * { box-sizing: border-box; }
 body {
@@ -19,24 +26,37 @@ body {
   min-height: 100vh;
   padding: 20px;
   color: var(--text);
-}
+  font-size: 16px; /* base readable size */
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+} 
 
 /* App container */
-.ri-app { max-width: 960px; margin: 24px auto; padding: 16px; }
+.ri-app { max-width: 1200px; margin: 32px auto; padding: 20px; }
 
-/* Card */
+/* Card: more subtle, elegant surface */
 .ri-card {
-  background: linear-gradient(180deg, #ffffff 0%, #fafafa 100%);
-  border-radius: 16px;
-  border-top: 5px solid var(--accent);
+  background: linear-gradient(180deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
+  border-radius: var(--radius);
+  border: 1px solid rgba(11,23,32,0.03);
   box-shadow: var(--shadow-lg);
-  padding: 12px 24px 24px 24px;
+  padding: var(--card-padding);
+  overflow: hidden;
+  position: relative;
 }
 
+/* Utility subtle divider */
+.ri-card + .ri-card { margin-top: 18px; } 
+
 /* Header */
-.ri-header { text-align: center; margin-bottom: 12px; }
-.ri-title { font-size: 28px; font-weight: 800; letter-spacing: -0.3px; margin: 0; color: #1a1a1a; }
+.ri-header { display:flex; align-items:center; justify-content:center; gap:12px; margin-bottom: 12px; position:relative; }
+.ri-title { font-size: 30px; font-weight: 800; letter-spacing: -0.3px; margin: 0; color: #1a1a1a; }
 .ri-subtitle { margin-top: 6px; color: var(--muted); }
+
+/* Back button */
+.ri-back { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); background: transparent; border: 0; color: var(--muted); font-weight: 700; cursor: pointer; padding: 6px 10px; border-radius: 8px; }
+.ri-back:hover { color: var(--accent); background: rgba(189,33,53,0.04); }
+.ri-back:focus-visible { outline: none; box-shadow: 0 0 0 4px rgba(189,33,53,0.08); }
 
 /* Stepper */
 .ri-stepper { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 18px 0; }
@@ -53,11 +73,19 @@ body {
 .ri-field input:focus, .ri-field select:focus, .ri-field textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(189, 33, 53, 0.15); }
 
 /* Actions */
-.ri-actions { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
-.ri-btn { padding: 12px 16px; border-radius: 10px; border: 0; cursor: pointer; font-weight: 700; letter-spacing: 0.2px; display: inline-flex; align-items: center; gap: 8px; }
-.ri-btn-primary { background: linear-gradient(135deg, var(--accent) 0%, var(--accent-600) 100%); color: #fff; box-shadow: 0 8px 18px rgba(189, 33, 53, 0.25); }
-.ri-btn-secondary { background: #fff; color: #111; border: 2px solid var(--border); }
-.ri-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.ri-actions { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+.ri-btn { padding: 14px 20px; border-radius: 999px; border: 0; cursor: pointer; font-weight: 700; font-size: 16px; letter-spacing: 0.2px; display: inline-flex; align-items: center; gap: 14px; transition: transform 160ms ease, box-shadow 160ms ease, opacity 160ms; }
+.ri-btn-primary { background: linear-gradient(135deg, var(--accent) 0%, var(--accent-600) 100%); color: #fff; box-shadow: 0 10px 22px rgba(189, 33, 53, 0.18); padding: 12px 18px; }
+.ri-btn-primary:hover { transform: translateY(-2px); box-shadow: 0 16px 36px rgba(189,33,53,0.18); }
+.ri-btn-primary:active { transform: translateY(0); }
+.ri-btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 4px rgba(189,33,53,0.12); }
+.ri-btn-secondary { background: #fff; color: #111; border: 1px solid rgba(11,23,32,0.06); }
+.ri-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+/* When buttons should take full width (mobile, cards) */
+.ri-btn.full { width: 100%; justify-content: center; }
+
+
 
 /* Progress */
 .ri-progress-container { margin: 8px 0 12px; }
@@ -74,20 +102,112 @@ body {
 
 /* Event hero */
 .ri-event-hero { margin: 8px 0 16px; }
-.ri-event-title { font-size: 26px; font-weight: 900; color: var(--accent-600); margin-bottom: 8px; }
+.ri-event-title { font-size: 28px; font-weight: 900; color: var(--accent-600); margin-bottom: 8px; }
 .ri-event-meta-line { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
 .ri-event-badge { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 12px; background: rgba(189,33,53,0.08); color: var(--accent-600); font-weight: 900; }
 .ri-event-meta-text { font-weight: 700; color: #333; }
 
 /* Event list */
-.ri-event-list { margin: 8px 0 16px; }
-.ri-event-list-header { margin-bottom: 8px; }
-.ri-event-list-title { font-size: 22px; font-weight: 800; color: #1a1a1a; }
-.ri-event-list-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
-.ri-event-card { border: 1px solid var(--border); border-radius: 12px; background: #fff; padding: 14px; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: 8px; }
-.ri-event-card-title { font-weight: 800; color: var(--accent-600); }
-.ri-event-card-meta { color: #374151; font-weight: 600; }
-.ri-event-card-actions { margin-top: 6px; }
+.ri-event-list { margin: 12px 0 20px; }
+.ri-event-list-header { margin-bottom: 12px; display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.ri-event-list-title { font-size: 28px; font-weight: 900; color: var(--text); letter-spacing:-0.2px; margin:0; }
+.ri-event-list-grid { display: grid; /* max 4 columns */ grid-template-columns: repeat(4, minmax(240px, 1fr)); gap: 20px; align-items: start; }
+
+/* Responsive breakpoints to ensure maximum columns adjust for viewport */
+@media (max-width: 1100px) {
+  .ri-event-list-grid { grid-template-columns: repeat(3, minmax(220px, 1fr)); }
+}
+@media (max-width: 820px) {
+  .ri-event-list-grid { grid-template-columns: repeat(2, minmax(240px, 1fr)); }
+}
+@media (max-width: 520px) {
+  .ri-event-list-grid { grid-template-columns: 1fr; }
+}
+
+.ri-event-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: calc(var(--radius) - 2px);
+  padding: 14px 18px 14px 26px; /* spacing that accounts for left accent */
+  background: linear-gradient(180deg, #fff 0%, #fcfcfd 100%);
+  border: 1px solid rgba(11,23,32,0.04);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: transform 220ms cubic-bezier(.2,.9,.2,1), box-shadow 220ms;
+  min-height: 120px; /* compact by default but large enough to fit title, subtitle, date, and location */
+  padding-top: 16px;
+  padding-bottom: 16px;
+}
+
+/* left accent bar */
+.ri-event-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  background: linear-gradient(180deg, var(--accent) 0%, var(--accent-600) 100%);
+  border-top-left-radius: calc(var(--radius) - 2px);
+  border-bottom-left-radius: calc(var(--radius) - 2px);
+}
+
+/* Hover / focus lift */
+.ri-event-card:hover { transform: translateY(-6px); box-shadow: 0 18px 40px rgba(11,23,32,0.12); }
+.ri-event-card:focus-within { box-shadow: 0 14px 36px rgba(11,23,32,0.09); }
+
+/* Title remains visible; other details are hidden until hover/focus */
+.ri-event-card-title { font-weight: 800; color: var(--accent-600); font-size: 18px; line-height: 1.2; margin: 0 0 2px 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* Optional meta (price, extra info) is hidden by default. Keep date/location/subtitle visible. */
+.ri-event-card-optional,
+.ri-event-card-actions {
+  opacity: 0;
+  transform: translateY(8px);
+  max-height: 0;
+  overflow: hidden;
+  transition: opacity 200ms ease, transform 200ms ease, max-height 260ms cubic-bezier(.2,.9,.2,1);
+}
+
+/* Date emphasis and spacing rules */
+/* Keep the date visible at all times while other meta lines reveal on hover */
+.ri-event-card-meta { color: var(--muted); font-weight: 600; font-size: 15px; display: flex; gap: 10px; align-items: center; }
+.ri-event-card-date { font-weight: 800; color: var(--text); font-size: 15px; opacity: 1; transform: none; max-height: none; margin: 0 0 6px 0; display: block; }
+.ri-event-card-subtitle { color: var(--muted-2); font-size: 14px; font-weight: 700; opacity: 1; margin: 0 0 6px 0; display: block; }
+.ri-event-card-location { color: var(--muted); font-size: 15px; margin: 0 0 6px 0; display: block; }
+.ri-event-card-meta + .ri-event-card-meta { margin-top: 8px; }
+
+/* reveal only the action (register) on hover/focus; optional meta remains hidden */
+.ri-event-card:hover .ri-event-card-actions,
+.ri-event-card:focus-within .ri-event-card-actions {
+  opacity: 1;
+  transform: none;
+  max-height: 400px;
+}
+
+/* Make card button full-width and visually consistent */
+.ri-event-card .ri-btn-primary { width: 100%; justify-content: center; }
+
+/* When a card expands, provide a slightly larger min-height for content */
+.ri-event-card:hover, .ri-event-card:focus-within { /* no size jump; only reveal actions */ }
+
+/* Small screens adjustments */
+@media (max-width: 640px) {
+  .ri-event-list-grid { grid-template-columns: 1fr; }
+  .ri-card { padding: 16px; }
+  .ri-event-card { padding-left: 18px; min-height: 72px; }
+  .ri-btn { width: 100%; }
+}
+
+/* smaller screens */
+@media (max-width: 640px) {
+  .ri-event-list-grid { grid-template-columns: 1fr; }
+  .ri-card { padding: 16px; }
+  .ri-event-card { padding-left: 18px; min-height: 140px; }
+  .ri-btn { width: 100%; }
+}
 
 /* Success */
 .ri-success-container { text-align: center; padding: 24px; }
