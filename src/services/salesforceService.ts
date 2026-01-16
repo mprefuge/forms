@@ -716,7 +716,20 @@ export class SalesforceService {
       const result: any = await this.connection.query(query);
 
       if (result.records && result.records.length > 0) {
-        return result.records[0];
+        const record = result.records[0];
+
+        // Attempt to fetch related Files/Attachments (images) and attach them to the campaign record as `images`
+        try {
+          const images = await this.getCampaignImages(record.Id || record.id);
+          if (Array.isArray(images) && images.length > 0) {
+            (record as any).images = images;
+          }
+        } catch (imgErr: any) {
+          // Non-fatal: continue without images
+          console.warn(`Failed to fetch campaign images for ${campaignId}:`, imgErr?.message || imgErr);
+        }
+
+        return record;
       }
 
       return null;
@@ -727,8 +740,147 @@ export class SalesforceService {
   }
 
   /**
+   * Fetch images (ContentVersion/Attachment) for a Campaign.
+   * Returns an array of objects { id, title, fileType, contentType, url } when available.
+   */
+  async downloadContentVersionBinary(contentVersionId: string): Promise<{ data: Buffer; contentType: string; fileName?: string } | null> {
+    try {
+      if (!contentVersionId || typeof contentVersionId !== 'string') {
+        console.log(`[downloadContentVersionBinary] Invalid contentVersionId: ${contentVersionId}`);
+        return null;
+      }
+
+      console.log(`[downloadContentVersionBinary] Downloading ContentVersion: ${contentVersionId}`);
+
+      // Query metadata for filename / file type
+      const q = `SELECT Id, Title, FileType FROM ContentVersion WHERE Id = '${contentVersionId}' LIMIT 1`;
+      const res: any = await this.connection.query(q);
+      const meta = (res.records && res.records[0]) ? res.records[0] : null;
+      const fileName = meta ? (meta.Title || `${contentVersionId}`) : `${contentVersionId}`;
+
+      console.log(`[downloadContentVersionBinary] Metadata: fileName="${fileName}", FileType="${meta?.FileType || 'unknown'}"`);
+
+      const apiVersion = this.connection.version ? `v${this.connection.version}` : 'v57.0';
+      const url = `${this.connection.instanceUrl}/services/data/${apiVersion}/sobjects/ContentVersion/${contentVersionId}/VersionData`;
+
+      console.log(`[downloadContentVersionBinary] Fetching from URL: ${url}`);
+
+      // Use axios to fetch binary with oauth bearer token
+      const axios = require('axios');
+      const resp = await axios.get(url, { responseType: 'arraybuffer', headers: { Authorization: `Bearer ${this.connection.accessToken}` }, timeout: 20000 });
+      const contentType = resp.headers && resp.headers['content-type'] ? resp.headers['content-type'] : (meta && meta.FileType ? `image/${meta.FileType.toLowerCase()}` : 'application/octet-stream');
+      
+      console.log(`[downloadContentVersionBinary] Success! Downloaded ${resp.data.length} bytes, contentType="${contentType}"`);
+      
+      return { data: Buffer.from(resp.data), contentType, fileName };
+    } catch (error: any) {
+      console.error(`[downloadContentVersionBinary] Failed to download ContentVersion ${contentVersionId}:`, error?.message || error);
+      return null;
+    }
+  }
+
+  async downloadAttachmentBinary(attachmentId: string): Promise<{ data: Buffer; contentType: string; fileName?: string } | null> {
+    try {
+      if (!attachmentId || typeof attachmentId !== 'string') return null;
+      const q = `SELECT Id, Name, ContentType FROM Attachment WHERE Id = '${attachmentId}' LIMIT 1`;
+      const res: any = await this.connection.query(q);
+      const meta = (res.records && res.records[0]) ? res.records[0] : null;
+      const apiVersion = this.connection.version ? `v${this.connection.version}` : 'v57.0';
+      const url = `${this.connection.instanceUrl}/services/data/${apiVersion}/sobjects/Attachment/${attachmentId}/Body`;
+      const axios = require('axios');
+      const resp = await axios.get(url, { responseType: 'arraybuffer', headers: { Authorization: `Bearer ${this.connection.accessToken}` }, timeout: 20000 });
+      const contentType = resp.headers && resp.headers['content-type'] ? resp.headers['content-type'] : (meta && meta.ContentType ? meta.ContentType : 'application/octet-stream');
+      const fileName = meta ? (meta.Name || attachmentId) : attachmentId;
+      return { data: Buffer.from(resp.data), contentType, fileName };
+    } catch (error: any) {
+      console.error('Failed to download Attachment', error?.message || error);
+      return null;
+    }
+  }
+
+  async getCampaignImages(campaignId: string): Promise<Array<Record<string, any>>> {
+    try {
+      if (!campaignId || typeof campaignId !== 'string') return [];
+
+      console.log(`[getCampaignImages] Starting for campaign: ${campaignId}`);
+
+      // 1) Query ContentDocumentLink to find related ContentDocumentIds
+      const qLinks = `SELECT ContentDocumentId FROM ContentDocumentLink WHERE LinkedEntityId = '${campaignId}'`;
+      const linksRes: any = await this.connection.query(qLinks);
+      const docIds = (linksRes.records || []).map((r: any) => r.ContentDocumentId).filter(Boolean);
+      console.log(`[getCampaignImages] Found ${docIds.length} ContentDocumentLink(s):`, docIds);
+
+      // 2) If we found ContentDocuments, query latest ContentVersion records
+      if (docIds.length > 0) {
+        const docList = docIds.map((id: string) => `'${id}'`).join(',');
+        // Query all ContentVersions, then filter by filename extension on our end (more robust)
+        const qCv = `SELECT Id, Title, FileType, PathOnClient, ContentDocumentId FROM ContentVersion WHERE ContentDocumentId IN (${docList}) AND IsLatest = true ORDER BY CreatedDate DESC`;
+        console.log(`[getCampaignImages] Querying ContentVersions...`);
+        const cvRes: any = await this.connection.query(qCv);
+        console.log(`[getCampaignImages] Found ${(cvRes.records || []).length} ContentVersion record(s)`);
+        
+        // Filter for image files by extension (handle cases where FileType is empty or unusual)
+        const imageExtRegex = /\.(jpg|jpeg|png|gif|bmp|webp|svg)$/i;
+        const baseUrl = 'http://localhost:7071/api/form';
+        const images = (cvRes.records || [])
+          .filter((v: any) => {
+            const title = v.Title || '';
+            const pathOnClient = v.PathOnClient || '';
+            const fileType = (v.FileType || '').toUpperCase();
+            const titleMatch = imageExtRegex.test(title);
+            const pathMatch = imageExtRegex.test(pathOnClient);
+            const typeMatch = ['PNG','JPG','JPEG','GIF','BMP','WEBP','SVG'].includes(fileType);
+            const passes = titleMatch || pathMatch || typeMatch;
+            console.log(`[getCampaignImages]   File: Title="${title}", Path="${pathOnClient}", Type="${fileType}" => titleMatch=${titleMatch}, pathMatch=${pathMatch}, typeMatch=${typeMatch}, passes=${passes}`);
+            return passes;
+          })
+          .map((v: any) => ({
+            id: v.Id,
+            title: v.Title,
+            fileType: v.FileType,
+            url: `${baseUrl}?downloadContentVersion=${v.Id}`
+          }));
+
+        console.log(`[getCampaignImages] Filtered to ${images.length} image(s)`);
+        if (images.length > 0) return images;
+      }
+
+      // 3) Fallback to Attachment (legacy attachments) if no ContentVersion images found
+      console.log(`[getCampaignImages] No ContentVersion images found; checking Attachments...`);
+      const qAtt = `SELECT Id, Name, ContentType FROM Attachment WHERE ParentId = '${campaignId}'`;
+      const attRes: any = await this.connection.query(qAtt);
+      console.log(`[getCampaignImages] Found ${(attRes.records || []).length} Attachment(s)`);
+      const imageExtRegexAtt = /\.(jpg|jpeg|png|gif|bmp|webp|svg)$/i;
+      const baseUrlAtt = 'http://localhost:7071/api/form';
+      const attImages = (attRes.records || [])
+        .filter((a: any) => {
+          const name = a.Name || '';
+          const contentType = (a.ContentType || '').toLowerCase();
+          const nameMatch = imageExtRegexAtt.test(name);
+          const typeMatch = contentType.includes('image/');
+          const passes = nameMatch || typeMatch;
+          console.log(`[getCampaignImages]   Attachment: Name="${name}", ContentType="${contentType}" => nameMatch=${nameMatch}, typeMatch=${typeMatch}, passes=${passes}`);
+          return passes;
+        })
+        .map((a: any) => ({
+          id: a.Id,
+          title: a.Name,
+          fileType: a.ContentType,
+          url: `${baseUrlAtt}?downloadAttachment=${a.Id}`
+        }));
+
+      console.log(`[getCampaignImages] Filtered to ${attImages.length} attachment image(s)`);
+      return attImages;
+    } catch (error: any) {
+      console.error('[getCampaignImages] Campaign images fetch failed', error?.message || error);
+      return [];
+    }
+  }
+
+  /**
    * List active Campaigns with RecordType.Name = 'Event'.
    * Returns an array of raw records with requested fields.
+   * Fetches image data for each campaign (if present) and attaches as `images`.
    */
   async getActiveEventCampaigns(fields: string[] = ['Id','Name','StartDate','EndDate','Description']): Promise<Array<Record<string, any>>> {
     try {
@@ -736,7 +888,19 @@ export class SalesforceService {
       const select = safeFields.length > 0 ? safeFields.join(', ') : 'Id, Name';
       const query = `SELECT ${select} FROM Campaign WHERE RecordType.Name = 'Event' AND IsActive = true ORDER BY StartDate DESC NULLS LAST, Name ASC`;
       const result: any = await this.connection.query(query);
-      return (result.records || []) as Array<Record<string, any>>;
+      const records: Array<Record<string, any>> = (result.records || []);
+
+      // Enrich campaigns with image metadata where available (best-effort)
+      const enriched = await Promise.all(records.map(async (rec) => {
+        try {
+          const images = await this.getCampaignImages(rec.Id || rec.id);
+          return { ...(rec as any), images };
+        } catch (e) {
+          return rec;
+        }
+      }));
+
+      return enriched;
     } catch (error: any) {
       console.error(`Active Event campaigns query failed:`, error?.message || error);
       return [];

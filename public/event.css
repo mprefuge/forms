@@ -111,6 +111,23 @@ body {
 .ri-event-time { color: var(--text); font-size: 15px; font-weight: 800; margin-top: 6px; }
 .ri-event-location { display: block; color: var(--muted); font-size: 14px; margin-top: 8px; }
 
+/* Media layout for hero when images are present */
+.ri-event-hero.ri-event-hero-with-media { display: flex; gap: 20px; align-items: stretch; }
+.ri-event-hero-media { flex: 0 0 480px; max-width: 50%; display: flex; }
+.ri-event-hero-media img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 10px; }
+.ri-event-hero-content { flex: 1 1 auto; }
+
+/* Card media at top */
+.ri-event-card-media { display: block; margin-bottom: 8px; }
+.ri-event-card-media img { width: 100%; height: 140px; object-fit: cover; border-radius: 8px; }
+
+/* Responsive adjustments: stack media above content on small screens */
+@media (max-width: 700px) {
+  .ri-event-hero.ri-event-hero-with-media { flex-direction: column; }
+  .ri-event-hero-media { max-width: 100%; width: 100%; }
+}
+
+
 /* Event list */
 .ri-event-list { margin: 12px 0 20px; }
 .ri-event-list-header { margin-bottom: 12px; display:flex; align-items:center; justify-content:space-between; gap:12px; }

@@ -1100,7 +1100,21 @@
         }, h('div', { className: 'ri-map-placeholder' }, 'Loading map...')) : null)
       ];
 
-      return h('div', { className: 'ri-event-hero ri-card' }, ...elements.filter(Boolean));
+      const contentEl = h('div', { className: 'ri-event-hero-content' }, ...elements.filter(Boolean));
+
+      // If images exist, show the first image to the left of the content (full page)
+      if (state.campaignInfo && state.campaignInfo.images && state.campaignInfo.images.length) {
+        console.log('renderEventHero: Rendering with image', state.campaignInfo.images[0]);
+        const img = state.campaignInfo.images[0];
+        const mediaEl = h('div', { className: 'ri-event-hero-media' },
+          h('img', { src: img.url, alt: img.title || title || 'Event image', style: { width: '100%', height: 'auto', borderRadius: '8px' } })
+        );
+
+        return h('div', { className: 'ri-event-hero ri-card ri-event-hero-with-media' }, mediaEl, contentEl);
+      }
+
+      console.log('renderEventHero: No images, state.campaignInfo =', state.campaignInfo);
+      return h('div', { className: 'ri-event-hero ri-card' }, contentEl);
     }
 
     // If eventId present but no metadata yet
@@ -1165,6 +1179,7 @@
           mapLocation: locationAddress || location,
           startTime: rec.StartTime__c || rec.startTime || null,
           endTime: rec.EndTime__c || rec.endTime || null,
+          images: Array.isArray(rec.images) ? rec.images : null,
         };
         const updates = { ...state.formData };
         // Keep EventName (backend field) as the original full title unless already set
@@ -1180,7 +1195,14 @@
         }
       };
 
+      const cardImageUrl = (rec.images && rec.images.length) ? (rec.images[0].url) : null;
+
+      const cardImageEl = cardImageUrl ? h('div', { className: 'ri-event-card-media' },
+        h('img', { src: cardImageUrl, alt: rec.Name || rec.name || '', style: { width: '100%', height: '140px', objectFit: 'cover', borderRadius: '8px', marginBottom: '10px' } })
+      ) : null;
+
       return h('div', { className: 'ri-event-card', tabindex: '0', onKeydown: onCardKeyDown, role: 'button', 'aria-label': `Choose ${mainTitle}` },
+        cardImageEl,
         h('div', { className: 'ri-event-card-title' }, mainTitle),
         (titleSubtitle ? h('div', { className: 'ri-event-card-subtitle' }, titleSubtitle) : null),
         ((startDate || endDate || timeRange) ? h('div', { className: 'ri-event-card-date' },
@@ -1458,6 +1480,8 @@
       }
       const data = await res.json();
       const c = data && data.campaign ? data.campaign : null;
+      console.log('fetchEventMetadata: campaign data =', c);
+      console.log('fetchEventMetadata: images =', c && c.images);
       if (c) {
         const info = {
           id: c.Id || c.id || null,
@@ -1468,7 +1492,9 @@
           location: c.Location__c || c.Location || c.Venue__c || c.City__c || c.City || null,
           startTime: c.StartTime__c || c.startTime || null,
           endTime: c.EndTime__c || c.endTime || null,
+          images: Array.isArray(c.images) ? c.images : null,
         };
+        console.log('fetchEventMetadata: info object =', info);
         // Extract payment information from campaign
         const requiresPaymentField = !!(c.RequiresPayment__c || c.requiresPayment);
         // Parse currency field - ensure it's a valid number and round to 2 decimal places

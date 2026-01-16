@@ -848,6 +848,46 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
 
 async function getFormHandler(request: HttpRequest, context: InvocationContext, logger: Logger, requestId: string): Promise<HttpResponseInit> {
   try {
+    // Support downloading ContentVersion/Attachment binary via proxy: ?downloadContentVersion=ID or ?downloadAttachment=ID
+    const downloadContentVersion = request.query.get('downloadContentVersion');
+    const downloadAttachment = request.query.get('downloadAttachment');
+
+    if (downloadContentVersion || downloadAttachment) {
+      logger.info('File download request', { downloadContentVersion, downloadAttachment });
+      
+      // Initialize Salesforce Service and authenticate
+      const sfConfig = {
+        loginUrl: process.env.SF_LOGIN_URL || 'https://login.salesforce.com',
+        clientId: process.env.SF_CLIENT_ID || '',
+        clientSecret: process.env.SF_CLIENT_SECRET || '',
+      };
+      const salesforceService = new SalesforceService(sfConfig);
+      logger.info('Authenticating with Salesforce to proxy file download');
+      await salesforceService.authenticate();
+
+      if (downloadContentVersion) {
+        logger.info('Downloading ContentVersion', { downloadContentVersion });
+        const v = await salesforceService.downloadContentVersionBinary(downloadContentVersion);
+        if (!v) {
+          logger.error('ContentVersion download returned null', { downloadContentVersion });
+          return { status: 404, body: 'Not found', headers: { 'Content-Type': 'text/plain' } };
+        }
+        logger.info('ContentVersion download successful', { downloadContentVersion, size: v.data.length });
+        return { status: 200, body: v.data, headers: { 'Content-Type': v.contentType || 'application/octet-stream', 'Content-Disposition': `inline; filename="${(v.fileName || downloadContentVersion).replace(/"/g, '')}"` } } as any;
+      }
+
+      if (downloadAttachment) {
+        logger.info('Downloading Attachment', { downloadAttachment });
+        const a = await salesforceService.downloadAttachmentBinary(downloadAttachment);
+        if (!a) {
+          logger.error('Attachment download returned null', { downloadAttachment });
+          return { status: 404, body: 'Not found', headers: { 'Content-Type': 'text/plain' } };
+        }
+        logger.info('Attachment download successful', { downloadAttachment, size: a.data.length });
+        return { status: 200, body: a.data, headers: { 'Content-Type': a.contentType || 'application/octet-stream', 'Content-Disposition': `inline; filename="${(a.fileName || downloadAttachment).replace(/"/g, '')}"` } } as any;
+      }
+    }
+
     // Support event campaign info retrieval: ?eventId=... or ?eventid=...
     const eventId = request.query.get('eventId') || request.query.get('eventid');
     if (eventId) {
