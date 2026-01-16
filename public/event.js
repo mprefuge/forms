@@ -1254,7 +1254,6 @@
         (!initialEventId && state.selectedEvent)
           ? h('button', { className: 'ri-back', onClick: clearSelection, 'aria-label': 'Back to events' }, '← Back')
           : null,
-        h('div', { className: 'ri-title' }, FORM_CONFIG.name),
         (currentStep.description ? h('div', { className: 'ri-subtitle' }, currentStep.description) : null)
       ),
       // If an event has not been selected, show available events
