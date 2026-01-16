@@ -238,6 +238,7 @@
     status: null,
     error: null,
     loading: false,
+    initialLoading: true,
     eventId: eventId,  // Store eventId from URL
     campaignInfo: null, // Store campaign info if successfully fetched
     selectedEvent: null, // Store event chosen from list when no eventId in URL
@@ -246,7 +247,7 @@
     paymentAmount: 0, // Store the payment amount
     paymentCompleted: false, // Track if payment has been completed
     paymentError: null // Store any payment-related errors
-  };
+  }; 
 
   // ============================================================================
   // HELPER FUNCTIONS
@@ -1256,6 +1257,12 @@
           : null,
         (currentStep.description ? h('div', { className: 'ri-subtitle' }, currentStep.description) : null)
       ),
+      // Initial loading overlay
+      state.initialLoading ? h('div', { className: 'ri-loading-overlay', role: 'status', 'aria-hidden': 'false' },
+        h('div', { className: 'ri-spinner', 'aria-hidden': 'true' }),
+        h('div', { className: 'ri-loading-text' }, 'Loading events...'),
+        h('div', { className: 'ri-loading-subtext' }, 'Preparing calendar and fetching event details')
+      ) : null,
       // If an event has not been selected, show available events
       renderEventList(),
       renderEventHero(),
@@ -1618,15 +1625,23 @@
           }
         }, 0);
 
-        // Fetch campaign metadata after initial render so banner can update
-        fetchEventMetadata();
-        // If no event selected, fetch active events
-        fetchActiveEvents();
+        // Fetch campaign metadata after initial render so banner can update.
+        // Keep the initial loading indicator visible until both calls finish.
+        setState({ initialLoading: true });
+        Promise.allSettled([fetchEventMetadata(), fetchActiveEvents()]).then(() => {
+          setState({ initialLoading: false });
+        }).catch(() => {
+          setState({ initialLoading: false });
+        });
       }).catch(() => {
         // Even if lookup fails, proceed
         render();
-        fetchEventMetadata();
-        fetchActiveEvents();
+        setState({ initialLoading: true });
+        Promise.allSettled([fetchEventMetadata(), fetchActiveEvents()]).then(() => {
+          setState({ initialLoading: false });
+        }).catch(() => {
+          setState({ initialLoading: false });
+        });
       });
     });
     

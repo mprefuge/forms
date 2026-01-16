@@ -247,6 +247,33 @@ body {
   .ri-btn { width: 100%; }
 }
 
+/* Loading overlay (brand-aligned) */
+.ri-form-container { position: relative; }
+.ri-loading-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(180deg, rgba(255,255,255,0.85), rgba(250,250,250,0.9));
+  z-index: 40;
+  border-radius: inherit;
+  pointer-events: none;
+}
+.ri-loading-overlay[aria-hidden="false"] { pointer-events: auto; }
+.ri-spinner {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: conic-gradient(var(--accent) 0deg, var(--accent) 120deg, rgba(11,23,32,0.08) 120deg);
+  animation: ri-spin 1.2s linear infinite;
+  box-shadow: 0 6px 18px rgba(11,23,32,0.08);
+}
+@keyframes ri-spin { to { transform: rotate(360deg); } }
+.ri-loading-text { margin-top: 12px; color: var(--muted); font-weight: 700; font-size: 14px; }
+.ri-loading-subtext { margin-top: 6px; color: var(--muted-2); font-size: 13px; }
+
 /* Success */
 .ri-success-container { text-align: center; padding: 24px; }
 .ri-success-title { margin-top: 8px; font-size: 22px; font-weight: 800; }
