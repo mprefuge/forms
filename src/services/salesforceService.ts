@@ -821,7 +821,11 @@ export class SalesforceService {
         
         // Filter for image files by extension (handle cases where FileType is empty or unusual)
         const imageExtRegex = /\.(jpg|jpeg|png|gif|bmp|webp|svg)$/i;
-        const baseUrl = 'http://localhost:7071/api/form';
+        const baseUrl = (
+          process.env.PUBLIC_BASE_URL
+          || process.env.API_BASE_URL
+          || (process.env.WEBSITE_HOSTNAME ? `https://${process.env.WEBSITE_HOSTNAME}` : 'http://localhost:7071')
+        ).replace(/\/$/, '') + '/api/form';
         const images = (cvRes.records || [])
           .filter((v: any) => {
             const title = v.Title || '';
@@ -851,7 +855,11 @@ export class SalesforceService {
       const attRes: any = await this.connection.query(qAtt);
       console.log(`[getCampaignImages] Found ${(attRes.records || []).length} Attachment(s)`);
       const imageExtRegexAtt = /\.(jpg|jpeg|png|gif|bmp|webp|svg)$/i;
-      const baseUrlAtt = 'http://localhost:7071/api/form';
+      const baseUrlAtt = (
+        process.env.PUBLIC_BASE_URL
+        || process.env.API_BASE_URL
+        || (process.env.WEBSITE_HOSTNAME ? `https://${process.env.WEBSITE_HOSTNAME}` : 'http://localhost:7071')
+      ).replace(/\/$/, '') + '/api/form';
       const attImages = (attRes.records || [])
         .filter((a: any) => {
           const name = a.Name || '';
