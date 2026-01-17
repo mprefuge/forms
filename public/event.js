@@ -1260,8 +1260,8 @@
       // Initial loading overlay
       state.initialLoading ? h('div', { className: 'ri-loading-overlay', role: 'status', 'aria-hidden': 'false' },
         h('div', { className: 'ri-spinner', 'aria-hidden': 'true' }),
-        h('div', { className: 'ri-loading-text' }, 'Loading events...'),
-        h('div', { className: 'ri-loading-subtext' }, 'Preparing calendar and fetching event details')
+        h('div', { className: 'ri-loading-text' }, 'Loading...'),
+        h('div', { className: 'ri-loading-subtext' }, 'Please wait while we fetch event details')
       ) : null,
       // If an event has not been selected, show available events
       renderEventList(),
