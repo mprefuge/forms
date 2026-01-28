@@ -916,6 +916,11 @@
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '\u00a9 OpenStreetMap contributors'
     }).addTo(eventMapInstance);
+    // Ensure only a single marker exists for this map
+    if (eventMapMarker && eventMapInstance && typeof eventMapInstance.removeLayer === 'function') {
+      try { eventMapInstance.removeLayer(eventMapMarker); } catch (e) { /* ignore */ }
+      eventMapMarker = null;
+    }
     eventMapMarker = L.marker([coords.lat, coords.lon]).addTo(eventMapInstance);
     eventMapMarker.bindPopup(coords.label || locationText).openPopup();
   };
@@ -1104,11 +1109,26 @@
 
       const datePart = (startDate && endDate && !datesSame) ? `${startDate} to ${endDate}` : (startDate || endDate);
 
+      const locationText = getCurrentEventLocation() || '';
+
       const elements = [
         h('div', { className: 'ri-event-title' }, title),
         (loc ? h('div', { className: 'ri-event-meta-line' },
           h('span', { className: 'ri-event-badge ri-event-location' }, '📍'),
           h('span', { className: 'ri-event-meta-text' }, loc)
+        ) : null),
+        // Address/details row placed directly under the location name (always shown when a location exists)
+        (locationText ? h('div', { className: 'ri-event-meta-line ri-event-location-details' },
+          h('span', { className: 'ri-event-meta-text' },
+            h('div', { style: { display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' } },
+              h('div', { style: { color: 'var(--muted)' } }, `📍 ${locationText}`),
+              h('a', {
+                href: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationText)}`,
+                target: '_blank',
+                className: 'ri-btn ri-btn-secondary'
+              }, '📍 View on Map')
+            )
+          )
         ) : null),
         (datePart || timeRange ? h('div', { className: 'ri-event-meta-line' },
           h('span', { className: 'ri-event-badge ri-event-calendar' }, '🗓'),
@@ -1126,9 +1146,10 @@
               : `Price: $${state.paymentAmount.toFixed(2)} (payment processing not available for amounts under $0.50)`
           )
         ) : null),
-        // Map container (rendered only when a location exists)
+        // Description
         (loc ? h('div', { className: 'ri-event-hero-desc', style: { marginBottom: '10px', color: 'var(--muted)' } }, state.campaignInfo && state.campaignInfo.description ? state.campaignInfo.description : null) : null),
-        (loc ? h('div', { 
+        // Map container (rendered only when a location exists AND maps are enabled in config)
+        (loc && !config.disableMap ? h('div', { 
           id: 'ri-event-map', 
           className: 'ri-event-map',
           style: { height: '260px', marginTop: '12px', border: '1px solid #e5e5e5', borderRadius: '10px', overflow: 'hidden' }
