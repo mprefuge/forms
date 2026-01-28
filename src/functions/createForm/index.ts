@@ -92,6 +92,11 @@ async function createFormHandler(request: HttpRequest, context: InvocationContex
 }
 
 async function postFormHandler(request: HttpRequest, context: InvocationContext, logger: Logger, requestId: string): Promise<HttpResponseInit> {
+  // Declare variables outside try block so they're accessible in catch block for error reporting
+  let formData: any;
+  let formConfig: any;
+  const uploadedFiles: { [key: string]: { fileName: string; contentType: string; base64: string } } = {};
+
   try {
     // Validate HTTP method
     if (!request.method || request.method.toUpperCase() !== 'POST') {
@@ -104,8 +109,6 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
     }
 
     // Parse request body (support .json() or .body shapes, and multipart form data)
-    let formData: any;
-    const uploadedFiles: { [key: string]: { fileName: string; contentType: string; base64: string } } = {};
 
     try {
       const contentType = ((request.headers as any)?.get?.('content-type') || (request.headers as any)?.['content-type'] || '').toString().toLowerCase();
@@ -171,7 +174,6 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
 
     // Determine which form configuration to use
     // First check if form config was sent from client (application.js)
-    let formConfig;
     let sendEmail = false; // Track if email should be sent
     if (formData.__formConfig && typeof formData.__formConfig === 'object') {
       // Form config sent from client-side JavaScript
@@ -910,7 +912,7 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
           const emailService = new EmailService();
 
           // Collect browser and system information from request headers
-          const headersAny: any = reqObj?.headers || request.headers || {};
+          const headersAny: any = request.headers || {};
           const userAgent = (typeof headersAny.get === 'function' ? headersAny.get('user-agent') : headersAny['user-agent']) || 'Unknown';
           const referer = (typeof headersAny.get === 'function' ? headersAny.get('referer') : headersAny['referer']) || 'Unknown';
           const origin = (typeof headersAny.get === 'function' ? headersAny.get('origin') : headersAny['origin']) || 'Unknown';
