@@ -401,64 +401,63 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
         logger.info('Notes created successfully');
       }
 
-      // Attempt to email a copy of the application to the applicant (do not block update on failure)
-      // Only send email if explicitly requested via __sendEmail flag (on save & exit or final submit)
-      try {
-        const emailField = 'Email';
-        const firstNameField = 'FirstName';
-        const lastNameField = 'LastName';
-        
-        // Determine if we're using client-side or Salesforce field names
-        const hasMapping = formConfig.salesforceMapping && Object.keys(formConfig.salesforceMapping).length > 0;
-        const emailSfField = hasMapping ? (formConfig.salesforceMapping[emailField] || 'Email__c') : 'Email__c';
-        const firstNameSfField = hasMapping ? (formConfig.salesforceMapping[firstNameField] || 'FirstName__c') : 'FirstName__c';
-        const lastNameSfField = hasMapping ? (formConfig.salesforceMapping[lastNameField] || 'LastName__c') : 'LastName__c';
-        
-        let applicantEmail = updateFields[emailField] || updateFields[emailSfField] || (formData && (formData[emailField] || formData[emailSfField]));
-        let applicantName = [
-          updateFields[firstNameField] || updateFields[firstNameSfField] || formData[firstNameField] || formData[firstNameSfField],
-          updateFields[lastNameField] || updateFields[lastNameSfField] || formData[lastNameField] || formData[lastNameSfField]
-        ].filter(Boolean).join(' ').trim();
-
-        // Send application copy when an applicant email is present (align with update handler behavior).
-        if (!sendEmail) {
-          logger.debug('Email flag not set; skipping application copy email');
-        } else {
-          // Always fetch the complete record from Salesforce to populate all email template variables
-          let savedRecord: any = null;
+      // Send email in background (non-blocking) if explicitly requested via __sendEmail flag
+      if (sendEmail) {
+        (async () => {
           try {
-            logger.debug('Fetching full record from Salesforce for email', { formId: resolvedFormId });
-            savedRecord = await salesforceService.getFormByCode(formCode, formConfig);
-          } catch (err) {
-            logger.debug('Failed to fetch full record for email', { error: (err && (err as any).message) || err });
-          }
+            const emailField = 'Email';
+            const firstNameField = 'FirstName';
+            const lastNameField = 'LastName';
+            
+            // Determine if we're using client-side or Salesforce field names
+            const hasMapping = formConfig.salesforceMapping && Object.keys(formConfig.salesforceMapping).length > 0;
+            const emailSfField = hasMapping ? (formConfig.salesforceMapping[emailField] || 'Email__c') : 'Email__c';
+            const firstNameSfField = hasMapping ? (formConfig.salesforceMapping[firstNameField] || 'FirstName__c') : 'FirstName__c';
+            const lastNameSfField = hasMapping ? (formConfig.salesforceMapping[lastNameField] || 'LastName__c') : 'LastName__c';
+            
+            let applicantEmail = updateFields[emailField] || updateFields[emailSfField] || (formData && (formData[emailField] || formData[emailSfField]));
+            let applicantName = [
+              updateFields[firstNameField] || updateFields[firstNameSfField] || formData[firstNameField] || formData[firstNameSfField],
+              updateFields[lastNameField] || updateFields[lastNameSfField] || formData[lastNameField] || formData[lastNameSfField]
+            ].filter(Boolean).join(' ').trim();
 
-          // Merge saved record with update fields to get complete data
-          const emailData = { ...(savedRecord || {}), ...(updateFields || {}) };
-          applicantEmail = applicantEmail || emailData[emailField] || emailData[emailSfField];
-          applicantName = applicantName || [
-            emailData[firstNameField] || emailData[firstNameSfField],
-            emailData[lastNameField] || emailData[lastNameSfField]
-          ].filter(Boolean).join(' ').trim();
-
-          if (applicantEmail) {
-            const appTemplate = copyTemplateKey ? emailTemplates[copyTemplateKey] : (emailTemplates.applicationCopy || emailTemplates.waiverCopy || emailTemplates.eventRegistration);
-            if (!appTemplate || !appTemplate.subject || !appTemplate.text || !appTemplate.html) {
-              return { status: 400, body: JSON.stringify({ error: 'Missing email template for submission confirmation' }), headers: { 'Content-Type': 'application/json' } };
+            // Always fetch the complete record from Salesforce to populate all email template variables
+            let savedRecord: any = null;
+            try {
+              logger.debug('Fetching full record from Salesforce for email', { formId: resolvedFormId });
+              savedRecord = await salesforceService.getFormByCode(formCode, formConfig);
+            } catch (err) {
+              logger.debug('Failed to fetch full record for email', { error: (err && (err as any).message) || err });
             }
 
-            logger.info('Dispatching application copy email (update)', { to: applicantEmail, applicantName, formId: resolvedFormId });
-            const { EmailService } = await import('../../services/emailService');
-            const emailService = new EmailService();
-            await emailService.sendApplicationCopy(applicantEmail, applicantName, emailData, formConfig, appTemplate);
-            try { (global as any).__LAST_APPLICATION_COPY_SENT__ = { to: applicantEmail, name: applicantName, formData: emailData }; } catch(e) {}
-            logger.info('Application copy email dispatched', { to: applicantEmail });
-          } else {
-            logger.debug('No applicant email present; skipping application copy email');
+            // Merge saved record with update fields to get complete data
+            const emailData = { ...(savedRecord || {}), ...(updateFields || {}) };
+            applicantEmail = applicantEmail || emailData[emailField] || emailData[emailSfField];
+            applicantName = applicantName || [
+              emailData[firstNameField] || emailData[firstNameSfField],
+              emailData[lastNameField] || emailData[lastNameSfField]
+            ].filter(Boolean).join(' ').trim();
+
+            if (applicantEmail) {
+              const appTemplate = copyTemplateKey ? emailTemplates[copyTemplateKey] : (emailTemplates.applicationCopy || emailTemplates.waiverCopy || emailTemplates.eventRegistration);
+              if (!appTemplate || !appTemplate.subject || !appTemplate.text || !appTemplate.html) {
+                logger.error('Missing email template for submission confirmation');
+                return;
+              }
+
+              logger.info('Dispatching application copy email (update)', { to: applicantEmail, applicantName, formId: resolvedFormId });
+              const { EmailService } = await import('../../services/emailService');
+              const emailService = new EmailService();
+              await emailService.sendApplicationCopy(applicantEmail, applicantName, emailData, formConfig, appTemplate);
+              try { (global as any).__LAST_APPLICATION_COPY_SENT__ = { to: applicantEmail, name: applicantName, formData: emailData }; } catch(e) {}
+              logger.info('Application copy email dispatched', { to: applicantEmail });
+            } else {
+              logger.debug('No applicant email present; skipping application copy email');
+            }
+          } catch (e: any) {
+            logger.error('Failed to send application copy email', e, { errorMessage: e?.message });
           }
-        }
-      } catch (e: any) {
-        logger.error('Failed to send application copy email', e, { errorMessage: e?.message });
+        })().catch(() => {});
       }
 
       // Return success response for update
@@ -876,11 +875,15 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
     })();
     parallelOperations.push(adminEmailPromise);
 
-    // Wait for all parallel operations to complete (with timeout to prevent hanging)
-    await Promise.allSettled(parallelOperations);
-    logger.info('Parallel post-creation operations completed', { formId: createdFormId });
+    // Fire off parallel operations in background (non-blocking)
+    // Don't wait for them to complete - return response immediately
+    Promise.allSettled(parallelOperations).then(() => {
+      logger.info('Background post-creation operations completed', { formId: createdFormId });
+    }).catch((err) => {
+      logger.error('Error in background operations', err);
+    });
 
-    // Return success response (include generated form code when available)
+    // Return success response immediately (include generated form code when available)
     const headers: any = { 'Content-Type': 'application/json', 'X-Request-Id': requestId };
     if (generatedFormCode) headers['X-Form-Code'] = generatedFormCode;
 
