@@ -1315,7 +1315,7 @@
             h('button', {
               className: 'ri-btn ri-btn-primary',
               onClick: nextStep,
-              disabled: state.loading || !canProceed(),
+              disabled: state.loading,
             }, state.loading ? 'Submitting...' : state.step < currentPhase.steps.length - 1 ? 'Next' : 'Submit')
           )
         : null
