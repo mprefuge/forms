@@ -18,6 +18,8 @@
   const config = window.FORMS_CONFIG || {};
   // Ensure disableAddressLookup defaults to true (disabled) when not provided
   config.disableAddressLookup = config.hasOwnProperty('disableAddressLookup') ? !!config.disableAddressLookup : true;
+  // Ensure disableMap defaults to true (map disabled by default)
+  config.disableMap = config.hasOwnProperty('disableMap') ? !!config.disableMap : true;
   const ENDPOINT = config.apiEndpoint || "https://rif-hhh8e6e7cbc2hvdw.eastus-01.azurewebsites.net/api/form"; //"http://localhost:7071/api/form"; 
   const PAYMENT_ENDPOINT = config.paymentEndpoint || 'https://payment-processing-function.azurewebsites.net/api/transaction';
   const HOST_ID = "event-app";
@@ -848,6 +850,36 @@
     if (eventMapRenderedFor === locationText && eventMapInstance) return;
     eventMapRenderedFor = locationText;
     container.innerHTML = 'Loading map...';
+
+      // If map is disabled via config, show the plain address text and a link instead of an embedded map
+    if (config.disableMap) {
+      container.innerHTML = '';
+      // Display the address text
+      const addrText = h('div', { style: { marginBottom: '8px', fontSize: '14px' } }, `📍 ${locationText}`);
+      // Provide a link to Google Maps
+      const link = h('a', {
+        href: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationText)}`,
+        target: '_blank',
+        style: { 
+          display: 'inline-block', 
+          padding: '8px 12px', 
+          backgroundColor: '#4285f4', 
+          color: 'white', 
+          textDecoration: 'none', 
+          borderRadius: '6px',
+          fontSize: '13px',
+          fontWeight: '500'
+        }
+      }, '📍 View on Map');
+      container.appendChild(addrText);
+      container.appendChild(link);
+      // Ensure any previous map instance is removed
+      if (eventMapInstance && eventMapInstance.remove) eventMapInstance.remove();
+      eventMapInstance = null;
+      eventMapMarker = null;
+      eventMapRenderedFor = locationText;
+      return;
+    }
 
     const coords = await geocodeLocation(locationText);
     if (!coords) { 
