@@ -16,9 +16,9 @@
   //   window.FORMS_CONFIG = { apiEndpoint: 'https://your-app.azurewebsites.net/api/form' };
   // </script>
   const config = window.FORMS_CONFIG || {};
-  // Ensure disableAddressLookup defaults to false when not provided
-  config.disableAddressLookup = !!config.disableAddressLookup;
-  const ENDPOINT = config.apiEndpoint || "https://rif-hhh8e6e7cbc2hvdw.eastus-01.azurewebsites.net/api/form"; //"http://localhost:7071/api/form";
+  // Ensure disableAddressLookup defaults to true (disabled) when not provided
+  config.disableAddressLookup = config.hasOwnProperty('disableAddressLookup') ? !!config.disableAddressLookup : true;
+  const ENDPOINT = config.apiEndpoint || "https://rif-hhh8e6e7cbc2hvdw.eastus-01.azurewebsites.net/api/form"; //"http://localhost:7071/api/form"; 
   const PAYMENT_ENDPOINT = config.paymentEndpoint || 'https://payment-processing-function.azurewebsites.net/api/transaction';
   const HOST_ID = "event-app";
 
