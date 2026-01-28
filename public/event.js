@@ -16,6 +16,8 @@
   //   window.FORMS_CONFIG = { apiEndpoint: 'https://your-app.azurewebsites.net/api/form' };
   // </script>
   const config = window.FORMS_CONFIG || {};
+  // Ensure disableAddressLookup defaults to false when not provided
+  config.disableAddressLookup = !!config.disableAddressLookup;
   const ENDPOINT = config.apiEndpoint || "https://rif-hhh8e6e7cbc2hvdw.eastus-01.azurewebsites.net/api/form"; //"http://localhost:7071/api/form";
   const PAYMENT_ENDPOINT = config.paymentEndpoint || 'https://payment-processing-function.azurewebsites.net/api/transaction';
   const HOST_ID = "event-app";
@@ -1452,19 +1454,23 @@
     renderEventMap();
 
     try {
-      addressSuggestionsEl = root.querySelector('.ri-address-suggestions');
-      const streetInput = document.getElementById('ri-input-Street');
-      if (streetInput && !streetInput._riHandlerAttached) {
-        streetInput._riHandlerAttached = true;
-        streetInput.addEventListener('input', (e) => {
-          const q = (e.target.value || '').toString().trim();
-          if (addressSearchTimeout) clearTimeout(addressSearchTimeout);
-          addressSearchTimeout = setTimeout(async () => {
-            if (!q || q.length < 3) { if (addressSuggestionsEl) addressSuggestionsEl.innerHTML = ''; return; }
-            const items = await searchAddress(q);
-            renderAddressSuggestions(items);
-          }, 300);
-        });
+      if (!config.disableAddressLookup) {
+        addressSuggestionsEl = root.querySelector('.ri-address-suggestions');
+        const streetInput = document.getElementById('ri-input-Street');
+        if (streetInput && !streetInput._riHandlerAttached) {
+          streetInput._riHandlerAttached = true;
+          streetInput.addEventListener('input', (e) => {
+            const q = (e.target.value || '').toString().trim();
+            if (addressSearchTimeout) clearTimeout(addressSearchTimeout);
+            addressSearchTimeout = setTimeout(async () => {
+              if (!q || q.length < 3) { if (addressSuggestionsEl) addressSuggestionsEl.innerHTML = ''; return; }
+              const items = await searchAddress(q);
+              renderAddressSuggestions(items);
+            }, 300);
+          });
+        }
+      } else {
+        addressSuggestionsEl = null;
       }
     } catch (e) { /* ignore */ }
   };
@@ -1610,18 +1616,22 @@
         setTimeout(() => {
           const root = document.getElementById(HOST_ID);
           if (!root) return;
-          addressSuggestionsEl = root.querySelector('.ri-address-suggestions');
-          const streetInput = document.getElementById('ri-input-Street');
-          if (streetInput) {
-            streetInput.addEventListener('input', (e) => {
-              const q = (e.target.value || '').toString().trim();
-              if (addressSearchTimeout) clearTimeout(addressSearchTimeout);
-              addressSearchTimeout = setTimeout(async () => {
-                if (!q || q.length < 3) { if (addressSuggestionsEl) addressSuggestionsEl.innerHTML = ''; return; }
-                const items = await searchAddress(q);
-                renderAddressSuggestions(items);
-              }, 300);
-            });
+          if (!config.disableAddressLookup) {
+            addressSuggestionsEl = root.querySelector('.ri-address-suggestions');
+            const streetInput = document.getElementById('ri-input-Street');
+            if (streetInput) {
+              streetInput.addEventListener('input', (e) => {
+                const q = (e.target.value || '').toString().trim();
+                if (addressSearchTimeout) clearTimeout(addressSearchTimeout);
+                addressSearchTimeout = setTimeout(async () => {
+                  if (!q || q.length < 3) { if (addressSuggestionsEl) addressSuggestionsEl.innerHTML = ''; return; }
+                  const items = await searchAddress(q);
+                  renderAddressSuggestions(items);
+                }, 300);
+              });
+            }
+          } else {
+            addressSuggestionsEl = null;
           }
         }, 0);
 

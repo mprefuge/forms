@@ -5,6 +5,8 @@
   //   window.FORMS_CONFIG = { apiEndpoint: 'https://your-app.azurewebsites.net/api/form' };
   // </script>
   const config = window.FORMS_CONFIG || {};
+  // Ensure disableAddressLookup defaults to false when not provided
+  config.disableAddressLookup = !!config.disableAddressLookup;
   const ENDPOINT = config.apiEndpoint || "https://rif-hhh8e6e7cbc2hvdw.eastus-01.azurewebsites.net/api/form";  //"http://localhost:7071/api/form";
   const HOST_ID = "waiver-app";
 
@@ -726,22 +728,26 @@
       });
 
       // Address suggestions for Street__c
-      const streetInput = container.querySelector('#Street__c');
-      if (streetInput) {
-        let suggestionsEl = streetInput.parentNode.querySelector('.ri-address-suggestions');
-        if (!suggestionsEl) {
-          suggestionsEl = document.createElement('div');
-          suggestionsEl.className = 'ri-address-suggestions';
-          streetInput.parentNode.appendChild(suggestionsEl);
+      if (!config.disableAddressLookup) {
+        const streetInput = container.querySelector('#Street__c');
+        if (streetInput) {
+          let suggestionsEl = streetInput.parentNode.querySelector('.ri-address-suggestions');
+          if (!suggestionsEl) {
+            suggestionsEl = document.createElement('div');
+            suggestionsEl.className = 'ri-address-suggestions';
+            streetInput.parentNode.appendChild(suggestionsEl);
+          }
+          const onInput = debounce(async (ev) => {
+            const q = ev.target.value;
+            if (!q || q.length < 3) { suggestionsEl.innerHTML = ''; return; }
+            const items = await searchAddress(q);
+            renderAddressSuggestions(items, suggestionsEl);
+          }, 350);
+          streetInput.addEventListener('input', onInput);
         }
-        const onInput = debounce(async (ev) => {
-          const q = ev.target.value;
-          if (!q || q.length < 3) { suggestionsEl.innerHTML = ''; return; }
-          const items = await searchAddress(q);
-          renderAddressSuggestions(items, suggestionsEl);
-        }, 350);
-        streetInput.addEventListener('input', onInput);
       }
+
+      
 
       // Ensure select fields show updated state when options populate
       const selects = container.querySelectorAll('select');
