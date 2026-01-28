@@ -641,15 +641,27 @@
   // --- Lookup / Address Helpers (load lookup.js like application.js)
   const LOOKUP_URL = 'https://mprefuge.github.io/site-assets/scripts/lookup.js';
   let lookupPromise = null;
+  let cachedLookupData = null; // Cache lookup data to avoid repeated fetches
   const loadLookup = () => {
+    // Return cached data if available
+    if (cachedLookupData) return Promise.resolve(cachedLookupData);
     if (lookupPromise) return lookupPromise;
     lookupPromise = new Promise((resolve) => {
-      if (window.lookup) return resolve(window.lookup);
+      if (window.lookup) {
+        cachedLookupData = window.lookup;
+        return resolve(cachedLookupData);
+      }
       const script = document.createElement('script');
       script.src = LOOKUP_URL;
       script.async = true;
-      script.onload = () => resolve(window.lookup || {});
-      script.onerror = () => resolve({});
+      script.onload = () => {
+        cachedLookupData = window.lookup || {};
+        resolve(cachedLookupData);
+      };
+      script.onerror = () => {
+        cachedLookupData = {};
+        resolve(cachedLookupData);
+      };
       document.head.appendChild(script);
     });
     return lookupPromise;
@@ -849,6 +861,14 @@
 
     if (eventMapRenderedFor === locationText && eventMapInstance) return;
     eventMapRenderedFor = locationText;
+    
+    // Check if container is visible before loading heavy resources
+    const isVisible = container.offsetParent !== null;
+    if (!isVisible) {
+      // Defer map loading until visible
+      return;
+    }
+    
     container.innerHTML = 'Loading map...';
 
       // If map is disabled via config, show the plain address text and a link instead of an embedded map
@@ -1661,11 +1681,26 @@
   if (typeof window !== 'undefined') {
     window.addEventListener('DOMContentLoaded', () => {
       applyCustomFields();
-      // Load lookup options (countries/states) and apply
-      loadLookup().then(lookup => {
-        applyLookupOptions(lookup);
+      
+      // Show loading state immediately
+      setState({ initialLoading: true });
+      
+      // Parallel load of lookup data and event metadata for faster initial load
+      Promise.allSettled([
+        loadLookup(),
+        fetchEventMetadata(),
+        fetchActiveEvents()
+      ]).then(([lookupResult, metaResult, eventsResult]) => {
+        // Apply lookup data if successful
+        if (lookupResult.status === 'fulfilled' && lookupResult.value) {
+          applyLookupOptions(lookupResult.value);
+        }
+        
+        // Initial render with all data loaded
         render();
-        // Attach address suggestion handlers after render
+        setState({ initialLoading: false });
+        
+        // Defer non-critical address suggestion handlers
         setTimeout(() => {
           const root = document.getElementById(HOST_ID);
           if (!root) return;
@@ -1686,25 +1721,12 @@
           } else {
             addressSuggestionsEl = null;
           }
-        }, 0);
-
-        // Fetch campaign metadata after initial render so banner can update.
-        // Keep the initial loading indicator visible until both calls finish.
-        setState({ initialLoading: true });
-        Promise.allSettled([fetchEventMetadata(), fetchActiveEvents()]).then(() => {
-          setState({ initialLoading: false });
-        }).catch(() => {
-          setState({ initialLoading: false });
-        });
-      }).catch(() => {
-        // Even if lookup fails, proceed
+        }, 100);
+      }).catch((err) => {
+        console.error('Initialization error:', err);
+        // Ensure we render even if something fails
         render();
-        setState({ initialLoading: true });
-        Promise.allSettled([fetchEventMetadata(), fetchActiveEvents()]).then(() => {
-          setState({ initialLoading: false });
-        }).catch(() => {
-          setState({ initialLoading: false });
-        });
+        setState({ initialLoading: false });
       });
     });
     
