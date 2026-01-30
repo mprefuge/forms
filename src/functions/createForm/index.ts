@@ -827,9 +827,20 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
     // Send admin notification email (parallel, non-blocking)
     const adminEmailPromise = (async () => {
       try {
-        const adminEmail = process.env.AdminEmail || process.env.ADMIN_EMAIL;
-        if (!adminEmail) {
+        const adminEmailsRaw = process.env.AdminEmail || process.env.ADMIN_EMAIL;
+        if (!adminEmailsRaw) {
           logger.debug('AdminEmail not configured, skipping admin notification');
+          return;
+        }
+
+        // Support multiple addresses separated by semicolon or comma
+        const adminEmails = (adminEmailsRaw || '')
+          .split(/[;,]+/)
+          .map((e: string) => (e || '').trim())
+          .filter(Boolean);
+
+        if (adminEmails.length === 0) {
+          logger.debug('No valid admin email addresses found, skipping admin notification');
           return;
         }
 
@@ -866,9 +877,16 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
           timestamp: new Date().toISOString()
         };
 
-        logger.info('Sending admin notification email', { to: adminEmail, formId: createdFormId });
-        await emailService.sendEmail(adminEmail, adminTemplate, variables);
-        logger.info('Admin notification email sent successfully', { to: adminEmail });
+        logger.info('Sending admin notification email', { to: adminEmails, formId: createdFormId });
+        // Send a copy to each admin address
+        await Promise.all(adminEmails.map(async (addr: string) => {
+          try {
+            await emailService.sendEmail(addr, adminTemplate, variables);
+            logger.info('Admin notification email sent successfully', { to: addr });
+          } catch (err: any) {
+            logger.error('Failed to send admin notification to a recipient', err, { to: addr, errorMessage: err?.message });
+          }
+        }));
       } catch (e: any) {
         logger.error('Failed to send admin notification email', e, { errorMessage: e?.message });
       }
@@ -909,51 +927,58 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
     // Send admin notification for failed submission (non-blocking)
     (async () => {
       try {
-        const adminEmail = process.env.AdminEmail || process.env.ADMIN_EMAIL;
-        if (adminEmail) {
-          const { EmailService } = await import('../../services/emailService');
-          const emailService = new EmailService();
+        const adminEmailsRaw = process.env.AdminEmail || process.env.ADMIN_EMAIL;
+        if (adminEmailsRaw) {
+          // Support multiple addresses separated by semicolon or comma
+          const adminEmails = (adminEmailsRaw || '')
+            .split(/[;,]+/)
+            .map((e: string) => (e || '').trim())
+            .filter(Boolean);
 
-          // Collect browser and system information from request headers
-          const headersAny: any = request.headers || {};
-          const userAgent = (typeof headersAny.get === 'function' ? headersAny.get('user-agent') : headersAny['user-agent']) || 'Unknown';
-          const referer = (typeof headersAny.get === 'function' ? headersAny.get('referer') : headersAny['referer']) || 'Unknown';
-          const origin = (typeof headersAny.get === 'function' ? headersAny.get('origin') : headersAny['origin']) || 'Unknown';
-          const ip = (typeof headersAny.get === 'function' ? headersAny.get('x-forwarded-for') : headersAny['x-forwarded-for']) || 
-                     (typeof headersAny.get === 'function' ? headersAny.get('x-real-ip') : headersAny['x-real-ip']) || 'Unknown';
+          if (adminEmails.length > 0) {
+            const { EmailService } = await import('../../services/emailService');
+            const emailService = new EmailService();
 
-          // Format form data for email (mask sensitive fields)
-          const sanitizeFormData = (data: any): string => {
-            if (!data || typeof data !== 'object') return 'No form data available';
-            
-            const sensitiveFields = ['password', 'ssn', 'social_security', 'credit_card', 'cvv', 'SF_CLIENT_SECRET', 'SF_CLIENT_ID'];
-            const sanitized: any = { ...data };
-            
-            // Remove internal fields
-            delete sanitized.__formConfig;
-            delete sanitized.__sendEmail;
-            delete sanitized.__emailTemplates;
-            delete sanitized.__eventId;
-            delete sanitized.__selectedEvent;
-            delete sanitized.__clientTimeZone;
-            
-            // Mask sensitive fields
-            Object.keys(sanitized).forEach(key => {
-              const lowerKey = key.toLowerCase();
-              if (sensitiveFields.some(sf => lowerKey.includes(sf))) {
-                sanitized[key] = '***MASKED***';
-              }
-            });
-            
-            return JSON.stringify(sanitized, null, 2);
-          };
+            // Collect browser and system information from request headers
+            const headersAny: any = request.headers || {};
+            const userAgent = (typeof headersAny.get === 'function' ? headersAny.get('user-agent') : headersAny['user-agent']) || 'Unknown';
+            const referer = (typeof headersAny.get === 'function' ? headersAny.get('referer') : headersAny['referer']) || 'Unknown';
+            const origin = (typeof headersAny.get === 'function' ? headersAny.get('origin') : headersAny['origin']) || 'Unknown';
+            const ip = (typeof headersAny.get === 'function' ? headersAny.get('x-forwarded-for') : headersAny['x-forwarded-for']) || 
+                       (typeof headersAny.get === 'function' ? headersAny.get('x-real-ip') : headersAny['x-real-ip']) || 'Unknown';
 
-          const formDataText = sanitizeFormData(formData);
-          const formDataHtml = formDataText.replace(/\n/g, '<br/>').replace(/ /g, '&nbsp;');
+            // Format form data for email (mask sensitive fields)
+            const sanitizeFormData = (data: any): string => {
+              if (!data || typeof data !== 'object') return 'No form data available';
+              
+              const sensitiveFields = ['password', 'ssn', 'social_security', 'credit_card', 'cvv', 'SF_CLIENT_SECRET', 'SF_CLIENT_ID'];
+              const sanitized: any = { ...data };
+              
+              // Remove internal fields
+              delete sanitized.__formConfig;
+              delete sanitized.__sendEmail;
+              delete sanitized.__emailTemplates;
+              delete sanitized.__eventId;
+              delete sanitized.__selectedEvent;
+              delete sanitized.__clientTimeZone;
+              
+              // Mask sensitive fields
+              Object.keys(sanitized).forEach(key => {
+                const lowerKey = key.toLowerCase();
+                if (sensitiveFields.some(sf => lowerKey.includes(sf))) {
+                  sanitized[key] = '***MASKED***';
+                }
+              });
+              
+              return JSON.stringify(sanitized, null, 2);
+            };
 
-          const adminTemplate = {
-            subject: 'Form Submission Error: {{formName}}',
-            text: `A form submission failed.
+            const formDataText = sanitizeFormData(formData);
+            const formDataHtml = formDataText.replace(/\n/g, '<br/>').replace(/ /g, '&nbsp;');
+
+            const adminTemplate = {
+              subject: 'Form Submission Error: {{formName}}',
+              text: `A form submission failed.
 
 Form: {{formName}}
 Error: {{errorMessage}}
@@ -971,7 +996,7 @@ Form Data Submitted:
 
 Stack Trace:
 {{stackTrace}}`,
-            html: `<h3 style="color: #d32f2f;">Form Submission Error</h3>
+              html: `<h3 style="color: #d32f2f;">Form Submission Error</h3>
 <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 12px; margin: 12px 0;">
   <p><strong>Form:</strong> {{formName}}<br/>
   <strong>Error:</strong> <span style="color: #d32f2f;">{{errorMessage}}</span><br/>
@@ -996,26 +1021,33 @@ Stack Trace:
 <div style="background: #ffebee; padding: 12px; margin: 12px 0; font-family: monospace; font-size: 11px; max-height: 300px; overflow-y: auto;">
   {{stackTraceHtml}}
 </div>`
-          };
+            };
 
-          const variables = {
-            formName: formConfig?.name || 'Unknown Form',
-            errorMessage: error?.message || 'Unknown error',
-            timestamp: new Date().toISOString(),
-            requestId: requestId,
-            userAgent: userAgent,
-            referer: referer,
-            origin: origin,
-            ip: ip,
-            formData: formDataText,
-            formDataHtml: formDataHtml,
-            stackTrace: error?.stack || 'No stack trace available',
-            stackTraceHtml: (error?.stack || 'No stack trace available').replace(/\n/g, '<br/>').replace(/ /g, '&nbsp;')
-          };
+            const variables = {
+              formName: formConfig?.name || 'Unknown Form',
+              errorMessage: error?.message || 'Unknown error',
+              timestamp: new Date().toISOString(),
+              requestId: requestId,
+              userAgent: userAgent,
+              referer: referer,
+              origin: origin,
+              ip: ip,
+              formData: formDataText,
+              formDataHtml: formDataHtml,
+              stackTrace: error?.stack || 'No stack trace available',
+              stackTraceHtml: (error?.stack || 'No stack trace available').replace(/\n/g, '<br/>').replace(/ /g, '&nbsp;')
+            };
 
-          logger.info('Sending admin error notification email', { to: adminEmail });
-          await emailService.sendEmail(adminEmail, adminTemplate, variables);
-          logger.info('Admin error notification sent successfully', { to: adminEmail });
+            logger.info('Sending admin error notification email', { to: adminEmails });
+            await Promise.all(adminEmails.map(async (addr: string) => {
+              try {
+                await emailService.sendEmail(addr, adminTemplate, variables);
+                logger.info('Admin error notification sent successfully', { to: addr });
+              } catch (err: any) {
+                logger.error('Failed to send admin error notification to recipient', err, { to: addr, errorMessage: err?.message });
+              }
+            }));
+          }
         }
       } catch (e: any) {
         logger.error('Failed to send admin error notification', e, { errorMessage: e?.message });
