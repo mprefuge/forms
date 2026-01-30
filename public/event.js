@@ -20,6 +20,25 @@
   config.disableAddressLookup = config.hasOwnProperty('disableAddressLookup') ? !!config.disableAddressLookup : true;
   // Ensure disableMap defaults to true (map disabled by default)
   config.disableMap = config.hasOwnProperty('disableMap') ? !!config.disableMap : true;
+  const isIpadDevice = (() => {
+    try {
+      if (typeof navigator === 'undefined') return false;
+      const ua = navigator.userAgent || '';
+      const isIpadUa = /iPad/i.test(ua);
+      const isIpadOs = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+      return isIpadUa || isIpadOs;
+    } catch (e) {
+      return false;
+    }
+  })();
+  const isLowMemoryDevice = (() => {
+    try {
+      return typeof navigator !== 'undefined' && typeof navigator.deviceMemory === 'number' && navigator.deviceMemory <= 2;
+    } catch (e) {
+      return false;
+    }
+  })();
+  const shouldDisableMap = config.disableMap || isIpadDevice || isLowMemoryDevice;
   const ENDPOINT = config.apiEndpoint || "https://rif-hhh8e6e7cbc2hvdw.eastus-01.azurewebsites.net/api/form"; //"http://localhost:7071/api/form"; 
   const PAYMENT_ENDPOINT = config.paymentEndpoint || 'https://payment-processing-function.azurewebsites.net/api/transaction';
   const HOST_ID = "event-app";
@@ -1011,8 +1030,8 @@
       
       container.innerHTML = 'Loading map...';
 
-        // If map is disabled via config, show the plain address text and a link instead of an embedded map
-      if (config.disableMap) {
+        // If map is disabled via config or device constraints, show the plain address text and a link instead of an embedded map
+      if (shouldDisableMap) {
         // Re-check container exists before manipulating DOM
         if (!document.body.contains(container)) return;
         container.innerHTML = '';
@@ -1338,8 +1357,8 @@
         ) : null),
         // Description
         (loc ? h('div', { className: 'ri-event-hero-desc', style: { marginBottom: '10px', color: 'var(--muted)' } }, state.campaignInfo && state.campaignInfo.description ? state.campaignInfo.description : null) : null),
-        // Map container (rendered only when a location exists AND maps are enabled in config)
-        (loc && !config.disableMap ? h('div', { 
+        // Map container (rendered only when a location exists AND maps are enabled for this device)
+        (loc && !shouldDisableMap ? h('div', { 
           id: 'ri-event-map', 
           className: 'ri-event-map',
           style: { height: '260px', marginTop: '12px', border: '1px solid #e5e5e5', borderRadius: '10px', overflow: 'hidden' }
@@ -1353,7 +1372,7 @@
         console.log('renderEventHero: Rendering with image', state.campaignInfo.images[0]);
         const img = state.campaignInfo.images[0];
         const mediaEl = h('div', { className: 'ri-event-hero-media' },
-          h('img', { src: img.url, alt: img.title || title || 'Event image', style: { width: '100%', height: 'auto', borderRadius: '8px' } })
+          h('img', { src: img.url, alt: img.title || title || 'Event image', loading: 'lazy', decoding: 'async', style: { width: '100%', height: 'auto', borderRadius: '8px' } })
         );
 
         return h('div', { className: 'ri-event-hero ri-card ri-event-hero-with-media' }, mediaEl, contentEl);
@@ -1453,7 +1472,7 @@
       const cardImageUrl = (rec.images && rec.images.length) ? (rec.images[0].url) : null;
 
       const cardImageEl = cardImageUrl ? h('div', { className: 'ri-event-card-media' },
-        h('img', { src: cardImageUrl, alt: rec.Name || rec.name || '', style: { width: '100%', height: '140px', objectFit: 'cover', borderRadius: '8px', marginBottom: '10px' } })
+        h('img', { src: cardImageUrl, alt: rec.Name || rec.name || '', loading: 'lazy', decoding: 'async', style: { width: '100%', height: '140px', objectFit: 'cover', borderRadius: '8px', marginBottom: '10px' } })
       ) : null;
 
       return h('div', { className: 'ri-event-card', tabindex: '0', onKeydown: onCardKeyDown, role: 'button', 'aria-label': `Choose ${mainTitle}` },
