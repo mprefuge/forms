@@ -1000,13 +1000,16 @@
             onInput: (e) => updateField(fieldKey, e.target.value),
           })
         : meta.type === 'checkbox'
-        ? h('input', {
-            id: `ri-input-${fieldKey}`,
-            type: 'checkbox',
-            className: 'ri-input',
-            checked: !!value,
-            onChange: (e) => updateField(fieldKey, e.target.checked),
-          })
+        ? h('div', { className: 'ri-checkbox' },
+            h('input', {
+              id: `ri-input-${fieldKey}`,
+              type: 'checkbox',
+              className: 'ri-input',
+              checked: !!value,
+              onChange: (e) => updateField(fieldKey, e.target.checked),
+            }),
+            h('label', { htmlFor: `ri-input-${fieldKey}` }, labelText, meta.required ? h('span', { className: 'ri-required' }, ' *') : null)
+          )
         : h('input', {
             id: `ri-input-${fieldKey}`,
             type: meta.type,

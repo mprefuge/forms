@@ -430,9 +430,34 @@
     const value = state.formData[field.key] || '';
     
     if (field.type === 'checkbox') {
+      // If there's statement/help text, keep stacked statement style, otherwise render inline checkbox with label
+      if (field.text) {
+        return `
+          <div class="ri-field">
+            <div class="ri-checkbox ri-checkbox--statement">
+              <input 
+                type="checkbox" 
+                id="${field.key}" 
+                name="${field.key}"
+                ${value ? 'checked' : ''}
+                ${field.required ? 'required' : ''}
+              />
+              <label for="${field.key}">
+                <span class="ri-statement-top">
+                  <strong>${field.label}</strong>
+                  ${field.required ? '<span class="ri-required">*</span>' : ''}
+                </span>
+                ${field.text ? `<span style="font-weight: 400; font-size: 13px; line-height: 1.5; margin-top: 4px; display: block;">${field.text}</span>` : ''}
+              </label>
+            </div>
+          </div>
+        `;
+      }
+
+      // Inline, brand-aligned checkbox for simple consent fields (e.g., ReceiveUpdates)
       return `
         <div class="ri-field">
-          <div class="ri-checkbox ri-checkbox--statement">
+          <div class="ri-checkbox">
             <input 
               type="checkbox" 
               id="${field.key}" 
@@ -440,13 +465,7 @@
               ${value ? 'checked' : ''}
               ${field.required ? 'required' : ''}
             />
-            <label for="${field.key}">
-              <span class="ri-statement-top">
-                <strong>${field.label}</strong>
-                ${field.required ? '<span class="ri-required">*</span>' : ''}
-              </span>
-              ${field.text ? `<span style="font-weight: 400; font-size: 13px; line-height: 1.5; margin-top: 4px; display: block;">${field.text}</span>` : ''}
-            </label>
+            <label for="${field.key}">${field.label}${field.required ? ' <span class="ri-required">*</span>' : ''}</label>
           </div>
         </div>
       `;
