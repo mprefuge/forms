@@ -12,6 +12,106 @@
   const HOST_ID = "volunteer-app";  
   const STATEMENT_URL = config.statementUrl || "https://static1.squarespace.com/static/5af0bc3a96d45593d7d7e55b/t/675251913102604777fd712c/1733448082026/Refuge+International+Statement+Of+Faith-Rev.+9_25_23.pdf";
 
+  // Optional telemetry (send to config.telemetryEndpoint if provided; otherwise keep a small local buffer)
+  const TELEMETRY_ENDPOINT = config.telemetryEndpoint || '';
+  const TELEMETRY_KEY = 'ri_telemetry_volunteer';
+  const TELEMETRY_SESSION_KEY = 'ri_telemetry_session_volunteer';
+
+  const getTelemetrySessionId = () => {
+    try {
+      const existing = localStorage.getItem(TELEMETRY_SESSION_KEY);
+      if (existing) return existing;
+      const id = `s_${Math.random().toString(36).slice(2)}_${Date.now()}`;
+      localStorage.setItem(TELEMETRY_SESSION_KEY, id);
+      return id;
+    } catch (e) {
+      return `s_${Math.random().toString(36).slice(2)}_${Date.now()}`;
+    }
+  };
+
+  const telemetry = (() => {
+    const sessionId = getTelemetrySessionId();
+    let queue = [];
+    let flushTimer = null;
+
+    const enqueue = (evt) => {
+      try {
+        queue.push({
+          ...evt,
+          ts: new Date().toISOString(),
+          sessionId,
+          formId: 'volunteer',
+          url: (typeof location !== 'undefined' && location.href) ? location.href : '',
+          ua: (typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : ''
+        });
+        if (queue.length >= 10) {
+          flush();
+        } else if (!flushTimer) {
+          flushTimer = setTimeout(flush, 8000);
+        }
+      } catch (e) {
+        // swallow telemetry errors
+      }
+    };
+
+    const storeLocal = (events) => {
+      try {
+        const prev = JSON.parse(localStorage.getItem(TELEMETRY_KEY) || '[]');
+        const next = prev.concat(events).slice(-50);
+        localStorage.setItem(TELEMETRY_KEY, JSON.stringify(next));
+      } catch (e) {
+        // ignore
+      }
+    };
+
+    const flush = () => {
+      if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+      if (!queue.length) return;
+      const batch = queue;
+      queue = [];
+
+      if (!TELEMETRY_ENDPOINT) {
+        storeLocal(batch);
+        return;
+      }
+
+      try {
+        const payload = JSON.stringify({ events: batch });
+        if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+          navigator.sendBeacon(TELEMETRY_ENDPOINT, payload);
+        } else if (typeof fetch === 'function') {
+          fetch(TELEMETRY_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true }).catch(() => {});
+        } else {
+          storeLocal(batch);
+        }
+      } catch (e) {
+        storeLocal(batch);
+      }
+    };
+
+    return { enqueue, flush };
+  })();
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('error', (e) => {
+      telemetry.enqueue({
+        type: 'error',
+        message: e && e.message ? String(e.message) : 'Unknown error',
+        stack: e && e.error && e.error.stack ? String(e.error.stack) : '',
+        source: e && e.filename ? String(e.filename) : ''
+      });
+    });
+
+    window.addEventListener('unhandledrejection', (e) => {
+      telemetry.enqueue({
+        type: 'unhandledrejection',
+        message: e && e.reason ? (e.reason.message || String(e.reason)) : 'Unhandled rejection',
+        stack: e && e.reason && e.reason.stack ? String(e.reason.stack) : ''
+      });
+      try { if (e && typeof e.preventDefault === 'function') e.preventDefault(); } catch (err) {}
+    });
+  }
+
 
   let orgTerms = {
     orgName: "Refuge International",
@@ -1846,8 +1946,9 @@
     if (headerExitBtn) headerExitBtn.style.display = 'none';
     
     const hasSession = loadFromLocalStorage();
+    const hasDraft = hasSession && (formCode || Object.keys(data).length > 0);
     
-    if (hasSession && formCode) {
+    if (hasDraft) {
       const title = h("h2", { text: "Welcome Back!", class: "ri-landing-title" });
       const subtitle = h("p", { text: "You have an application in progress. Would you like to continue where you left off?", class: "ri-landing-subtitle" });
       
@@ -1879,9 +1980,11 @@
         }
       };
       
-      const codeInfo = h("div", { class: "ri-code-reminder", style: "margin: 20px 0; padding: 12px; background: #f5f5f5; border-radius: 4px; text-align: center;" }, 
+      const codeInfo = formCode ? h("div", { class: "ri-code-reminder", style: "margin: 20px 0; padding: 12px; background: #f5f5f5; border-radius: 4px; text-align: center;" }, 
         h("p", { text: "Your application code: ", style: "margin: 0; display: inline;" }),
         h("strong", { text: formCode ? formCode.toUpperCase() : '', style: "font-size: 1.1em;" })
+      ) : h("div", { class: "ri-code-reminder", style: "margin: 20px 0; padding: 12px; background: #f5f5f5; border-radius: 4px; text-align: center;" },
+        h("p", { text: "Your progress is saved on this device. A code will be generated after you submit the first page.", style: "margin: 0;" })
       );
       
       const btnContainer = h("div", { class: "ri-landing-actions" }, resumeBtn, startNewBtn);
@@ -2152,6 +2255,28 @@
   );
 
   host.appendChild(container);
+
+  // Periodically persist progress to guard against unexpected refreshes
+  const periodicSave = () => {
+    try {
+      if (Object.keys(data).length > 0) saveToLocalStorage();
+    } catch (e) {}
+  };
+  const periodicSaveTimer = setInterval(periodicSave, 60000);
+  try { periodicSaveTimer && periodicSaveTimer.unref && periodicSaveTimer.unref(); } catch (e) {}
+
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        periodicSave();
+        telemetry.flush();
+      }
+    });
+  }
+  if (typeof window !== 'undefined') {
+    window.addEventListener('pagehide', () => { periodicSave(); telemetry.flush(); });
+    window.addEventListener('beforeunload', () => { periodicSave(); telemetry.flush(); });
+  }
 
   // Expose a tiny test bridge for unit tests (only used in tests)
   try {

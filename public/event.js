@@ -24,6 +24,102 @@
   const PAYMENT_ENDPOINT = config.paymentEndpoint || 'https://payment-processing-function.azurewebsites.net/api/transaction';
   const HOST_ID = "event-app";
 
+  // Optional telemetry (send to config.telemetryEndpoint if provided; otherwise keep a small local buffer)
+  const TELEMETRY_ENDPOINT = config.telemetryEndpoint || '';
+  const TELEMETRY_KEY = 'ri_telemetry_event';
+  const TELEMETRY_SESSION_KEY = 'ri_telemetry_session_event';
+
+  const getTelemetrySessionId = () => {
+    try {
+      const existing = localStorage.getItem(TELEMETRY_SESSION_KEY);
+      if (existing) return existing;
+      const id = `s_${Math.random().toString(36).slice(2)}_${Date.now()}`;
+      localStorage.setItem(TELEMETRY_SESSION_KEY, id);
+      return id;
+    } catch (e) {
+      return `s_${Math.random().toString(36).slice(2)}_${Date.now()}`;
+    }
+  };
+
+  const telemetry = (() => {
+    const sessionId = getTelemetrySessionId();
+    let queue = [];
+    let flushTimer = null;
+
+    const enqueue = (evt) => {
+      try {
+        queue.push({
+          ...evt,
+          ts: new Date().toISOString(),
+          sessionId,
+          formId: 'event',
+          url: (typeof location !== 'undefined' && location.href) ? location.href : '',
+          ua: (typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : ''
+        });
+        if (queue.length >= 10) {
+          flush();
+        } else if (!flushTimer) {
+          flushTimer = setTimeout(flush, 8000);
+        }
+      } catch (e) {}
+    };
+
+    const storeLocal = (events) => {
+      try {
+        const prev = JSON.parse(localStorage.getItem(TELEMETRY_KEY) || '[]');
+        const next = prev.concat(events).slice(-50);
+        localStorage.setItem(TELEMETRY_KEY, JSON.stringify(next));
+      } catch (e) {}
+    };
+
+    const flush = () => {
+      if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+      if (!queue.length) return;
+      const batch = queue;
+      queue = [];
+
+      if (!TELEMETRY_ENDPOINT) {
+        storeLocal(batch);
+        return;
+      }
+
+      try {
+        const payload = JSON.stringify({ events: batch });
+        if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+          navigator.sendBeacon(TELEMETRY_ENDPOINT, payload);
+        } else if (typeof fetch === 'function') {
+          fetch(TELEMETRY_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true }).catch(() => {});
+        } else {
+          storeLocal(batch);
+        }
+      } catch (e) {
+        storeLocal(batch);
+      }
+    };
+
+    return { enqueue, flush };
+  })();
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('error', (e) => {
+      telemetry.enqueue({
+        type: 'error',
+        message: e && e.message ? String(e.message) : 'Unknown error',
+        stack: e && e.error && e.error.stack ? String(e.error.stack) : '',
+        source: e && e.filename ? String(e.filename) : ''
+      });
+    });
+
+    window.addEventListener('unhandledrejection', (e) => {
+      telemetry.enqueue({
+        type: 'unhandledrejection',
+        message: e && e.reason ? (e.reason.message || String(e.reason)) : 'Unhandled rejection',
+        stack: e && e.reason && e.reason.stack ? String(e.reason.stack) : ''
+      });
+      try { if (e && typeof e.preventDefault === 'function') e.preventDefault(); } catch (err) {}
+    });
+  }
+
   const orgTerms = {
     orgName: "Refuge International",
     labels: {
@@ -1764,6 +1860,13 @@
         setState({ initialLoading: false });
       });
     });
+
+    window.addEventListener('pagehide', () => { telemetry.flush(); });
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') telemetry.flush();
+      });
+    }
     
     // For testing
     window.__riTest = window.__riTest || {};
