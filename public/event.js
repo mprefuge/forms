@@ -394,8 +394,13 @@
   };
 
   const setState = (updates) => {
-    state = { ...state, ...updates };
-    render();
+    try {
+      state = { ...state, ...updates };
+      render();
+    } catch (e) {
+      console.error('Fatal error in setState:', e);
+      telemetry.enqueue({ type: 'setstate_error', message: String(e), stack: e && e.stack ? String(e.stack) : '' });
+    }
   };
 
   // ============================================================================
@@ -688,42 +693,51 @@
   };
   
   const nextStep = () => {
-    // Collect current form values from DOM
-    const currentValues = collectFormValues();
-    state.formData = { ...state.formData, ...currentValues };
-    
-    const currentPhase = phases[state.phase];
-    const currentStep = currentPhase.steps[state.step];
-    
-    // Validate current step
-    const missing = currentStep.fields.filter(fKey => {
-      const meta = fieldMeta[fKey];
-      return meta.required && !state.formData[fKey];
-    });
+    try {
+      // Collect current form values from DOM
+      const currentValues = collectFormValues();
+      state.formData = { ...state.formData, ...currentValues };
+      
+      const currentPhase = phases[state.phase];
+      const currentStep = currentPhase.steps[state.step];
+      
+      // Validate current step
+      const missing = currentStep.fields.filter(fKey => {
+        const meta = fieldMeta[fKey];
+        return meta.required && !state.formData[fKey];
+      });
 
-    if (missing.length > 0) {
-      const labels = missing.map(k => fieldMeta[k].label).join(', ');
-      setState({ error: `Please fill in: ${labels}` });
-      return;
-    }
-
-    // Defer state update to allow the click event to fully complete before DOM manipulation
-    setTimeout(() => {
-      if (state.step < currentPhase.steps.length - 1) {
-        setState({ step: state.step + 1, error: null });
-      } else {
-        submitForm();
+      if (missing.length > 0) {
+        const labels = missing.map(k => fieldMeta[k].label).join(', ');
+        setState({ error: `Please fill in: ${labels}` });
+        return;
       }
-    }, 0);
+
+      // Defer state update to allow the click event to fully complete before DOM manipulation
+      setTimeout(() => {
+        if (state.step < currentPhase.steps.length - 1) {
+          setState({ step: state.step + 1, error: null });
+        } else {
+          submitForm();
+        }
+      }, 0);
+    } catch (e) {
+      console.error('Error in nextStep:', e);
+      setState({ error: 'An error occurred. Please try again.' });
+    }
   };
 
   const prevStep = () => {
-    // Defer state update to allow the click event to fully complete before DOM manipulation
-    setTimeout(() => {
-      if (state.step > 0) {
-        setState({ step: state.step - 1, error: null });
-      }
-    }, 0);
+    try {
+      // Defer state update to allow the click event to fully complete before DOM manipulation
+      setTimeout(() => {
+        if (state.step > 0) {
+          setState({ step: state.step - 1, error: null });
+        }
+      }, 0);
+    } catch (e) {
+      console.error('Error in prevStep:', e);
+    }
   };
 
   const updateField = (fieldKey, value) => {
@@ -970,101 +984,119 @@
   };
 
   const renderEventMap = async () => {
-    const container = document.getElementById('ri-event-map');
-    const locationText = (getCurrentEventLocation() || '').trim();
+    try {
+      const container = document.getElementById('ri-event-map');
+      const locationText = (getCurrentEventLocation() || '').trim();
 
-    if (!container || !locationText) {
-      eventMapRenderedFor = null;
-      if (eventMapInstance && eventMapInstance.remove) eventMapInstance.remove();
-      eventMapInstance = null;
-      eventMapMarker = null;
-      return;
-    }
+      if (!container || !locationText) {
+        eventMapRenderedFor = null;
+        if (eventMapInstance && eventMapInstance.remove) eventMapInstance.remove();
+        eventMapInstance = null;
+        eventMapMarker = null;
+        return;
+      }
 
-    if (eventMapRenderedFor === locationText && eventMapInstance) return;
-    eventMapRenderedFor = locationText;
-    
-    // Check if container is visible before loading heavy resources
-    const isVisible = container.offsetParent !== null;
-    if (!isVisible) {
-      // Defer map loading until visible
-      return;
-    }
-    
-    container.innerHTML = 'Loading map...';
-
-      // If map is disabled via config, show the plain address text and a link instead of an embedded map
-    if (config.disableMap) {
-      container.innerHTML = '';
-      // Display the address text
-      const addrText = h('div', { style: { marginBottom: '8px', fontSize: '14px' } }, `📍 ${locationText}`);
-      // Provide a link to Google Maps
-      const link = h('a', {
-        href: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationText)}`,
-        target: '_blank',
-        style: { 
-          display: 'inline-block', 
-          padding: '8px 12px', 
-          backgroundColor: '#4285f4', 
-          color: 'white', 
-          textDecoration: 'none', 
-          borderRadius: '6px',
-          fontSize: '13px',
-          fontWeight: '500'
-        }
-      }, '📍 View on Map');
-      container.appendChild(addrText);
-      container.appendChild(link);
-      // Ensure any previous map instance is removed
-      if (eventMapInstance && eventMapInstance.remove) eventMapInstance.remove();
-      eventMapInstance = null;
-      eventMapMarker = null;
+      if (eventMapRenderedFor === locationText && eventMapInstance) return;
       eventMapRenderedFor = locationText;
-      return;
-    }
+      
+      // Check if container is visible before loading heavy resources
+      const isVisible = container.offsetParent !== null;
+      if (!isVisible) {
+        // Defer map loading until visible
+        return;
+      }
+      
+      // Check if container still exists (might have been removed during async operations)
+      if (!document.body.contains(container)) return;
+      
+      container.innerHTML = 'Loading map...';
 
-    const coords = await geocodeLocation(locationText);
-    if (!coords) { 
-      // Fallback: show a link to Google Maps instead of embedded map
-      container.innerHTML = '';
-      const link = h('a', {
-        href: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationText)}`,
-        target: '_blank',
-        style: { 
-          display: 'inline-block', 
-          padding: '10px 16px', 
-          backgroundColor: '#4285f4', 
-          color: 'white', 
-          textDecoration: 'none', 
-          borderRadius: '6px',
-          fontSize: '14px',
-          fontWeight: '500'
-        }
-      }, '📍 View on Map');
-      container.appendChild(link);
-      return; 
-    }
-    
-    const L = await loadLeaflet();
-    if (!L) { container.innerHTML = ''; return; }
+        // If map is disabled via config, show the plain address text and a link instead of an embedded map
+      if (config.disableMap) {
+        // Re-check container exists before manipulating DOM
+        if (!document.body.contains(container)) return;
+        container.innerHTML = '';
+        // Display the address text
+        const addrText = h('div', { style: { marginBottom: '8px', fontSize: '14px' } }, `📍 ${locationText}`);
+        // Provide a link to Google Maps
+        const link = h('a', {
+          href: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationText)}`,
+          target: '_blank',
+          style: { 
+            display: 'inline-block', 
+            padding: '8px 12px', 
+            backgroundColor: '#4285f4', 
+            color: 'white', 
+            textDecoration: 'none', 
+            borderRadius: '6px',
+            fontSize: '13px',
+            fontWeight: '500'
+          }
+        }, '📍 View on Map');
+        container.appendChild(addrText);
+        container.appendChild(link);
+        // Ensure any previous map instance is removed
+        if (eventMapInstance && eventMapInstance.remove) eventMapInstance.remove();
+        eventMapInstance = null;
+        eventMapMarker = null;
+        eventMapRenderedFor = locationText;
+        return;
+      }
 
-    // Reset any prior map
-    if (eventMapInstance && eventMapInstance.remove) eventMapInstance.remove();
-    eventMapInstance = null;
-    eventMapMarker = null;
-    container.innerHTML = '';
+      const coords = await geocodeLocation(locationText);
+      
+      // Re-check container exists before manipulating DOM
+      if (!document.body.contains(container)) return;
+      
+      if (!coords) { 
+        // Fallback: show a link to Google Maps instead of embedded map
+        container.innerHTML = '';
+        const link = h('a', {
+          href: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationText)}`,
+          target: '_blank',
+          style: { 
+            display: 'inline-block', 
+            padding: '10px 16px', 
+            backgroundColor: '#4285f4', 
+            color: 'white', 
+            textDecoration: 'none', 
+            borderRadius: '6px',
+            fontSize: '14px',
+            fontWeight: '500'
+          }
+        }, '📍 View on Map');
+        container.appendChild(link);
+        return; 
+      }
+      
+      const L = await loadLeaflet();
+      
+      // Re-check container exists before manipulating DOM
+      if (!document.body.contains(container)) return;
+      
+      if (!L) { container.innerHTML = ''; return; }
 
-    eventMapInstance = L.map(container).setView([coords.lat, coords.lon], 14);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '\u00a9 OpenStreetMap contributors'
-    }).addTo(eventMapInstance);
-    // Ensure only a single marker exists for this map
-    if (eventMapMarker && eventMapInstance && typeof eventMapInstance.removeLayer === 'function') {
-      try { eventMapInstance.removeLayer(eventMapMarker); } catch (e) { /* ignore */ }
+      // Reset any prior map
+      if (eventMapInstance && eventMapInstance.remove) eventMapInstance.remove();
+      eventMapInstance = null;
       eventMapMarker = null;
+      container.innerHTML = '';
+
+      eventMapInstance = L.map(container).setView([coords.lat, coords.lon], 14);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '\u00a9 OpenStreetMap contributors'
+      }).addTo(eventMapInstance);
+      // Ensure only a single marker exists for this map
+      if (eventMapMarker && eventMapInstance && typeof eventMapInstance.removeLayer === 'function') {
+        try { eventMapInstance.removeLayer(eventMapMarker); } catch (e) { /* ignore */ }
+        eventMapMarker = null;
+      }
+      eventMapMarker = L.marker([coords.lat, coords.lon]).addTo(eventMapInstance);
+      eventMapMarker.bindPopup(coords.label || locationText).openPopup();
+    } catch (e) {
+      // Silently fail - map is a nice-to-have, not critical
+      console.warn('renderEventMap error:', e);
     }
-    eventMapMarker = L.marker([coords.lat, coords.lon]).addTo(eventMapInstance);
-    eventMapMarker.bindPopup(coords.label || locationText).openPopup();
   };
 
 
@@ -1379,31 +1411,36 @@
       const requiresPayment = requiresPaymentField && paymentAmount >= 0.50;
 
       const onChoose = () => {
-        const info = {
-          id: rec.Id || rec.id || null,
-          // keep full original name for backend, but provide displayName/subtitle for UI
-          name: title,
-          displayName: mainTitle,
-          subtitle: titleSubtitle,
-          startDate: startRaw || null,
-          endDate: endRaw || null,
-          description: rec.Description || rec.description || null,
-          // expose both a short venue and a full address string suitable for map links
-          location: mainLocation,
-          mapLocation: locationAddress || location,
-          startTime: rec.StartTime__c || rec.startTime || null,
-          endTime: rec.EndTime__c || rec.endTime || null,
-          images: Array.isArray(rec.images) ? rec.images : null,
-        };
-        const updates = { ...state.formData };
-        // Keep EventName (backend field) as the original full title unless already set
-        if (info.name && !updates.EventName) updates.EventName = info.name;
-        if (info.startDate && !updates.EventDate) updates.EventDate = info.startDate;
-        // Defer state update to allow the click event to fully complete before DOM manipulation
-        // This prevents Safari from crashing when DOM is cleared while event is being processed
-        setTimeout(() => {
-          setState({ eventId: info.id, campaignInfo: info, selectedEvent: info, formData: updates });
-        }, 0);
+        try {
+          const info = {
+            id: rec.Id || rec.id || null,
+            // keep full original name for backend, but provide displayName/subtitle for UI
+            name: title,
+            displayName: mainTitle,
+            subtitle: titleSubtitle,
+            startDate: startRaw || null,
+            endDate: endRaw || null,
+            description: rec.Description || rec.description || null,
+            // expose both a short venue and a full address string suitable for map links
+            location: mainLocation,
+            mapLocation: locationAddress || location,
+            startTime: rec.StartTime__c || rec.startTime || null,
+            endTime: rec.EndTime__c || rec.endTime || null,
+            images: Array.isArray(rec.images) ? rec.images : null,
+          };
+          const updates = { ...state.formData };
+          // Keep EventName (backend field) as the original full title unless already set
+          if (info.name && !updates.EventName) updates.EventName = info.name;
+          if (info.startDate && !updates.EventDate) updates.EventDate = info.startDate;
+          // Defer state update to allow the click event to fully complete before DOM manipulation
+          // This prevents Safari from crashing when DOM is cleared while event is being processed
+          setTimeout(() => {
+            setState({ eventId: info.id, campaignInfo: info, selectedEvent: info, formData: updates });
+          }, 0);
+        } catch (e) {
+          console.error('Error in onChoose:', e);
+          setState({ error: 'Error selecting event. Please try again.' });
+        }
       };
 
       const onCardKeyDown = (e) => {
@@ -1455,13 +1492,17 @@
   };
 
   const clearSelection = () => {
-    // Clear local selection and campaign info so the user returns to the event overview
-    // Defer state update to allow the click event to fully complete before DOM manipulation
-    setTimeout(() => {
-      setState({ eventId: null, campaignInfo: null, selectedEvent: null, step: 0 });
-      // scroll back to top of the event list for clarity
-      try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) { /* ignore */ }
-    }, 0);
+    try {
+      // Clear local selection and campaign info so the user returns to the event overview
+      // Defer state update to allow the click event to fully complete before DOM manipulation
+      setTimeout(() => {
+        setState({ eventId: null, campaignInfo: null, selectedEvent: null, step: 0 });
+        // scroll back to top of the event list for clarity
+        try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) { /* ignore */ }
+      }, 0);
+    } catch (e) {
+      console.error('Error in clearSelection:', e);
+    }
   };
 
   const renderForm = () => {
@@ -1661,40 +1702,52 @@
   // ============================================================================
   
   const render = () => {
-    const root = document.getElementById(HOST_ID);
-    if (!root) return;
-
-    root.innerHTML = '';
-    
-    if (state.status === 'success') {
-      root.appendChild(renderSuccess());
-    } else {
-      root.appendChild(renderForm());
-    }
-  
-    // Render event map (async; no-op when location missing)
-    renderEventMap();
-
     try {
-      if (!config.disableAddressLookup) {
-        addressSuggestionsEl = root.querySelector('.ri-address-suggestions');
-        const streetInput = document.getElementById('ri-input-Street');
-        if (streetInput && !streetInput._riHandlerAttached) {
-          streetInput._riHandlerAttached = true;
-          streetInput.addEventListener('input', (e) => {
-            const q = (e.target.value || '').toString().trim();
-            if (addressSearchTimeout) clearTimeout(addressSearchTimeout);
-            addressSearchTimeout = setTimeout(async () => {
-              if (!q || q.length < 3) { if (addressSuggestionsEl) addressSuggestionsEl.innerHTML = ''; return; }
-              const items = await searchAddress(q);
-              renderAddressSuggestions(items);
-            }, 300);
-          });
-        }
+      const root = document.getElementById(HOST_ID);
+      if (!root) return;
+
+      root.innerHTML = '';
+      
+      if (state.status === 'success') {
+        root.appendChild(renderSuccess());
       } else {
-        addressSuggestionsEl = null;
+        root.appendChild(renderForm());
       }
-    } catch (e) { /* ignore */ }
+    
+      // Render event map (async; no-op when location missing)
+      renderEventMap();
+
+      try {
+        if (!config.disableAddressLookup) {
+          addressSuggestionsEl = root.querySelector('.ri-address-suggestions');
+          // Use root.querySelector to ensure we get the street input from this form, not stale references
+          const streetInput = root.querySelector('#ri-input-Street');
+          if (streetInput && !streetInput._riHandlerAttached) {
+            streetInput._riHandlerAttached = true;
+            streetInput.addEventListener('input', (e) => {
+              try {
+                const q = (e.target.value || '').toString().trim();
+                if (addressSearchTimeout) clearTimeout(addressSearchTimeout);
+                addressSearchTimeout = setTimeout(async () => {
+                  if (!q || q.length < 3) { if (addressSuggestionsEl) addressSuggestionsEl.innerHTML = ''; return; }
+                  const items = await searchAddress(q);
+                  renderAddressSuggestions(items);
+                }, 300);
+              } catch (e) {
+                console.warn('Error in street input listener:', e);
+              }
+            });
+          }
+        } else {
+          addressSuggestionsEl = null;
+        }
+      } catch (e) { 
+        console.warn('Failed to attach address listener', e);
+      }
+    } catch (e) {
+      console.error('Fatal error in render:', e);
+      telemetry.enqueue({ type: 'render_error', message: String(e), stack: e && e.stack ? String(e.stack) : '' });
+    }
   };
 
   // ============================================================================
