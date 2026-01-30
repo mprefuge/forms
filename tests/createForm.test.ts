@@ -46,8 +46,11 @@ describe('createForm HTTP Function', () => {
       createNotes: jest.fn().mockResolvedValue([]),
       // Support update operations in the createForm update branch
       updateForm: jest.fn().mockResolvedValue(undefined),
-        // Contact matching for form linking
-        findContact: jest.fn().mockResolvedValue(null),
+      // Contact matching for form linking
+      findContact: jest.fn().mockResolvedValue(null),
+      // Contact creation & update
+      createContact: jest.fn().mockResolvedValue('contact-123'),
+      updateContact: jest.fn().mockResolvedValue(undefined),
     } as any;
 
     const mockEmailService = {
@@ -80,6 +83,7 @@ describe('createForm HTTP Function', () => {
           LastName__c: 'Doe',
           Email__c: 'john@example.com',
           RecordType: 'Registration',
+          ReceiveUpdates: true,
           __sendEmail: true,
           __emailTemplates: {
             applicationCopy: {
@@ -123,6 +127,63 @@ describe('createForm HTTP Function', () => {
       const responseBody = JSON.parse(response.body);
       expect(responseBody.id).toBe('form-id-12345');
       expect(responseBody.formCode).toBe('abc12');
+    });
+
+    it('should create a Contact and set HasOptedOutOfEmail when ReceiveUpdates is false', async () => {
+      // Simulate no contact match and creation path
+      mockSalesforceService.findContact = jest.fn().mockResolvedValue(null);
+      mockSalesforceService.createContact = jest.fn().mockResolvedValue('new-contact-1');
+
+      mockRequest = {
+        method: 'POST',
+        headers: { get: jest.fn().mockReturnValue('contact-request-id') },
+        json: jest.fn().mockResolvedValue({
+          FirstName__c: 'Test',
+          LastName__c: 'User',
+          Email: 'test.user@example.com',
+          ReceiveUpdates: false,
+          __formConfig: testFormConfig,
+        }),
+      };
+
+      process.env.SF_CLIENT_ID = 'test-client-id';
+      process.env.SF_CLIENT_SECRET = 'test-client-secret';
+
+      const response = await createForm(mockRequest, mockContext);
+
+      expect(response.status).toBe(201);
+      expect(mockSalesforceService.createContact).toHaveBeenCalledWith(expect.objectContaining({
+        email: 'test.user@example.com',
+        firstName: 'Test',
+        lastName: 'User',
+        hasOptedOut: true // because ReceiveUpdates: false
+      }));
+    });
+
+    it('should update existing Contact opt-out preference when match found', async () => {
+      // Simulate a high-confidence match
+      mockSalesforceService.findContact = jest.fn().mockResolvedValue({ contactId: 'existing-1' } as any);
+      mockSalesforceService.updateContact = jest.fn().mockResolvedValue(undefined);
+
+      mockRequest = {
+        method: 'POST',
+        headers: { get: jest.fn().mockReturnValue('contact-update-id') },
+        json: jest.fn().mockResolvedValue({
+          FirstName__c: 'Existing',
+          LastName__c: 'Contact',
+          Email: 'existing.contact@example.com',
+          ReceiveUpdates: false,
+          __formConfig: testFormConfig,
+        }),
+      };
+
+      process.env.SF_CLIENT_ID = 'test-client-id';
+      process.env.SF_CLIENT_SECRET = 'test-client-secret';
+
+      const response = await createForm(mockRequest, mockContext);
+
+      expect(response.status).toBe(201);
+      expect(mockSalesforceService.updateContact).toHaveBeenCalledWith('existing-1', { HasOptedOutOfEmail: true });
     });
 
     it('should generate a GUID for form Name when not provided', async () => {

@@ -593,12 +593,18 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
         contactMatchCriteria.phone = filteredData[phoneField] || filteredData[phoneSfField] || formData[phoneField] || formData[phoneSfField];
         contactMatchCriteria.secondaryEmail = filteredData[secondaryEmailField] || filteredData[secondaryEmailSfField] || formData[secondaryEmailField] || formData[secondaryEmailSfField];
 
+        // Extract preference for receiving updates (defaults to true when not explicitly provided)
+        const rawReceive = (filteredData && typeof filteredData.ReceiveUpdates !== 'undefined') ? filteredData.ReceiveUpdates : formData.ReceiveUpdates;
+        const receiveUpdatesBool = (typeof rawReceive === 'boolean') ? rawReceive : String(rawReceive).toLowerCase() === 'true' || rawReceive === '1' || typeof rawReceive === 'undefined';
+        const hasOptedOut = !receiveUpdatesBool;
+
         logger.debug('Contact match criteria extracted', { 
           hasFirstName: !!contactMatchCriteria.firstName,
           hasLastName: !!contactMatchCriteria.lastName,
           hasEmail: !!contactMatchCriteria.email,
           hasPhone: !!contactMatchCriteria.phone,
-          hasSecondaryEmail: !!contactMatchCriteria.secondaryEmail
+          hasSecondaryEmail: !!contactMatchCriteria.secondaryEmail,
+          receiveUpdates: receiveUpdatesBool
         });
 
         // Attempt contact matching if we have at least one criterion
@@ -620,6 +626,17 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
               matchedFields: contactMatch.matchedFields
             });
             contactId = contactMatch.contactId;
+
+            // Update opt-out preference on existing contact (if explicitly provided)
+            try {
+              if (typeof hasOptedOut === 'boolean') {
+                logger.info('Updating Contact opt-out preference for existing contact', { contactId, HasOptedOutOfEmail: hasOptedOut });
+                await salesforceService.updateContact(contactId, { HasOptedOutOfEmail: hasOptedOut });
+                logger.info('Contact opt-out preference updated', { contactId });
+              }
+            } catch (updateErr: any) {
+              logger.error('Failed to update Contact opt-out preference', updateErr, { contactId, errorMessage: updateErr?.message });
+            }
           } else {
             // No match found - create new contact if we have email
             if (contactMatchCriteria.email) {
@@ -650,7 +667,8 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
                   street: street,
                   city: city,
                   state: state,
-                  zip: zip
+                  zip: zip,
+                  hasOptedOut: hasOptedOut
                 });
                 logger.info('New Contact created successfully', { contactId });
               } catch (createError: any) {

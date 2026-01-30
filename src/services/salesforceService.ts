@@ -987,6 +987,7 @@ export class SalesforceService {
     city?: string;
     state?: string;
     zip?: string;
+    hasOptedOut?: boolean;
   }): Promise<string> {
     const contactRecord: any = {
       attributes: { type: 'Contact' },
@@ -1003,6 +1004,11 @@ export class SalesforceService {
     if (contactData.state) contactRecord.MailingState = contactData.state;
     if (contactData.zip) contactRecord.MailingPostalCode = contactData.zip;
 
+    // Respect opt-out preference when provided: Salesforce Contact.HasOptedOutOfEmail is true when the contact has opted out
+    if (typeof contactData.hasOptedOut !== 'undefined') {
+      contactRecord.HasOptedOutOfEmail = !!contactData.hasOptedOut;
+    }
+
     // LastName is required for Contact in Salesforce
     if (!contactRecord.LastName) {
       contactRecord.LastName = 'Unknown';
@@ -1018,6 +1024,25 @@ export class SalesforceService {
       }
     } catch (error: any) {
       throw new Error(`Salesforce error creating contact: ${error.message || 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Update an existing Contact record with the provided fields
+   */
+  async updateContact(contactId: string, updates: { [key: string]: any }): Promise<void> {
+    if (!contactId) throw new Error('contactId is required to update a Contact');
+    const rec: any = { Id: contactId };
+    Object.assign(rec, updates);
+
+    try {
+      const res: any = await this.connection.sobject('Contact').update(rec);
+      if (!res || !res.success) {
+        throw new Error(`Failed to update contact: ${res?.errors?.join(', ') || 'Unknown error'}`);
+      }
+      return;
+    } catch (error: any) {
+      throw new Error(`Salesforce error updating contact: ${error.message || 'Unknown error'}`);
     }
   }
 

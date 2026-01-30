@@ -122,7 +122,7 @@
         {
           title: "Contact Information",
           description: "",
-          fields: ["FirstName", "LastName", "Email", "Phone", "Street", "City", "State", "Zip", "Country"]
+          fields: ["FirstName", "LastName", "Email", "ReceiveUpdates", "Phone", "Street", "City", "State", "Zip", "Country"]
         }
       ]
     }
@@ -135,6 +135,7 @@
     FirstName: { label: "First Name", type: "text", required: true },
     LastName: { label: "Last Name", type: "text", required: true },
     Email: { label: "Email", type: "email", required: true },
+    ReceiveUpdates: { label: "I agree to receive periodic updates from Refuge International", type: "checkbox", required: false },
     Phone: { label: "Phone", type: "tel", required: true },
     Street: { label: "Street Address", type: "text", required: false },
     City: { label: "City", type: "text", required: false },
@@ -237,7 +238,7 @@
   let state = {
     phase: 'initial',
     step: 0,
-    formData: {},
+    formData: { ReceiveUpdates: true },
     formCode: null,
     status: null,
     error: null,
@@ -632,7 +633,11 @@
       const id = input.id;
       if (!id || !id.startsWith('ri-input-')) return;
       const fieldKey = id.replace('ri-input-', '');
-      values[fieldKey] = input.value || '';
+      if (input.type === 'checkbox') {
+        values[fieldKey] = !!input.checked;
+      } else {
+        values[fieldKey] = input.value || '';
+      }
     });
     
     return values;
@@ -992,6 +997,14 @@
             value: value,
             placeholder: meta.placeholder || '',
             onInput: (e) => updateField(fieldKey, e.target.value),
+          })
+        : meta.type === 'checkbox'
+        ? h('input', {
+            id: `ri-input-${fieldKey}`,
+            type: 'checkbox',
+            className: 'ri-input',
+            checked: !!value,
+            onChange: (e) => updateField(fieldKey, e.target.checked),
           })
         : h('input', {
             id: `ri-input-${fieldKey}`,

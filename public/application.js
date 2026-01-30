@@ -155,7 +155,7 @@
       description: "Tell us about yourself and your interest in serving",
       estimatedTime: 15, // minutes
       steps: [
-        { title: "Basic Information", description: "Your name and contact details", fields: ["Salutation","FirstName","LastName","Email","Phone"] },
+        { title: "Basic Information", description: "Your name and contact details", fields: ["Salutation","FirstName","LastName","Email","ReceiveUpdates","Phone"] },
         { title: "Personal Details", description: "Background and language preferences", fields: ["Birthdate","Street","City","State","Zip","Country","LanguagesSpoken","PrimaryLanguage","CountryOfOrigin","Gender","MaritalStatus"] },
         { title: "What You Believe", description: "Your church info and beliefs", fields: ["Church","ChurchServingDetails","PastorSalutation","PastorFirstName","PastorLastName","PastorEmail","GospelDetails","TestimonyDetails"] },
         { title: "Emergency & Serving", description: "Emergency contact and serving preferences", fields: ["EmergencyContactFirstName","EmergencyContactLastName","EmergencyContactRelationship","EmergencyContactPhone","ServingInterest","PreferredServingArea","Skills","Availability"] },
@@ -189,6 +189,7 @@
     FirstName: { label: "First Name", type: "text", required: true },
     LastName: { label: "Last Name", type: "text", required: true },
     Email: { label: "Email", type: "email", required: true },
+    ReceiveUpdates: { label: "I agree to receive periodic updates from Refuge International", type: "checkbox", required: false },
     Phone: { label: "Phone", type: "tel", required: true },
     Gender: { label: "Gender", type: "select", options: ["Male","Female"], required: true },
     MaritalStatus: { label: "Marital Status", type: "select", options: [], required: false },
@@ -290,6 +291,8 @@
   }, {});
 
   const data = {};
+  // Default user preference: agree to receive updates
+  data.ReceiveUpdates = true;
   const fileUploads = {};
   const completedSteps = new Set();
   let formCode = null;

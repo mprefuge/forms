@@ -122,6 +122,7 @@
             { key: 'ParentFirstName__c', label: 'First Name', type: 'text', required: true },
             { key: 'ParentLastName__c', label: 'Last Name', type: 'text', required: true },
             { key: 'Email__c', label: 'Email Address', type: 'email', required: true },
+            { key: 'ReceiveUpdates', label: 'I agree to receive periodic updates from Refuge International', type: 'checkbox', required: false },
             { key: 'Phone__c', label: 'Phone Number', type: 'tel', required: true },
             { key: 'Street__c', label: 'Street Address', type: 'text', required: true },
             { key: 'City__c', label: 'City', type: 'text', required: true },
