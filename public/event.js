@@ -335,8 +335,9 @@
       // Build Salesforce payload
       const payload = {};
       Object.entries(state.formData).forEach(([clientKey, value]) => {
-        const sfKey = fieldToSf[clientKey];
-        if (sfKey) payload[sfKey] = value;
+        if (value === undefined || value === null) return;
+        const sfKey = fieldToSf[clientKey] || clientKey;
+        payload[sfKey] = value;
       });
 
       // Add form configuration
@@ -1372,6 +1373,10 @@
                   h('div', { style: { display: 'flex', gap: '12px', flexWrap: 'wrap' } },
                     h('div', { style: { flex: '1 1 300px' } }, renderField('Email')),
                     h('div', { style: { flex: '1 1 200px' } }, renderField('Phone'))
+                  ),
+                  // Row 2b - Receive Updates (full width)
+                  h('div', { style: { display: 'flex', gap: '12px', flexWrap: 'wrap' } },
+                    h('div', { style: { flex: '1 1 100%' } }, renderField('ReceiveUpdates'))
                   ),
                   // Row 3 - Street (full width)
                   h('div', { style: { display: 'flex', gap: '12px', flexWrap: 'wrap' } },

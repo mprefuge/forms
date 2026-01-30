@@ -582,6 +582,10 @@
               ${renderField(currentStep.fields.find(f => f.key === 'Phone__c'))}
             </div>
 
+            <div class="waiver-row waiver-row--full">
+              ${renderField(currentStep.fields.find(f => f.key === 'ReceiveUpdates'))}
+            </div>
+
             <div class="waiver-row waiver-row--address">
               ${renderField(currentStep.fields.find(f => f.key === 'Street__c'))}
               ${renderField(currentStep.fields.find(f => f.key === 'City__c'))}

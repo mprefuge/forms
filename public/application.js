@@ -1643,7 +1643,10 @@
         h('div', { class: 'ri-basic-col ri-basic-col--email' }, fieldFor('Email')),
         h('div', { class: 'ri-basic-col ri-basic-col--phone' }, fieldFor('Phone')),
       );
-      grid = h('div', { class: 'ri-grid ri-grid--basic-info' }, row1, row2);
+      const row3 = h('div', { class: 'ri-basic-row' },
+        h('div', { class: 'ri-basic-col', style: 'grid-column: 1 / -1;' }, fieldFor('ReceiveUpdates'))
+      );
+      grid = h('div', { class: 'ri-grid ri-grid--basic-info' }, row1, row2, row3);
     } else if (step.title === 'Personal Details') {
       const left = h('div', { class: 'ri-personal-left' },
         fieldFor('Birthdate'),
