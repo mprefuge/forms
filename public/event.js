@@ -101,23 +101,28 @@
   })();
 
   if (typeof window !== 'undefined') {
-    window.addEventListener('error', (e) => {
-      telemetry.enqueue({
-        type: 'error',
-        message: e && e.message ? String(e.message) : 'Unknown error',
-        stack: e && e.error && e.error.stack ? String(e.error.stack) : '',
-        source: e && e.filename ? String(e.filename) : ''
-      });
-    });
+    // Guard against multiple listener attachments when multiple forms load
+    if (!window.__globalErrorListenersAttached) {
+      window.__globalErrorListenersAttached = true;
 
-    window.addEventListener('unhandledrejection', (e) => {
-      telemetry.enqueue({
-        type: 'unhandledrejection',
-        message: e && e.reason ? (e.reason.message || String(e.reason)) : 'Unhandled rejection',
-        stack: e && e.reason && e.reason.stack ? String(e.reason.stack) : ''
+      window.addEventListener('error', (e) => {
+        telemetry.enqueue({
+          type: 'error',
+          message: e && e.message ? String(e.message) : 'Unknown error',
+          stack: e && e.error && e.error.stack ? String(e.error.stack) : '',
+          source: e && e.filename ? String(e.filename) : ''
+        });
       });
-      try { if (e && typeof e.preventDefault === 'function') e.preventDefault(); } catch (err) {}
-    });
+
+      window.addEventListener('unhandledrejection', (e) => {
+        telemetry.enqueue({
+          type: 'unhandledrejection',
+          message: e && e.reason ? (e.reason.message || String(e.reason)) : 'Unhandled rejection',
+          stack: e && e.reason && e.reason.stack ? String(e.reason.stack) : ''
+        });
+        try { if (e && typeof e.preventDefault === 'function') e.preventDefault(); } catch (err) {}
+      });
+    }
   }
 
   const orgTerms = {
@@ -1831,24 +1836,14 @@
         render();
         setState({ initialLoading: false });
         
-        // Defer non-critical address suggestion handlers
+        // Defer non-critical address suggestion handlers initialization
+        // Note: actual listener attachment is done in render() with guard flag _riHandlerAttached
         setTimeout(() => {
           const root = document.getElementById(HOST_ID);
           if (!root) return;
           if (!config.disableAddressLookup) {
             addressSuggestionsEl = root.querySelector('.ri-address-suggestions');
-            const streetInput = document.getElementById('ri-input-Street');
-            if (streetInput) {
-              streetInput.addEventListener('input', (e) => {
-                const q = (e.target.value || '').toString().trim();
-                if (addressSearchTimeout) clearTimeout(addressSearchTimeout);
-                addressSearchTimeout = setTimeout(async () => {
-                  if (!q || q.length < 3) { if (addressSuggestionsEl) addressSuggestionsEl.innerHTML = ''; return; }
-                  const items = await searchAddress(q);
-                  renderAddressSuggestions(items);
-                }, 300);
-              });
-            }
+            // Listener will be attached in render() with guard flag to prevent duplicates
           } else {
             addressSuggestionsEl = null;
           }
@@ -1862,7 +1857,8 @@
     });
 
     window.addEventListener('pagehide', () => { telemetry.flush(); });
-    if (typeof document !== 'undefined') {
+    if (typeof document !== 'undefined' && !document.__globalPageHideListenersAttached) {
+      document.__globalPageHideListenersAttached = true;
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'hidden') telemetry.flush();
       });

@@ -93,23 +93,28 @@
   })();
 
   if (typeof window !== 'undefined') {
-    window.addEventListener('error', (e) => {
-      telemetry.enqueue({
-        type: 'error',
-        message: e && e.message ? String(e.message) : 'Unknown error',
-        stack: e && e.error && e.error.stack ? String(e.error.stack) : '',
-        source: e && e.filename ? String(e.filename) : ''
-      });
-    });
+    // Guard against multiple listener attachments when multiple forms load
+    if (!window.__globalErrorListenersAttached) {
+      window.__globalErrorListenersAttached = true;
 
-    window.addEventListener('unhandledrejection', (e) => {
-      telemetry.enqueue({
-        type: 'unhandledrejection',
-        message: e && e.reason ? (e.reason.message || String(e.reason)) : 'Unhandled rejection',
-        stack: e && e.reason && e.reason.stack ? String(e.reason.stack) : ''
+      window.addEventListener('error', (e) => {
+        telemetry.enqueue({
+          type: 'error',
+          message: e && e.message ? String(e.message) : 'Unknown error',
+          stack: e && e.error && e.error.stack ? String(e.error.stack) : '',
+          source: e && e.filename ? String(e.filename) : ''
+        });
       });
-      try { if (e && typeof e.preventDefault === 'function') e.preventDefault(); } catch (err) {}
-    });
+
+      window.addEventListener('unhandledrejection', (e) => {
+        telemetry.enqueue({
+          type: 'unhandledrejection',
+          message: e && e.reason ? (e.reason.message || String(e.reason)) : 'Unhandled rejection',
+          stack: e && e.reason && e.reason.stack ? String(e.reason.stack) : ''
+        });
+        try { if (e && typeof e.preventDefault === 'function') e.preventDefault(); } catch (err) {}
+      });
+    }
   }
 
 
@@ -2265,7 +2270,8 @@
   const periodicSaveTimer = setInterval(periodicSave, 60000);
   try { periodicSaveTimer && periodicSaveTimer.unref && periodicSaveTimer.unref(); } catch (e) {}
 
-  if (typeof document !== 'undefined') {
+  if (typeof document !== 'undefined' && !document.__globalPageHideListenersAttached) {
+    document.__globalPageHideListenersAttached = true;
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') {
         periodicSave();
@@ -2273,7 +2279,8 @@
       }
     });
   }
-  if (typeof window !== 'undefined') {
+  if (typeof window !== 'undefined' && !window.__globalPageHideListenersAttached) {
+    window.__globalPageHideListenersAttached = true;
     window.addEventListener('pagehide', () => { periodicSave(); telemetry.flush(); });
     window.addEventListener('beforeunload', () => { periodicSave(); telemetry.flush(); });
   }

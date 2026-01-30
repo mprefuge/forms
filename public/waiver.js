@@ -87,23 +87,28 @@
   })();
 
   if (typeof window !== 'undefined') {
-    window.addEventListener('error', (e) => {
-      telemetry.enqueue({
-        type: 'error',
-        message: e && e.message ? String(e.message) : 'Unknown error',
-        stack: e && e.error && e.error.stack ? String(e.error.stack) : '',
-        source: e && e.filename ? String(e.filename) : ''
-      });
-    });
+    // Guard against multiple listener attachments when multiple forms load
+    if (!window.__globalErrorListenersAttached) {
+      window.__globalErrorListenersAttached = true;
 
-    window.addEventListener('unhandledrejection', (e) => {
-      telemetry.enqueue({
-        type: 'unhandledrejection',
-        message: e && e.reason ? (e.reason.message || String(e.reason)) : 'Unhandled rejection',
-        stack: e && e.reason && e.reason.stack ? String(e.reason.stack) : ''
+      window.addEventListener('error', (e) => {
+        telemetry.enqueue({
+          type: 'error',
+          message: e && e.message ? String(e.message) : 'Unknown error',
+          stack: e && e.error && e.error.stack ? String(e.error.stack) : '',
+          source: e && e.filename ? String(e.filename) : ''
+        });
       });
-      try { if (e && typeof e.preventDefault === 'function') e.preventDefault(); } catch (err) {}
-    });
+
+      window.addEventListener('unhandledrejection', (e) => {
+        telemetry.enqueue({
+          type: 'unhandledrejection',
+          message: e && e.reason ? (e.reason.message || String(e.reason)) : 'Unhandled rejection',
+          stack: e && e.reason && e.reason.stack ? String(e.reason.stack) : ''
+        });
+        try { if (e && typeof e.preventDefault === 'function') e.preventDefault(); } catch (err) {}
+      });
+    }
   }
 
   // Organization terminology
@@ -624,7 +629,7 @@
 
     // Special handling: show computed age next to ChildBirthdate__c
     if (field.type === 'date' && field.key === 'ChildBirthdate__c') {
-      const ageDisplay = typeof state.formData.ChildAge__c !== 'undefined' && state.formData.ChildAge__c !== null ? `\n        <div style="margin-top:6px;font-size:13px;color:#6b7280">Child age: ${state.formData.ChildAge__c}</div>` : '';
+      const ageDisplay = typeof state.formData.ChildAge__c !== 'undefined' && state.formData.ChildAge__c !== null ? `\n        <div style="margin-top:6px;font-size:13px;color:#6b7280" data-age-display="${field.key}">Child age: ${state.formData.ChildAge__c}</div>` : '';
       return `
         <div class="ri-field">
           <label for="${field.key}">
@@ -797,6 +802,86 @@
   // ============================================================================
   // MAIN RENDER
   // ============================================================================
+  // Flag to prevent duplicate listener attachment
+  let formListenersAttached = false;
+
+  function attachFormListeners() {
+    if (formListenersAttached) return;
+    formListenersAttached = true;
+    const container = document.getElementById(HOST_ID);
+    if (!container) return;
+    const form = container.querySelector('.ri-form');
+    if (!form) return;
+
+    // Use event delegation on the form element (attach ONCE, not per render)
+    form.addEventListener('input', (e) => {
+      if (e.target.type === 'checkbox') {
+        state.formData[e.target.name] = e.target.checked;
+      } else {
+        state.formData[e.target.name] = e.target.value;
+      }
+      // Compute age when birthdate changes, but DON'T call updateState({})
+      // to avoid exponential re-renders. Just update the age silently.
+      if (e.target.name === 'ChildBirthdate__c') {
+        const age = computeAge(e.target.value);
+        state.formData.ChildAge__c = age;
+        // Update display WITHOUT full re-render
+        const ageDisplay = container.querySelector(`[data-age-display="${e.target.name}"]`);
+        if (ageDisplay) ageDisplay.textContent = `Child age: ${age}`;
+      }
+
+      // Auto-copy parent fields -> emergency contact fields
+      if (e.target.name === 'ParentFirstName__c') state.formData.EmergencyContactFirstName__c = e.target.value;
+      if (e.target.name === 'ParentLastName__c') state.formData.EmergencyContactLastName__c = e.target.value;
+      if (e.target.name === 'Phone__c' || e.target.name === 'ParentPhone__c') state.formData.EmergencyContactPhone__c = e.target.value;
+      if (e.target.name === 'Email__c' || e.target.name === 'ParentEmail__c') state.formData.EmergencyContactEmail__c = e.target.value;
+      state.formData.EmergencyContactRelationship__c = 'Parent';
+    });
+
+    form.addEventListener('change', (e) => {
+      if (e.target.type === 'checkbox') {
+        state.formData[e.target.name] = e.target.checked;
+      } else {
+        state.formData[e.target.name] = e.target.value;
+      }
+      // Same as above: don't re-render on birthdate change
+      if (e.target.name === 'ChildBirthdate__c') {
+        const age = computeAge(e.target.value);
+        state.formData.ChildAge__c = age;
+        const ageDisplay = container.querySelector(`[data-age-display="${e.target.name}"]`);
+        if (ageDisplay) ageDisplay.textContent = `Child age: ${age}`;
+      }
+
+      if (e.target.name === 'ParentFirstName__c') state.formData.EmergencyContactFirstName__c = e.target.value;
+      if (e.target.name === 'ParentLastName__c') state.formData.EmergencyContactLastName__c = e.target.value;
+      if (e.target.name === 'Phone__c' || e.target.name === 'ParentPhone__c') state.formData.EmergencyContactPhone__c = e.target.value;
+      if (e.target.name === 'Email__c' || e.target.name === 'ParentEmail__c') state.formData.EmergencyContactEmail__c = e.target.value;
+      state.formData.EmergencyContactRelationship__c = 'Parent';
+    });
+  }
+
+  function attachAddressLookupListener() {
+    const container = document.getElementById(HOST_ID);
+    if (!container || config.disableAddressLookup) return;
+    const streetInput = container.querySelector('#Street__c');
+    if (!streetInput || streetInput._waiverHandlerAttached) return;
+    streetInput._waiverHandlerAttached = true;
+
+    let suggestionsEl = streetInput.parentNode.querySelector('.ri-address-suggestions');
+    if (!suggestionsEl) {
+      suggestionsEl = document.createElement('div');
+      suggestionsEl.className = 'ri-address-suggestions';
+      streetInput.parentNode.appendChild(suggestionsEl);
+    }
+    const onInput = debounce(async (ev) => {
+      const q = ev.target.value;
+      if (!q || q.length < 3) { suggestionsEl.innerHTML = ''; return; }
+      const items = await searchAddress(q);
+      renderAddressSuggestions(items, suggestionsEl);
+    }, 350);
+    streetInput.addEventListener('input', onInput);
+  }
+
   function render() {
     const container = document.getElementById(HOST_ID);
     if (!container) return;
@@ -816,78 +901,10 @@
       </div>
     `;
 
-    // Attach event listeners for form inputs
-    const form = container.querySelector('.ri-form');
-    if (form) {
-      form.addEventListener('input', (e) => {
-        if (e.target.type === 'checkbox') {
-          state.formData[e.target.name] = e.target.checked;
-        } else {
-          state.formData[e.target.name] = e.target.value;
-        }
-        // Compute age when birthdate changes
-        if (e.target.name === 'ChildBirthdate__c') {
-          const age = computeAge(e.target.value);
-          state.formData.ChildAge__c = age;
-          updateState({});
-        }
-
-        // Auto-copy parent fields -> emergency contact fields (parent is emergency contact)
-        if (e.target.name === 'ParentFirstName__c') state.formData.EmergencyContactFirstName__c = e.target.value;
-        if (e.target.name === 'ParentLastName__c') state.formData.EmergencyContactLastName__c = e.target.value;
-        if (e.target.name === 'Phone__c' || e.target.name === 'ParentPhone__c') state.formData.EmergencyContactPhone__c = e.target.value;
-        if (e.target.name === 'Email__c' || e.target.name === 'ParentEmail__c') state.formData.EmergencyContactEmail__c = e.target.value;
-        // Relationship is parent by default
-        state.formData.EmergencyContactRelationship__c = 'Parent';
-      });
-
-      form.addEventListener('change', (e) => {
-        if (e.target.type === 'checkbox') {
-          state.formData[e.target.name] = e.target.checked;
-        } else {
-          state.formData[e.target.name] = e.target.value;
-        }
-        if (e.target.name === 'ChildBirthdate__c') {
-          const age = computeAge(e.target.value);
-          state.formData.ChildAge__c = age;
-          updateState({});
-        }
-
-        // Auto-copy parent fields -> emergency contact fields (parent is emergency contact)
-        if (e.target.name === 'ParentFirstName__c') state.formData.EmergencyContactFirstName__c = e.target.value;
-        if (e.target.name === 'ParentLastName__c') state.formData.EmergencyContactLastName__c = e.target.value;
-        if (e.target.name === 'Phone__c' || e.target.name === 'ParentPhone__c') state.formData.EmergencyContactPhone__c = e.target.value;
-        if (e.target.name === 'Email__c' || e.target.name === 'ParentEmail__c') state.formData.EmergencyContactEmail__c = e.target.value;
-        // Relationship is parent by default
-        state.formData.EmergencyContactRelationship__c = 'Parent';
-      });
-
-      // Address suggestions for Street__c
-      if (!config.disableAddressLookup) {
-        const streetInput = container.querySelector('#Street__c');
-        if (streetInput) {
-          let suggestionsEl = streetInput.parentNode.querySelector('.ri-address-suggestions');
-          if (!suggestionsEl) {
-            suggestionsEl = document.createElement('div');
-            suggestionsEl.className = 'ri-address-suggestions';
-            streetInput.parentNode.appendChild(suggestionsEl);
-          }
-          const onInput = debounce(async (ev) => {
-            const q = ev.target.value;
-            if (!q || q.length < 3) { suggestionsEl.innerHTML = ''; return; }
-            const items = await searchAddress(q);
-            renderAddressSuggestions(items, suggestionsEl);
-          }, 350);
-          streetInput.addEventListener('input', onInput);
-        }
-      }
-
-      
-
-      // Ensure select fields show updated state when options populate
-      const selects = container.querySelectorAll('select');
-      selects.forEach(s => s.addEventListener('change', (e) => { state.formData[e.target.name] = e.target.value; }));
-    }
+    // Attach listeners ONCE, not every render
+    formListenersAttached = false;
+    attachFormListeners();
+    attachAddressLookupListener();
   }
 
   // ============================================================================
@@ -908,12 +925,14 @@
     render();
   }
 
-  if (typeof document !== 'undefined') {
+  if (typeof document !== 'undefined' && !document.__globalPageHideListenersAttached) {
+    document.__globalPageHideListenersAttached = true;
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') telemetry.flush();
     });
   }
-  if (typeof window !== 'undefined') {
+  if (typeof window !== 'undefined' && !window.__globalPageHideListenersAttached) {
+    window.__globalPageHideListenersAttached = true;
     window.addEventListener('pagehide', () => { telemetry.flush(); });
   }
 
