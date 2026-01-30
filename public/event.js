@@ -39,6 +39,7 @@
     }
   })();
   const shouldDisableMap = config.disableMap || isIpadDevice || isLowMemoryDevice;
+  const shouldDisableHeavyMedia = (config.hasOwnProperty('disableHeavyMedia') ? !!config.disableHeavyMedia : false) || isIpadDevice || isLowMemoryDevice;
   const ENDPOINT = config.apiEndpoint || "https://rif-hhh8e6e7cbc2hvdw.eastus-01.azurewebsites.net/api/form"; //"http://localhost:7071/api/form"; 
   const PAYMENT_ENDPOINT = config.paymentEndpoint || 'https://payment-processing-function.azurewebsites.net/api/transaction';
   const HOST_ID = "event-app";
@@ -374,6 +375,24 @@
     paymentError: null // Store any payment-related errors
   }; 
 
+  let renderScheduled = false;
+  let renderInProgress = false;
+  let renderNeedsRerun = false;
+
+  const scheduleRender = () => {
+    if (renderScheduled) return;
+    renderScheduled = true;
+    const runner = () => {
+      renderScheduled = false;
+      render();
+    };
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(runner);
+    } else {
+      setTimeout(runner, 0);
+    }
+  };
+
   // ============================================================================
   // HELPER FUNCTIONS
   // ============================================================================
@@ -415,7 +434,7 @@
   const setState = (updates) => {
     try {
       state = { ...state, ...updates };
-      render();
+      scheduleRender();
     } catch (e) {
       console.error('Fatal error in setState:', e);
       telemetry.enqueue({ type: 'setstate_error', message: String(e), stack: e && e.stack ? String(e.stack) : '' });
@@ -1367,8 +1386,8 @@
 
       const contentEl = h('div', { className: 'ri-event-hero-content' }, ...elements.filter(Boolean));
 
-      // If images exist, show the first image to the left of the content (full page)
-      if (state.campaignInfo && state.campaignInfo.images && state.campaignInfo.images.length) {
+      // If images exist and heavy media is allowed, show the first image to the left of the content
+      if (!shouldDisableHeavyMedia && state.campaignInfo && state.campaignInfo.images && state.campaignInfo.images.length) {
         console.log('renderEventHero: Rendering with image', state.campaignInfo.images[0]);
         const img = state.campaignInfo.images[0];
         const mediaEl = h('div', { className: 'ri-event-hero-media' },
@@ -1447,6 +1466,9 @@
             endTime: rec.EndTime__c || rec.endTime || null,
             images: Array.isArray(rec.images) ? rec.images : null,
           };
+          if (shouldDisableHeavyMedia) {
+            info.images = null;
+          }
           const updates = { ...state.formData };
           // Keep EventName (backend field) as the original full title unless already set
           if (info.name && !updates.EventName) updates.EventName = info.name;
@@ -1454,7 +1476,7 @@
           // Defer state update to allow the click event to fully complete before DOM manipulation
           // This prevents Safari from crashing when DOM is cleared while event is being processed
           setTimeout(() => {
-            setState({ eventId: info.id, campaignInfo: info, selectedEvent: info, formData: updates });
+            setState({ eventId: info.id, campaignInfo: info, selectedEvent: info, formData: updates, availableEvents: null });
           }, 0);
         } catch (e) {
           console.error('Error in onChoose:', e);
@@ -1471,7 +1493,7 @@
 
       const cardImageUrl = (rec.images && rec.images.length) ? (rec.images[0].url) : null;
 
-      const cardImageEl = cardImageUrl ? h('div', { className: 'ri-event-card-media' },
+      const cardImageEl = (!shouldDisableHeavyMedia && cardImageUrl) ? h('div', { className: 'ri-event-card-media' },
         h('img', { src: cardImageUrl, alt: rec.Name || rec.name || '', loading: 'lazy', decoding: 'async', style: { width: '100%', height: '140px', objectFit: 'cover', borderRadius: '8px', marginBottom: '10px' } })
       ) : null;
 
@@ -1515,9 +1537,11 @@
       // Clear local selection and campaign info so the user returns to the event overview
       // Defer state update to allow the click event to fully complete before DOM manipulation
       setTimeout(() => {
-        setState({ eventId: null, campaignInfo: null, selectedEvent: null, step: 0 });
+        setState({ eventId: null, campaignInfo: null, selectedEvent: null, step: 0, availableEvents: null });
         // scroll back to top of the event list for clarity
         try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) { /* ignore */ }
+        // Re-fetch events after returning to the list to avoid keeping large lists in memory
+        setTimeout(() => { try { fetchActiveEvents(); } catch (e) {} }, 50);
       }, 0);
     } catch (e) {
       console.error('Error in clearSelection:', e);
@@ -1721,6 +1745,11 @@
   // ============================================================================
   
   const render = () => {
+    if (renderInProgress) {
+      renderNeedsRerun = true;
+      return;
+    }
+    renderInProgress = true;
     try {
       const root = document.getElementById(HOST_ID);
       if (!root) return;
@@ -1766,6 +1795,12 @@
     } catch (e) {
       console.error('Fatal error in render:', e);
       telemetry.enqueue({ type: 'render_error', message: String(e), stack: e && e.stack ? String(e.stack) : '' });
+    } finally {
+      renderInProgress = false;
+      if (renderNeedsRerun) {
+        renderNeedsRerun = false;
+        scheduleRender();
+      }
     }
   };
 
