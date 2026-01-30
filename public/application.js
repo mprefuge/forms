@@ -614,6 +614,8 @@
     };
 
     if (meta.type === "checkbox") {
+      // Mark wrapper so CSS can hide the block label when a checkbox is rendered inline
+      wrapper.className = 'ri-field ri-field--checkbox';
       const input = h("input", { type: "checkbox", id: name, checked: !!value, onchange: e => { 
         data[name] = e.target.checked;
         autoSave();

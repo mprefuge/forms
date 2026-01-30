@@ -101,7 +101,8 @@
   let state = {
     phase: 'initial',
     step: 0,
-    formData: {},
+    // Default preference: agree to receive periodic updates
+    formData: { ReceiveUpdates: true },
     formCode: null,
     status: null,
     error: null,

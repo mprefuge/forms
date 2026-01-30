@@ -961,6 +961,22 @@
     const value = state.formData[fieldKey] || '';
     const labelText = orgTerms.labels[fieldKey] || meta.label;
 
+    // Render checkbox fields inline (no top label) to avoid duplicate labels
+    if (meta.type === 'checkbox') {
+      return h('div', { className: 'ri-field ri-field--checkbox' },
+        h('div', { className: 'ri-checkbox' },
+          h('input', {
+            id: `ri-input-${fieldKey}`,
+            type: 'checkbox',
+            className: 'ri-input',
+            checked: !!value,
+            onChange: (e) => updateField(fieldKey, e.target.checked),
+          }),
+          h('label', { htmlFor: `ri-input-${fieldKey}` }, labelText, meta.required ? h('span', { className: 'ri-required' }, ' *') : null)
+        )
+      );
+    }
+
     return h('div', { className: 'ri-field' },
       h('label', { className: 'ri-label' },
         labelText,
@@ -999,17 +1015,6 @@
             placeholder: meta.placeholder || '',
             onInput: (e) => updateField(fieldKey, e.target.value),
           })
-        : meta.type === 'checkbox'
-        ? h('div', { className: 'ri-checkbox' },
-            h('input', {
-              id: `ri-input-${fieldKey}`,
-              type: 'checkbox',
-              className: 'ri-input',
-              checked: !!value,
-              onChange: (e) => updateField(fieldKey, e.target.checked),
-            }),
-            h('label', { htmlFor: `ri-input-${fieldKey}` }, labelText, meta.required ? h('span', { className: 'ri-required' }, ' *') : null)
-          )
         : h('input', {
             id: `ri-input-${fieldKey}`,
             type: meta.type,
