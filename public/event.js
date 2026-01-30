@@ -707,17 +707,23 @@
       return;
     }
 
-    if (state.step < currentPhase.steps.length - 1) {
-      setState({ step: state.step + 1, error: null });
-    } else {
-      submitForm();
-    }
+    // Defer state update to allow the click event to fully complete before DOM manipulation
+    setTimeout(() => {
+      if (state.step < currentPhase.steps.length - 1) {
+        setState({ step: state.step + 1, error: null });
+      } else {
+        submitForm();
+      }
+    }, 0);
   };
 
   const prevStep = () => {
-    if (state.step > 0) {
-      setState({ step: state.step - 1, error: null });
-    }
+    // Defer state update to allow the click event to fully complete before DOM manipulation
+    setTimeout(() => {
+      if (state.step > 0) {
+        setState({ step: state.step - 1, error: null });
+      }
+    }, 0);
   };
 
   const updateField = (fieldKey, value) => {
@@ -1393,7 +1399,11 @@
         // Keep EventName (backend field) as the original full title unless already set
         if (info.name && !updates.EventName) updates.EventName = info.name;
         if (info.startDate && !updates.EventDate) updates.EventDate = info.startDate;
-        setState({ eventId: info.id, campaignInfo: info, selectedEvent: info, formData: updates });
+        // Defer state update to allow the click event to fully complete before DOM manipulation
+        // This prevents Safari from crashing when DOM is cleared while event is being processed
+        setTimeout(() => {
+          setState({ eventId: info.id, campaignInfo: info, selectedEvent: info, formData: updates });
+        }, 0);
       };
 
       const onCardKeyDown = (e) => {
@@ -1446,9 +1456,12 @@
 
   const clearSelection = () => {
     // Clear local selection and campaign info so the user returns to the event overview
-    setState({ eventId: null, campaignInfo: null, selectedEvent: null, step: 0 });
-    // scroll back to top of the event list for clarity
-    try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) { /* ignore */ }
+    // Defer state update to allow the click event to fully complete before DOM manipulation
+    setTimeout(() => {
+      setState({ eventId: null, campaignInfo: null, selectedEvent: null, step: 0 });
+      // scroll back to top of the event list for clarity
+      try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) { /* ignore */ }
+    }, 0);
   };
 
   const renderForm = () => {
@@ -1770,7 +1783,11 @@
           const bn = (b.Name || b.name || '').toString();
           return an.localeCompare(bn);
         });
-        setState({ availableEvents: sorted });
+        // Only update state if no event has been selected yet (race condition check)
+        // If user clicked an event while this fetch was in progress, don't overwrite their selection
+        if (!state.eventId && !state.selectedEvent) {
+          setState({ availableEvents: sorted });
+        }
       }
     } catch (e) {
       console.warn('Active events fetch failed', e);
