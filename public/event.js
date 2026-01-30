@@ -691,17 +691,26 @@
   let addressSearchTimeout = null;
   let addressSuggestionsEl = null;
 
+  let addressSearchAbort = null;
+
   const searchAddress = async (q) => {
     if (!q || q.length < 3) return [];
-    const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&q=${encodeURIComponent(q)}`;
-    const res = await fetch(url, {
-      headers: {
-        'User-Agent': 'EventRegistrationForm/1.0',
-        'Accept': 'application/json'
+    try {
+      if (addressSearchAbort && typeof addressSearchAbort.abort === 'function') {
+        addressSearchAbort.abort();
       }
-    });
-    const json = await res.json().catch(() => []);
-    return Array.isArray(json) ? json : [];
+      const controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+      if (controller) addressSearchAbort = controller;
+
+      const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&q=${encodeURIComponent(q)}`;
+      const res = await fetch(url, controller ? { signal: controller.signal, headers: { 'Accept': 'application/json' } } : { headers: { 'Accept': 'application/json' } });
+      const json = await res.json().catch(() => []);
+      return Array.isArray(json) ? json : [];
+    } catch (e) {
+      if (e && e.name === 'AbortError') return [];
+      console.warn('Address lookup failed', e);
+      return [];
+    }
   };
 
   const fillAddressFromNominatim = (item) => {
