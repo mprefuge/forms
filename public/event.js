@@ -254,6 +254,23 @@
     return base.substring(0, lastSlash + 1) + relative;
   }
 
+  // Polyfill for Promise.allSettled (IE11 and older browsers)
+  if (typeof Promise !== 'undefined' && !Promise.allSettled) {
+    Promise.allSettled = function(promises) {
+      var wrappedPromises = Array.prototype.slice.call(promises).map(function(p) {
+        return Promise.resolve(p).then(
+          function(value) {
+            return { status: 'fulfilled', value: value };
+          },
+          function(reason) {
+            return { status: 'rejected', reason: reason };
+          }
+        );
+      });
+      return Promise.all(wrappedPromises);
+    };
+  }
+
   // ============================================================================
   // END POLYFILLS
   // ============================================================================
@@ -863,8 +880,8 @@
           console.log('Payment session response:', session);
           
           // Extract URL from various possible response structures
-          const checkoutUrl = session?.url || session?.sessionUrl || session?.checkout_url || 
-                            (session?.id ? `https://checkout.stripe.com/c/pay/${session.id}` : null);
+          const checkoutUrl = (session && session.url) || (session && session.sessionUrl) || (session && session.checkout_url) || 
+                            (session && session.id ? `https://checkout.stripe.com/c/pay/${session.id}` : null);
           
           console.log('Extracted checkout URL:', checkoutUrl);
           
@@ -990,7 +1007,7 @@
 
       if (!res.ok) {
         console.error('Payment session failed', { status: res.status, statusText: res.statusText, response: json });
-        throw new Error(json?.error || json?.message || (json && json.raw) || `Payment endpoint returned ${res.status}`);
+        throw new Error((json && json.error) || (json && json.message) || (json && json.raw) || `Payment endpoint returned ${res.status}`);
       }
 
       return json;
@@ -1216,7 +1233,8 @@
     if (!items || items.length === 0) return;
     items.forEach(it => {
       try {
-        const label = it.display_name || [it.address?.road, it.address?.city, it.address?.state].filter(Boolean).join(', ');
+        const address = it.address || {};
+        const label = it.display_name || [address.road, address.city, address.state].filter(Boolean).join(', ');
         const node = h('div', { className: 'ri-address-suggestion' }, label);
         node.addEventListener('click', () => fillAddressFromNominatim(it));
         if (addressSuggestionsEl && document.body.contains(addressSuggestionsEl)) {
@@ -1307,14 +1325,16 @@
             const data = await res.json();
             if (data.features && data.features.length > 0) {
               const feature = data.features[0];
-              const coords = feature.geometry?.coordinates;
+              const geometry = feature.geometry || {};
+              const coords = geometry.coordinates;
               if (coords && coords.length >= 2) {
                 const [lon, lat] = coords;
                 if (!Number.isNaN(lat) && !Number.isNaN(lon)) {
+                  const properties = feature.properties || {};
                   return { 
                     lat, 
                     lon, 
-                    label: feature.properties?.name || addr 
+                    label: properties.name || addr 
                   };
                 }
               }

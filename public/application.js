@@ -682,13 +682,13 @@
   const getLabel = (name) => {
     if (name === 'State') return isUS() ? 'State' : (orgTerms.labels.State || 'State/Province');
     if (name === 'Zip') return isUS() ? 'ZIP Code' : (orgTerms.labels.Zip || 'Postal Code');
-    if (name === 'Country') return orgTerms.labels.Country || (fieldMeta[name]?.label || name);
+    if (name === 'Country') return orgTerms.labels.Country || (fieldMeta[name] && fieldMeta[name].label || name);
     if (name === 'HowHeard') return `How did you hear about ${orgTerms.orgName}?`;
-    return orgTerms.labels[name] || (fieldMeta[name]?.label || name);
+    return orgTerms.labels[name] || (fieldMeta[name] && fieldMeta[name].label || name);
   };
 
   const getStepTitle = (title) => orgTerms.stepTitles[title] || title;
-  const getPhaseName = (phaseKey) => orgTerms.phaseNames[phaseKey] || (phases[phaseKey]?.name || '');
+  const getPhaseName = (phaseKey) => orgTerms.phaseNames[phaseKey] || (phases[phaseKey] && phases[phaseKey].name || '');
 
   const formatValue = (key, val) => {
     if (val === undefined || val === null) return '';
@@ -748,7 +748,7 @@
     const s = (data.CurrentStatus || data.CurrentStatus__c || '').toString().toLowerCase();
     if (s && s !== 'pending') {
       currentPhase = 'initial';
-      currentStep = Math.max(0, (phases['initial']?.steps?.length || 1) - 1);
+      currentStep = Math.max(0, (phases['initial'] && phases['initial'].steps && phases['initial'].steps.length || 1) - 1);
     }
   }
 
@@ -995,7 +995,7 @@
                 payStatusEl.textContent = 'Saving application before transferring to Stripe...';
                 try {
                   const res = await saveProgress();
-                  const returnedCode = res?.FormCode || res?.Form_Code__c || res?.formCode || res?.form_code || res?.FormCode__c || '';
+                  const returnedCode = res && res.FormCode || res && res.Form_Code__c || res && res.formCode || res && res.form_code || res && res.FormCode__c || '';
                   if (returnedCode) {
                     formCode = returnedCode;
                     showBanner(formCode);
@@ -1097,7 +1097,7 @@
     }
     
     if (name === 'ServingInterest') {
-      const opts = fieldMeta.PreferredServingArea?.options || [];
+      const opts = fieldMeta.PreferredServingArea && fieldMeta.PreferredServingArea.options || [];
       const curVals = Array.isArray(data[name]) && data[name].length > 0 ? data[name] : [];
       const primary = data.PreferredServingArea || '';
       const container = h('div', { class: 'ri-multiselect-box' });
@@ -1159,7 +1159,7 @@
     }
 
     if (name === 'LanguagesSpoken') {
-      const opts = fieldMeta.LanguagesSpoken?.options || [];
+      const opts = fieldMeta.LanguagesSpoken && fieldMeta.LanguagesSpoken.options || [];
       const curVals = Array.isArray(data.LanguagesSpoken) && data.LanguagesSpoken.length > 0 ? data.LanguagesSpoken : [];
       const primary = data.PrimaryLanguage || '';
       const container = h('div', { class: 'ri-multiselect-box' });
@@ -1474,7 +1474,7 @@
     container.innerHTML = '';
     if (!items || items.length === 0) return;
     items.forEach(it => {
-      const label = it.display_name || [it.address?.road, it.address?.city, it.address?.state].filter(Boolean).join(', ');
+      const label = it.display_name || [it.address && it.address.road, it.address && it.address.city, it.address && it.address.state].filter(Boolean).join(', ');
       const node = h('div', { class: 'ri-address-suggestion', text: label });
       node.onclick = () => { fillAddressFromNominatim(it); };
       container.append(node);
@@ -1498,13 +1498,13 @@
     const required = requiredByStep[step.title] || [];
     const missing = required.filter(k => {
       const val = data[k];
-      if (fieldMeta[k]?.type === 'checkbox') return !val;
-      if (fieldMeta[k]?.type === 'multiselect') return !(Array.isArray(val) && val.length > 0);
+      if (fieldMeta[k] && fieldMeta[k].type === 'checkbox') return !val;
+      if (fieldMeta[k] && fieldMeta[k].type === 'multiselect') return !(Array.isArray(val) && val.length > 0);
       return !val || (typeof val === 'string' && val.trim() === '');
     });
     
     if (missing.length) {
-      const fieldNames = missing.map(k => fieldMeta[k]?.label || k).join(", ");
+      const fieldNames = missing.map(k => fieldMeta[k] && fieldMeta[k].label || k).join(", ");
       setStatus(`Please complete required fields: ${fieldNames}`, "error");
       return false;
     }
@@ -1606,12 +1606,12 @@
         if (found) clientKey = found;
       }
       if (clientKey) {
-        if (fieldMeta[clientKey]?.type === 'checkbox' && typeof v === 'string') {
+        if (fieldMeta[clientKey] && fieldMeta[clientKey].type === 'checkbox' && typeof v === 'string') {
           const lower = v.toLowerCase();
           if (lower === 'true' || lower === 'false') v = lower === 'true';
         }
         // Support multiselect fields stored as pipe/semicolon/comma delimited strings
-        if (fieldMeta[clientKey]?.type === 'multiselect' && typeof v === 'string') {
+        if (fieldMeta[clientKey] && fieldMeta[clientKey].type === 'multiselect' && typeof v === 'string') {
           const delim = v.includes('|') ? '|' : (v.includes(';') ? ';' : ',');
           v = v.split(delim).map(s => s.trim()).filter(Boolean);
         }
@@ -1644,7 +1644,7 @@
         const fieldHasValue = (field) => {
           const val = data[field];
           if (Array.isArray(val)) return val.length > 0;
-          if (fieldMeta[field]?.type === 'checkbox') return !!val;
+          if (fieldMeta[field] && fieldMeta[field].type === 'checkbox') return !!val;
           return val !== undefined && val !== null && String(val).trim() !== '';
         };
 
@@ -1750,7 +1750,7 @@
         if (res.ok && Object.keys(json).length > 0) {
           normalizeAndAssign(json);
           firstPageSaved = true;
-          formCode = json?.FormCode || json?.Form_Code__c || json?.formCode || json?.form_code || json?.FormCode__c || code;
+          formCode = json && json.FormCode || json && json.Form_Code__c || json && json.formCode || json && json.form_code || json && json.FormCode__c || code;
           // Default to review tab when not Pending, then update UI to reflect loaded state
           try { ensureReviewIfNotPending(); } catch (e) {}
           renderStepper();
@@ -1773,7 +1773,7 @@
     if (res.ok) {
       normalizeAndAssign(json);
       firstPageSaved = true;
-      formCode = json?.FormCode || json?.Form_Code__c || json?.formCode || json?.form_code || code;
+      formCode = json && json.FormCode || json && json.Form_Code__c || json && json.formCode || json && json.form_code || code;
       try { ensureReviewIfNotPending(); } catch (e) {}
       renderStepper();
       try { updateFormInteractivity(); } catch (e) {}
@@ -1865,7 +1865,7 @@
         console.error('Payment session failed', { status: res.status, statusText: res.statusText, response: json });
         // Show a helpful UI message indicating server-side validation failed
         setStatus('Payment failed: server validation error. Please ensure required fields (name, email, and address) are filled.', 'error');
-        throw new Error(json?.error || json?.message || (json && json.raw) || `Payment endpoint returned ${res.status}`);
+        throw new Error(json && json.error || json && json.message || (json && json.raw) || `Payment endpoint returned ${res.status}`);
       }
 
       return json;
@@ -1895,7 +1895,7 @@
 
     try {
       const res = await saveProgress({ sendEmail: isFinalSubmit });
-      const returnedCode = res?.FormCode || res?.Form_Code__c || res?.formCode || res?.form_code || res?.Form_Code || res?.form_code__c;
+      const returnedCode = res && res.FormCode || res && res.Form_Code__c || res && res.formCode || res && res.form_code || res && res.Form_Code || res && res.form_code__c;
       if (returnedCode) {
         formCode = returnedCode;
         showBanner(formCode);
