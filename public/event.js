@@ -10,270 +10,7 @@
 // ============================================================================
 
 (() => {
-  // ============================================================================
-  // POLYFILLS FOR CROSS-BROWSER COMPATIBILITY
-  // ============================================================================
-  
-  // Polyfill for Object.assign (IE11)
-  if (typeof Object.assign !== 'function') {
-    Object.assign = function(target) {
-      if (target == null) {
-        throw new TypeError('Cannot convert undefined or null to object');
-      }
-      var to = Object(target);
-      for (var index = 1; index < arguments.length; index++) {
-        var nextSource = arguments[index];
-        if (nextSource != null) {
-          for (var nextKey in nextSource) {
-            if (Object.prototype.hasOwnProperty.call(nextSource, nextKey)) {
-              to[nextKey] = nextSource[nextKey];
-            }
-          }
-        }
-      }
-      return to;
-    };
-  }
-
-  // Polyfill for Array.from (IE11)
-  if (!Array.from) {
-    Array.from = (function () {
-      var toStr = Object.prototype.toString;
-      var isCallable = function (fn) {
-        return typeof fn === 'function' || toStr.call(fn) === '[object Function]';
-      };
-      var toInteger = function (value) {
-        var number = Number(value);
-        if (isNaN(number)) { return 0; }
-        if (number === 0 || !isFinite(number)) { return number; }
-        return (number > 0 ? 1 : -1) * Math.floor(Math.abs(number));
-      };
-      var maxSafeInteger = Math.pow(2, 53) - 1;
-      var toLength = function (value) {
-        var len = toInteger(value);
-        return Math.min(Math.max(len, 0), maxSafeInteger);
-      };
-
-      return function from(arrayLike/*, mapFn, thisArg */) {
-        var C = this;
-        var items = Object(arrayLike);
-        if (arrayLike == null) {
-          throw new TypeError('Array.from requires an array-like object - not null or undefined');
-        }
-        var mapFn = arguments.length > 1 ? arguments[1] : void undefined;
-        var T;
-        if (typeof mapFn !== 'undefined') {
-          if (!isCallable(mapFn)) {
-            throw new TypeError('Array.from: when provided, the second argument must be a function');
-          }
-          if (arguments.length > 2) {
-            T = arguments[2];
-          }
-        }
-        var len = toLength(items.length);
-        var A = isCallable(C) ? Object(new C(len)) : new Array(len);
-        var k = 0;
-        var kValue;
-        while (k < len) {
-          kValue = items[k];
-          if (mapFn) {
-            A[k] = typeof T === 'undefined' ? mapFn(kValue, k) : mapFn.call(T, kValue, k);
-          } else {
-            A[k] = kValue;
-          }
-          k += 1;
-        }
-        A.length = len;
-        return A;
-      };
-    }());
-  }
-
-  // Polyfill for Array.prototype.find (IE11)
-  if (!Array.prototype.find) {
-    Array.prototype.find = function(predicate) {
-      if (this == null) {
-        throw new TypeError('Array.prototype.find called on null or undefined');
-      }
-      if (typeof predicate !== 'function') {
-        throw new TypeError('predicate must be a function');
-      }
-      var list = Object(this);
-      var length = list.length >>> 0;
-      var thisArg = arguments[1];
-      var value;
-      for (var i = 0; i < length; i++) {
-        value = list[i];
-        if (predicate.call(thisArg, value, i, list)) {
-          return value;
-        }
-      }
-      return undefined;
-    };
-  }
-
-  // Polyfill for Array.prototype.findIndex (IE11)
-  if (!Array.prototype.findIndex) {
-    Array.prototype.findIndex = function(predicate) {
-      if (this == null) {
-        throw new TypeError('Array.prototype.findIndex called on null or undefined');
-      }
-      if (typeof predicate !== 'function') {
-        throw new TypeError('predicate must be a function');
-      }
-      var list = Object(this);
-      var length = list.length >>> 0;
-      var thisArg = arguments[1];
-      var value;
-      for (var i = 0; i < length; i++) {
-        value = list[i];
-        if (predicate.call(thisArg, value, i, list)) {
-          return i;
-        }
-      }
-      return -1;
-    };
-  }
-
-  // Polyfill for Array.prototype.includes (IE11)
-  if (!Array.prototype.includes) {
-    Array.prototype.includes = function(searchElement, fromIndex) {
-      if (this == null) {
-        throw new TypeError('Array.prototype.includes called on null or undefined');
-      }
-      var O = Object(this);
-      var len = parseInt(O.length, 10) || 0;
-      if (len === 0) {
-        return false;
-      }
-      var n = parseInt(fromIndex, 10) || 0;
-      var k;
-      if (n >= 0) {
-        k = n;
-      } else {
-        k = len + n;
-        if (k < 0) { k = 0; }
-      }
-      while (k < len) {
-        var currentElement = O[k];
-        if (searchElement === currentElement ||
-           (searchElement !== searchElement && currentElement !== currentElement)) {
-          return true;
-        }
-        k++;
-      }
-      return false;
-    };
-  }
-
-  // Polyfill for String.prototype.includes (IE11)
-  if (!String.prototype.includes) {
-    String.prototype.includes = function(search, start) {
-      if (typeof start !== 'number') {
-        start = 0;
-      }
-      if (start + search.length > this.length) {
-        return false;
-      } else {
-        return this.indexOf(search, start) !== -1;
-      }
-    };
-  }
-
-  // Polyfill for String.prototype.startsWith (IE11)
-  if (!String.prototype.startsWith) {
-    String.prototype.startsWith = function(search, pos) {
-      pos = !pos || pos < 0 ? 0 : +pos;
-      return this.substring(pos, pos + search.length) === search;
-    };
-  }
-
-  // Polyfill for String.prototype.endsWith (IE11)
-  if (!String.prototype.endsWith) {
-    String.prototype.endsWith = function(search, this_len) {
-      if (this_len === undefined || this_len > this.length) {
-        this_len = this.length;
-      }
-      return this.substring(this_len - search.length, this_len) === search;
-    };
-  }
-
-  // Helper function to flatten arrays (replaces Array.flat)
-  function flattenArray(arr, depth) {
-    depth = depth === undefined ? 1 : depth;
-    var result = [];
-    for (var i = 0; i < arr.length; i++) {
-      if (Array.isArray(arr[i]) && depth > 0) {
-        var flattened = flattenArray(arr[i], depth - 1);
-        for (var j = 0; j < flattened.length; j++) {
-          result.push(flattened[j]);
-        }
-      } else {
-        result.push(arr[i]);
-      }
-    }
-    return result;
-  }
-
-  // Helper function to parse URL query parameters (replaces URLSearchParams)
-  function parseQueryString(search) {
-    var params = {};
-    if (!search) return params;
-    var queryString = search.charAt(0) === '?' ? search.substring(1) : search;
-    var pairs = queryString.split('&');
-    for (var i = 0; i < pairs.length; i++) {
-      var pair = pairs[i].split('=');
-      if (pair[0]) {
-        params[decodeURIComponent(pair[0])] = pair[1] ? decodeURIComponent(pair[1].replace(/\+/g, ' ')) : '';
-      }
-    }
-    return params;
-  }
-
-  // Helper function to build URL query string
-  function buildQueryString(params) {
-    var pairs = [];
-    for (var key in params) {
-      if (params.hasOwnProperty(key) && params[key] !== undefined && params[key] !== null) {
-        pairs.push(encodeURIComponent(key) + '=' + encodeURIComponent(params[key]));
-      }
-    }
-    return pairs.join('&');
-  }
-
-  // Helper function to resolve relative URLs (replaces new URL())
-  function resolveUrl(relative, base) {
-    if (!base) {
-      return relative;
-    }
-    // Simple resolution for same-directory files
-    var lastSlash = base.lastIndexOf('/');
-    if (lastSlash === -1) {
-      return relative;
-    }
-    return base.substring(0, lastSlash + 1) + relative;
-  }
-
-  // Polyfill for Promise.allSettled (IE11 and older browsers)
-  if (typeof Promise !== 'undefined' && !Promise.allSettled) {
-    Promise.allSettled = function(promises) {
-      var wrappedPromises = Array.prototype.slice.call(promises).map(function(p) {
-        return Promise.resolve(p).then(
-          function(value) {
-            return { status: 'fulfilled', value: value };
-          },
-          function(reason) {
-            return { status: 'rejected', reason: reason };
-          }
-        );
-      });
-      return Promise.all(wrappedPromises);
-    };
-  }
-
-  // ============================================================================
-  // END POLYFILLS
-  // ============================================================================
+  'use strict';
 
   // Configuration: Set window.FORMS_CONFIG before loading this script to override defaults
   // For production, add this single block before the script tag:
@@ -333,13 +70,14 @@
 
     const enqueue = (evt) => {
       try {
-        queue.push(Object.assign({}, evt, {
+        queue.push({
+          ...evt,
           ts: new Date().toISOString(),
-          sessionId: sessionId,
+          sessionId,
           formId: 'event',
-          url: (typeof location !== 'undefined' && location.href) ? location.href : '',
-          ua: (typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : ''
-        }));
+          url: location.href || '',
+          ua: navigator.userAgent || ''
+        });
         if (queue.length >= 10) {
           flush();
         } else if (!flushTimer) {
@@ -439,8 +177,8 @@
   
   // Fallback to URL parameter if not found in script tag
   if (!eventId) {
-    const urlParams = parseQueryString(window.location.search);
-    eventId = urlParams['eventId'] || null;
+    const urlParams = new URLSearchParams(window.location.search);
+    eventId = urlParams.get('eventId') || null;
   }
 
   // Remember whether we started with an eventId provided; used to decide whether to show "Back" UI
@@ -604,7 +342,7 @@
     try {
       const scriptEl = document.currentScript;
       if (!scriptEl) return;
-      const cssHref = resolveUrl("event.css", scriptEl.src);
+      const cssHref = new URL("./event.css", scriptEl.src).href;
       const exists = Array.from(document.styleSheets).some(ss => ss.href && ss.href.includes("event.css"));
       if (exists) return;
       const link = document.createElement("link");
@@ -694,7 +432,7 @@
       });
 
       // Safely flatten and filter children
-      const flatKids = flattenArray(kids, Infinity).filter(kid => kid !== null && kid !== undefined && kid !== false);
+      const flatKids = kids.flat(Infinity).filter(kid => kid !== null && kid !== undefined && kid !== false);
       
       flatKids.forEach(kid => {
         try {
@@ -728,7 +466,7 @@
   const setState = (updates) => {
     try {
       // Merge updates into state
-      state = Object.assign({}, state, updates);
+      state = { ...state, ...updates };
       
       // Debounce renders for performance on low-powered devices
       if (setStateDebounceTimer) clearTimeout(setStateDebounceTimer);
@@ -760,13 +498,10 @@
   const submitForm = async () => {
     // Collect current form values from DOM
     const currentValues = collectFormValues();
-    state.formData = Object.assign({}, state.formData, currentValues);
+    state.formData = { ...state.formData, ...currentValues };
     
     const currentPhase = phases[state.phase];
-    const allFields = flattenArray(
-      currentPhase.steps.map(function(s) { return s.fields; }),
-      1
-    );
+    const allFields = currentPhase.steps.flatMap(s => s.fields);
     
     // Validate required fields
     const missing = allFields.filter(fKey => {
@@ -1020,7 +755,7 @@
   // Helper to check if current step can proceed
   const canProceed = () => {
     const currentValues = collectFormValues();
-    const currentFormData = Object.assign({}, state.formData, currentValues);
+    const currentFormData = { ...state.formData, ...currentValues };
     
     const currentPhase = phases[state.phase];
     const currentStep = currentPhase.steps[state.step];
@@ -1049,7 +784,7 @@
     try {
       // Collect current form values from DOM
       const currentValues = collectFormValues();
-      state.formData = Object.assign({}, state.formData, currentValues);
+      state.formData = { ...state.formData, ...currentValues };
       
       const currentPhase = phases[state.phase];
       const currentStep = currentPhase.steps[state.step];
@@ -1200,7 +935,7 @@
     try {
       const addr = item.address || {};
       const street = [addr.house_number, addr.road].filter(Boolean).join(' ');
-      const updates = Object.assign({}, state.formData);
+      const updates = { ...state.formData };
       updates.Street = street || (addr.road || '');
       updates.City = addr.city || addr.town || addr.village || addr.county || '';
       updates.State = addr.state || '';
@@ -1938,7 +1673,7 @@
           if (shouldDisableHeavyMedia) {
             info.images = null;
           }
-          const updates = Object.assign({}, state.formData);
+          const updates = { ...state.formData };
           // Keep EventName (backend field) as the original full title unless already set
           if (info.name && !updates.EventName) updates.EventName = info.name;
           if (info.startDate && !updates.EventDate) updates.EventDate = info.startDate;
@@ -2217,8 +1952,8 @@
         return s && e ? `${s}/${e}` : '';
       })();
 
-      const googleParams = buildQueryString({ action: 'TEMPLATE', text: ev.name || '', details: ev.description || '', location: ev.location || '', dates: googleDates || undefined });
-      const googleUrl = `https://calendar.google.com/calendar/render?${googleParams}`;
+      const googleParams = new URLSearchParams({ action: 'TEMPLATE', text: ev.name || '', details: ev.description || '', location: ev.location || '', dates: googleDates || undefined });
+      const googleUrl = `https://calendar.google.com/calendar/render?${googleParams.toString()}`;
 
       // Build Outlook web URL (compose deeplink)
       const fmtIso = (d) => {
@@ -2227,14 +1962,13 @@
       };
       const startDt = (ev.startDate && ev.startTime) ? new Date(`${ev.startDate} ${ev.startTime}`) : (ev.startDate ? new Date(ev.startDate) : null);
       const endDt = (ev.endDate && ev.endTime) ? new Date(`${ev.endDate} ${ev.endTime}`) : (ev.endDate ? new Date(ev.endDate) : null);
-      const outlookParamsObj = {};
-      if (startDt) outlookParamsObj.startdt = fmtIso(startDt);
-      if (endDt) outlookParamsObj.enddt = fmtIso(endDt);
-      outlookParamsObj.subject = ev.name || '';
-      if (ev.description) outlookParamsObj.body = ev.description;
-      if (ev.location) outlookParamsObj.location = ev.location;
-      const outlookParams = buildQueryString(outlookParamsObj);
-      const outlookUrl = `https://outlook.live.com/calendar/0/deeplink/compose?${outlookParams}`;
+      const outlookParams = new URLSearchParams();
+      if (startDt) outlookParams.set('startdt', fmtIso(startDt));
+      if (endDt) outlookParams.set('enddt', fmtIso(endDt));
+      outlookParams.set('subject', ev.name || '');
+      if (ev.description) outlookParams.set('body', ev.description);
+      if (ev.location) outlookParams.set('location', ev.location);
+      const outlookUrl = `https://outlook.live.com/calendar/0/deeplink/compose?${outlookParams.toString()}`;
 
       elements.push(
         h('div', { className: 'ri-success-calendar', style: { display: 'flex', gap: '12px', justifyContent: 'center', marginTop: '18px' } },
@@ -2447,7 +2181,7 @@
         const requiresPayment = requiresPaymentField && paymentAmount >= 0.50;
         
         // Pre-fill event name/date when available
-        const updates = Object.assign({}, state.formData);
+        const updates = { ...state.formData };
         if (info.name && !updates.EventName) updates.EventName = info.name;
         if (info.startDate && !updates.EventDate) updates.EventDate = info.startDate;
         setState({ campaignInfo: info, formData: updates, requiresPayment, paymentAmount });
@@ -2538,30 +2272,24 @@
   };
 
   if (typeof window !== 'undefined') {
-    let initAttempts = 0;
-    const MAX_INIT_ATTEMPTS = 100; // 5 seconds maximum (100 * 50ms)
+    let isInitialized = false;
     
     const initializeApp = () => {
+      // Prevent double initialization
+      if (isInitialized) {
+        console.warn('App already initialized, skipping');
+        return;
+      }
+      
       try {
-        // Verify DOM is ready
-        if (!document.body || !document.getElementById(HOST_ID)) {
-          initAttempts++;
-          if (initAttempts < MAX_INIT_ATTEMPTS) {
-            console.warn('DOM not ready, deferring initialization (attempt ' + initAttempts + '/' + MAX_INIT_ATTEMPTS + ')');
-            setTimeout(initializeApp, 50);
-          } else {
-            console.error('Failed to initialize: ' + HOST_ID + ' element not found after ' + MAX_INIT_ATTEMPTS + ' attempts');
-            // Try to show error message if body exists
-            if (document.body) {
-              var errorDiv = document.createElement('div');
-              errorDiv.style.cssText = 'padding: 20px; margin: 20px; background: #fee; border: 1px solid #c00; border-radius: 4px; color: #c00;';
-              errorDiv.textContent = 'Error: Unable to load form. Please ensure the page contains an element with id="' + HOST_ID + '"';
-              document.body.appendChild(errorDiv);
-            }
-          }
+        // Verify DOM element exists
+        const root = document.getElementById(HOST_ID);
+        if (!root) {
+          console.error(`Cannot initialize: element with id="${HOST_ID}" not found`);
           return;
         }
         
+        isInitialized = true;
         applyCustomFields();
         
         // Show loading state immediately
@@ -2574,8 +2302,8 @@
           fetchActiveEvents()
         ]).then(([lookupResult, metaResult, eventsResult]) => {
           // Verify DOM still exists after async operations
-          if (!document.body || !document.getElementById(HOST_ID)) {
-            console.warn('DOM no longer available after data fetch');
+          if (!document.getElementById(HOST_ID)) {
+            console.warn('DOM element removed during initialization');
             return;
           }
           
@@ -2589,13 +2317,11 @@
           setState({ initialLoading: false });
           
           // Defer non-critical address suggestion handlers initialization
-          // Note: actual listener attachment is done in render() with guard flag _riHandlerAttached
           setTimeout(() => {
             const root = document.getElementById(HOST_ID);
-            if (!root || !document.body || !document.body.contains(root)) return;
+            if (!root) return;
             if (!config.disableAddressLookup) {
               addressSuggestionsEl = root.querySelector('.ri-address-suggestions');
-              // Listener will be attached in render() with guard flag to prevent duplicates
             } else {
               addressSuggestionsEl = null;
             }
@@ -2604,7 +2330,7 @@
           console.error('Initialization error:', err);
           // Ensure we render even if something fails
           try {
-            if (document.body && document.getElementById(HOST_ID)) {
+            if (document.getElementById(HOST_ID)) {
               render();
               setState({ initialLoading: false });
             }
@@ -2614,12 +2340,13 @@
         });
       } catch (e) {
         console.error('Critical initialization error:', e);
+        isInitialized = false; // Allow retry on error
       }
     };
     
-    // Use both DOMContentLoaded and a fallback check
+    // Initialize when DOM is ready
     if (document.readyState === 'loading') {
-      window.addEventListener('DOMContentLoaded', initializeApp);
+      document.addEventListener('DOMContentLoaded', initializeApp, { once: true });
     } else {
       // DOM already loaded, initialize immediately
       initializeApp();
