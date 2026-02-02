@@ -441,7 +441,7 @@
   // Fallback to URL parameter if not found in script tag
   if (!eventId) {
     const urlParams = parseQueryString(window.location.search);
-    eventId = urlParams['eventId'] || urlParams['eventid'] || null;
+    eventId = urlParams['eventId'] || null;
   }
 
   // Remember whether we started with an eventId provided; used to decide whether to show "Back" UI
@@ -764,13 +764,10 @@
     state.formData = { ...state.formData, ...currentValues };
     
     const currentPhase = phases[state.phase];
-    const allFields = [];
-    for (var i = 0; i < currentPhase.steps.length; i++) {
-      var step = currentPhase.steps[i];
-      for (var j = 0; j < step.fields.length; j++) {
-        allFields.push(step.fields[j]);
-      }
-    }
+    const allFields = flattenArray(
+      currentPhase.steps.map(function(s) { return s.fields; }),
+      1
+    );
     
     // Validate required fields
     const missing = allFields.filter(fKey => {
