@@ -397,44 +397,92 @@
   // HELPER FUNCTIONS
   // ============================================================================
   const h = (tag, attrs = {}, ...kids) => {
-    const el = document.createElement(tag);
-    // Temporarily hold value so we can set it AFTER children (important for <select>)
-    const valueToSet = Object.prototype.hasOwnProperty.call(attrs, 'value') ? attrs.value : undefined;
+    try {
+      const el = document.createElement(tag);
+      // Temporarily hold value so we can set it AFTER children (important for <select>)
+      const valueToSet = Object.prototype.hasOwnProperty.call(attrs, 'value') ? attrs.value : undefined;
 
-    Object.entries(attrs).forEach(([k, v]) => {
-      if (k === 'className') {
-        el.className = v;
-      } else if (k === 'disabled') {
-        if (v) el.setAttribute('disabled', '');
-      } else if (k.startsWith('on')) {
-        el.addEventListener(k.slice(2).toLowerCase(), v);
-      } else if (k === 'style' && typeof v === 'object') {
-        Object.assign(el.style, v);
-      } else if (k === 'value') {
-        // skip here; set after children appended to ensure proper selection for <select>
-      } else {
-        // fallback to setting attribute for other keys
-        el.setAttribute(k, v);
+      Object.entries(attrs).forEach(([k, v]) => {
+        try {
+          if (v === null || v === undefined) return; // Skip null/undefined values
+          
+          if (k === 'className') {
+            el.className = v;
+          } else if (k === 'disabled') {
+            if (v) el.setAttribute('disabled', '');
+          } else if (k.startsWith('on')) {
+            // Use passive listeners for scroll/touch events, non-passive for others
+            const eventName = k.slice(2).toLowerCase();
+            const isPassiveEvent = ['scroll', 'wheel', 'touchstart', 'touchmove'].includes(eventName);
+            const options = isPassiveEvent ? { passive: true } : (eventName === 'keydown' ? { passive: false } : undefined);
+            el.addEventListener(eventName, v, options);
+          } else if (k === 'style' && typeof v === 'object') {
+            Object.assign(el.style, v);
+          } else if (k === 'value') {
+            // skip here; set after children appended to ensure proper selection for <select>
+          } else if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+            // Only set valid attribute values
+            el.setAttribute(k, String(v));
+          }
+        } catch (attrErr) {
+          console.warn(`Failed to set attribute ${k}:`, attrErr);
+        }
+      });
+
+      // Safely flatten and filter children
+      const flatKids = kids.flat(Infinity).filter(kid => kid !== null && kid !== undefined && kid !== false);
+      
+      flatKids.forEach(kid => {
+        try {
+          if (typeof kid === 'string' || typeof kid === 'number') {
+            el.appendChild(document.createTextNode(String(kid)));
+          } else if (kid && kid.nodeType) {
+            el.appendChild(kid);
+          }
+        } catch (childErr) {
+          console.warn('Failed to append child:', childErr);
+        }
+      });
+
+      // Now set value property for inputs/selects/textareas so their state persists after re-render
+      if (typeof valueToSet !== 'undefined' && (tag === 'input' || tag === 'select' || tag === 'textarea')) {
+        try { el.value = valueToSet; } catch (e) { /* ignore if not supported */ }
       }
-    });
 
-    kids.flat().forEach(kid => {
-      if (typeof kid === 'string') el.appendChild(document.createTextNode(kid));
-      else if (kid) el.appendChild(kid);
-    });
-
-    // Now set value property for inputs/selects/textareas so their state persists after re-render
-    if (typeof valueToSet !== 'undefined' && (tag === 'input' || tag === 'select' || tag === 'textarea')) {
-      try { el.value = valueToSet; } catch (e) { /* ignore if not supported */ }
+      return el;
+    } catch (e) {
+      console.error('Fatal error in h():', e);
+      // Return empty div as fallback
+      const fallback = document.createElement('div');
+      fallback.className = 'ri-error';
+      fallback.textContent = 'Error rendering component';
+      return fallback;
     }
-
-    return el;
   };
 
+  let setStateDebounceTimer = null;
   const setState = (updates) => {
     try {
+      // Merge updates into state
       state = { ...state, ...updates };
-      scheduleRender();
+      
+      // Debounce renders for performance on low-powered devices
+      if (setStateDebounceTimer) clearTimeout(setStateDebounceTimer);
+      
+      // Immediate render for critical state changes
+      const isCritical = updates.hasOwnProperty('error') || 
+                        updates.hasOwnProperty('loading') || 
+                        updates.hasOwnProperty('status') ||
+                        updates.hasOwnProperty('initialLoading');
+      
+      if (isCritical) {
+        scheduleRender();
+      } else {
+        // Debounce non-critical updates
+        setStateDebounceTimer = setTimeout(() => {
+          scheduleRender();
+        }, 16); // ~60fps
+      }
     } catch (e) {
       console.error('Fatal error in setState:', e);
       telemetry.enqueue({ type: 'setstate_error', message: String(e), stack: e && e.stack ? String(e.stack) : '' });
@@ -1038,6 +1086,7 @@
   let eventMapInstance = null;
   let eventMapMarker = null;
   let eventMapRenderedFor = null;
+  let eventMapRenderThrottle = null;
 
   const getCurrentEventLocation = () => {
     const src = state.campaignInfo || state.selectedEvent || null;
@@ -1048,9 +1097,15 @@
   };
 
   const renderEventMap = async () => {
-    try {
-      const container = document.getElementById('ri-event-map');
-      const locationText = (getCurrentEventLocation() || '').trim();
+    // Throttle map rendering to prevent excessive calls
+    if (eventMapRenderThrottle) {
+      clearTimeout(eventMapRenderThrottle);
+    }
+    
+    eventMapRenderThrottle = setTimeout(async () => {
+      try {
+        const container = document.getElementById('ri-event-map');
+        const locationText = (getCurrentEventLocation() || '').trim();
 
       if (!container || !locationText) {
         eventMapRenderedFor = null;
@@ -1237,6 +1292,7 @@
       // Silently fail - map is a nice-to-have, not critical
       console.warn('renderEventMap error:', e);
     }
+    }, 100); // Throttle to max once per 100ms
   };
 
 
@@ -1245,9 +1301,15 @@
   // ============================================================================
   
   const renderField = (fieldKey) => {
-    const meta = fieldMeta[fieldKey];
-    const value = state.formData[fieldKey] || '';
-    const labelText = orgTerms.labels[fieldKey] || meta.label;
+    try {
+      const meta = fieldMeta[fieldKey];
+      if (!meta) {
+        console.warn(`Field metadata not found for: ${fieldKey}`);
+        return h('div', { className: 'ri-field' });
+      }
+      
+      const value = state.formData[fieldKey] || '';
+      const labelText = (orgTerms.labels && orgTerms.labels[fieldKey]) || meta.label || fieldKey;
 
     // Render checkbox fields inline (no top label) to avoid duplicate labels
     if (meta.type === 'checkbox') {
@@ -1312,6 +1374,14 @@
             onInput: (e) => updateField(fieldKey, e.target.value),
           })
     );
+    } catch (e) {
+      console.error(`Error rendering field ${fieldKey}:`, e);
+      return h('div', { className: 'ri-field ri-field-error' },
+        h('div', { className: 'ri-error', style: { fontSize: '12px', padding: '8px' } }, 
+          `Error loading field: ${fieldKey}`
+        )
+      );
+    }
   };
 
   const renderProgress = () => {
@@ -1492,9 +1562,30 @@
       if (!shouldDisableHeavyMedia && state.campaignInfo && state.campaignInfo.images && state.campaignInfo.images.length) {
         console.log('renderEventHero: Rendering with image', state.campaignInfo.images[0]);
         const img = state.campaignInfo.images[0];
-        const mediaEl = h('div', { className: 'ri-event-hero-media' },
-          h('img', { src: img.url, alt: img.title || title || 'Event image', loading: 'lazy', decoding: 'async', style: { width: '100%', height: 'auto', borderRadius: '8px' } })
-        );
+        
+        // Create image element with error handler
+        const imgEl = document.createElement('img');
+        imgEl.src = img.url;
+        imgEl.alt = img.title || title || 'Event image';
+        imgEl.loading = 'lazy';
+        imgEl.decoding = 'async';
+        Object.assign(imgEl.style, { width: '100%', height: 'auto', borderRadius: '8px' });
+        
+        // Handle image load failures gracefully
+        imgEl.onerror = function() {
+          try {
+            if (this.parentNode && document.body.contains(this.parentNode)) {
+              this.style.display = 'none';
+            }
+          } catch (e) { /* ignore */ }
+        };
+        
+        const mediaEl = h('div', { className: 'ri-event-hero-media' });
+        try {
+          mediaEl.appendChild(imgEl);
+        } catch (e) {
+          console.warn('Failed to append image:', e);
+        }
 
         return h('div', { className: 'ri-event-hero ri-card ri-event-hero-with-media' }, mediaEl, contentEl);
       }
@@ -1513,7 +1604,13 @@
   const renderEventList = () => {
     if (state.eventId || !Array.isArray(state.availableEvents) || state.availableEvents.length === 0) return null;
 
+    // Limit number of events rendered at once to prevent memory issues
+    const MAX_EVENTS_DISPLAYED = 20;
+    const eventsToRender = state.availableEvents.slice(0, MAX_EVENTS_DISPLAYED);
+    const hasMore = state.availableEvents.length > MAX_EVENTS_DISPLAYED;
+
     const makeCard = (rec) => {
+      if (!rec) return null;
       const title = rec.Name || rec.name || 'Event';
       // Split title into main header and optional subtitle if a ' - ' exists
       const titleParts = (title || '').split(/\s*-\s*/);
@@ -1594,17 +1691,50 @@
       };
 
       const onCardKeyDown = (e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onChoose();
+        try {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onChoose();
+          }
+        } catch (err) {
+          console.warn('Error in card keydown handler:', err);
         }
       };
 
       const cardImageUrl = (rec.images && rec.images.length) ? (rec.images[0].url) : null;
 
-      const cardImageEl = (!shouldDisableHeavyMedia && cardImageUrl) ? h('div', { className: 'ri-event-card-media' },
-        h('img', { src: cardImageUrl, alt: rec.Name || rec.name || '', loading: 'lazy', decoding: 'async', style: { width: '100%', height: '140px', objectFit: 'cover', borderRadius: '8px', marginBottom: '10px' } })
-      ) : null;
+      let cardImageEl = null;
+      if (!shouldDisableHeavyMedia && cardImageUrl) {
+        try {
+          const imgEl = document.createElement('img');
+          imgEl.src = cardImageUrl;
+          imgEl.alt = rec.Name || rec.name || '';
+          imgEl.loading = 'lazy';
+          imgEl.decoding = 'async';
+          Object.assign(imgEl.style, { 
+            width: '100%', 
+            height: '140px', 
+            objectFit: 'cover', 
+            borderRadius: '8px', 
+            marginBottom: '10px' 
+          });
+          
+          // Handle image load failures
+          imgEl.onerror = function() {
+            try {
+              if (this.parentNode && document.body.contains(this.parentNode)) {
+                this.style.display = 'none';
+              }
+            } catch (e) { /* ignore */ }
+          };
+          
+          cardImageEl = h('div', { className: 'ri-event-card-media' });
+          cardImageEl.appendChild(imgEl);
+        } catch (e) {
+          console.warn('Failed to create card image:', e);
+          cardImageEl = null;
+        }
+      }
 
       return h('div', { className: 'ri-event-card', tabindex: '0', onKeydown: onCardKeyDown, role: 'button', 'aria-label': `Choose ${mainTitle}` },
         cardImageEl,
@@ -1634,11 +1764,32 @@
       );
     };
 
-    return h('div', { className: 'ri-event-list ri-card' },
-      h('div', { className: 'ri-event-list-grid' },
-        ...state.availableEvents.map(makeCard)
-      )
-    );
+    // Render cards with error handling
+    const cards = [];
+    for (const event of eventsToRender) {
+      try {
+        const card = makeCard(event);
+        if (card) cards.push(card);
+      } catch (e) {
+        console.warn('Failed to render event card:', e);
+        // Continue rendering other cards
+      }
+    }
+
+    const elements = [
+      h('div', { className: 'ri-event-list-grid' }, ...cards)
+    ];
+
+    // Add "showing X of Y" message if there are more events
+    if (hasMore) {
+      elements.push(
+        h('div', { className: 'ri-event-list-info', style: { textAlign: 'center', padding: '16px', color: 'var(--muted)' } },
+          `Showing ${eventsToRender.length} of ${state.availableEvents.length} events`
+        )
+      );
+    }
+
+    return h('div', { className: 'ri-event-list ri-card' }, ...elements);
   };
 
   const clearSelection = () => {
@@ -1967,13 +2118,24 @@
   // INITIALIZATION
   // ============================================================================
   
+  // Store abort controllers for cleanup
+  let eventMetadataAbortController = null;
+  let activeEventsAbortController = null;
+  
   // Fetch event metadata when eventId is present
   const fetchEventMetadata = async () => {
     if (!state.eventId) return;
+    
+    // Cancel any pending request
+    if (eventMetadataAbortController) {
+      try { eventMetadataAbortController.abort(); } catch (e) { /* ignore */ }
+    }
+    
     try {
+      eventMetadataAbortController = typeof AbortController !== 'undefined' ? new AbortController() : null;
       const formConfigParam = encodeURIComponent(JSON.stringify(FORM_CONFIG));
       const url = `${ENDPOINT}?eventid=${encodeURIComponent(state.eventId)}&formConfig=${formConfigParam}`;
-      const res = await fetch(url);
+      const res = await fetch(url, eventMetadataAbortController ? { signal: eventMetadataAbortController.signal } : {});
       if (!res.ok) {
         // Do not surface as error; proceed gracefully
         return;
@@ -2028,10 +2190,17 @@
   // Fetch active events when no eventId provided
   const fetchActiveEvents = async () => {
     if (state.eventId) return;
+    
+    // Cancel any pending request
+    if (activeEventsAbortController) {
+      try { activeEventsAbortController.abort(); } catch (e) { /* ignore */ }
+    }
+    
     try {
+      activeEventsAbortController = typeof AbortController !== 'undefined' ? new AbortController() : null;
       const formConfigParam = encodeURIComponent(JSON.stringify(FORM_CONFIG));
       const url = `${ENDPOINT}?listActiveEvents=true&formConfig=${formConfigParam}`;
-      const res = await fetch(url);
+      const res = await fetch(url, activeEventsAbortController ? { signal: activeEventsAbortController.signal } : {});
       if (!res.ok) return;
       const data = await res.json();
       const list = data && Array.isArray(data.campaigns) ? data.campaigns : [];
@@ -2170,7 +2339,35 @@
       initializeApp();
     }
 
-    window.addEventListener('pagehide', () => { telemetry.flush(); });
+    window.addEventListener('pagehide', () => { 
+      // Comprehensive cleanup
+      try {
+        telemetry.flush();
+        
+        // Cancel any pending requests
+        if (eventMetadataAbortController) {
+          try { eventMetadataAbortController.abort(); } catch (e) { /* ignore */ }
+        }
+        if (activeEventsAbortController) {
+          try { activeEventsAbortController.abort(); } catch (e) { /* ignore */ }
+        }
+        if (addressSearchAbort) {
+          try { addressSearchAbort.abort(); } catch (e) { /* ignore */ }
+        }
+        
+        // Clean up map
+        if (eventMapInstance && eventMapInstance.remove) {
+          try { eventMapInstance.remove(); } catch (e) { /* ignore */ }
+        }
+        
+        // Clear timers
+        if (addressSearchTimeout) clearTimeout(addressSearchTimeout);
+        if (setStateDebounceTimer) clearTimeout(setStateDebounceTimer);
+        if (eventMapRenderThrottle) clearTimeout(eventMapRenderThrottle);
+      } catch (e) {
+        console.warn('Cleanup error:', e);
+      }
+    });
     if (typeof document !== 'undefined' && !document.__globalPageHideListenersAttached) {
       document.__globalPageHideListenersAttached = true;
       document.addEventListener('visibilitychange', () => {
