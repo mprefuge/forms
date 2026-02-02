@@ -1,6 +1,77 @@
 (() => {
   'use strict';
 
+  // ============================================================================
+  // MINIMAL POLYFILLS FOR CROSS-BROWSER COMPATIBILITY
+  // ============================================================================
+  
+  // Polyfill for Object.assign (IE11)
+  if (typeof Object.assign !== 'function') {
+    Object.assign = function(target) {
+      if (target == null) {
+        throw new TypeError('Cannot convert undefined or null to object');
+      }
+      var to = Object(target);
+      for (var index = 1; index < arguments.length; index++) {
+        var nextSource = arguments[index];
+        if (nextSource != null) {
+          for (var nextKey in nextSource) {
+            if (Object.prototype.hasOwnProperty.call(nextSource, nextKey)) {
+              to[nextKey] = nextSource[nextKey];
+            }
+          }
+        }
+      }
+      return to;
+    };
+  }
+
+  // Polyfill for Array.prototype.flat (ES2019)
+  if (!Array.prototype.flat) {
+    Array.prototype.flat = function(depth) {
+      var flattend = [];
+      (function flat(array, depth) {
+        for (var el of array) {
+          if (Array.isArray(el) && depth > 0) {
+            flat(el, depth - 1); 
+          } else {
+            flattend.push(el);
+          }
+        }
+      })(this, Math.floor(depth) || 1);
+      return flattend;
+    };
+  }
+
+  // Polyfill for URL constructor (IE11)
+  if (typeof URL === 'undefined' || !URL.prototype || typeof URL.prototype.href === 'undefined') {
+    (function() {
+      try {
+        new URL('http://test');
+      } catch (e) {
+        window.URL = function(url, base) {
+          if (base) {
+            var doc = document.implementation.createHTMLDocument('');
+            var baseEl = doc.createElement('base');
+            baseEl.href = base;
+            doc.head.appendChild(baseEl);
+            var anchor = doc.createElement('a');
+            anchor.href = url;
+            this.href = anchor.href;
+          } else {
+            var anchor = document.createElement('a');
+            anchor.href = url;
+            this.href = anchor.href;
+          }
+        };
+      }
+    })();
+  }
+
+  // ============================================================================
+  // END POLYFILLS
+  // ============================================================================
+
   // Configuration: Set window.FORMS_CONFIG before loading this script to override defaults
   // For production, add this single block before the script tag:
   // <script>
@@ -293,7 +364,7 @@
   // UTILITY FUNCTIONS
   // ============================================================================
   function updateState(updates) {
-    state = { ...state, ...updates };
+    state = Object.assign({}, state, updates);
     render();
   }
 

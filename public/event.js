@@ -12,6 +12,121 @@
 (() => {
   'use strict';
 
+  // ============================================================================
+  // MINIMAL POLYFILLS FOR CROSS-BROWSER COMPATIBILITY
+  // ============================================================================
+  
+  // Polyfill for Object.assign (IE11)
+  if (typeof Object.assign !== 'function') {
+    Object.assign = function(target) {
+      if (target == null) {
+        throw new TypeError('Cannot convert undefined or null to object');
+      }
+      var to = Object(target);
+      for (var index = 1; index < arguments.length; index++) {
+        var nextSource = arguments[index];
+        if (nextSource != null) {
+          for (var nextKey in nextSource) {
+            if (Object.prototype.hasOwnProperty.call(nextSource, nextKey)) {
+              to[nextKey] = nextSource[nextKey];
+            }
+          }
+        }
+      }
+      return to;
+    };
+  }
+
+  // Polyfill for Array.prototype.flat (ES2019)
+  if (!Array.prototype.flat) {
+    Array.prototype.flat = function(depth) {
+      var flattend = [];
+      (function flat(array, depth) {
+        for (var el of array) {
+          if (Array.isArray(el) && depth > 0) {
+            flat(el, depth - 1); 
+          } else {
+            flattend.push(el);
+          }
+        }
+      })(this, Math.floor(depth) || 1);
+      return flattend;
+    };
+  }
+
+  // Polyfill for Array.prototype.flatMap (ES2019)
+  if (!Array.prototype.flatMap) {
+    Array.prototype.flatMap = function(callback, thisArg) {
+      return this.map(callback, thisArg).flat(1);
+    };
+  }
+
+  // Polyfill for URLSearchParams (IE11)
+  if (typeof URLSearchParams === 'undefined') {
+    window.URLSearchParams = function(search) {
+      this.dict = {};
+      if (typeof search === 'string') {
+        var pairs = search.replace(/^\?/, '').split('&');
+        for (var i = 0; i < pairs.length; i++) {
+          var pair = pairs[i].split('=');
+          if (pair[0]) {
+            this.dict[decodeURIComponent(pair[0])] = pair[1] ? decodeURIComponent(pair[1].replace(/\+/g, ' ')) : '';
+          }
+        }
+      } else if (typeof search === 'object' && search !== null) {
+        for (var key in search) {
+          if (search.hasOwnProperty(key)) {
+            this.dict[key] = search[key];
+          }
+        }
+      }
+    };
+    window.URLSearchParams.prototype.get = function(name) {
+      return this.dict.hasOwnProperty(name) ? this.dict[name] : null;
+    };
+    window.URLSearchParams.prototype.set = function(name, value) {
+      this.dict[name] = String(value);
+    };
+    window.URLSearchParams.prototype.toString = function() {
+      var pairs = [];
+      for (var key in this.dict) {
+        if (this.dict.hasOwnProperty(key) && this.dict[key] !== undefined && this.dict[key] !== null) {
+          pairs.push(encodeURIComponent(key) + '=' + encodeURIComponent(this.dict[key]));
+        }
+      }
+      return pairs.join('&');
+    };
+  }
+
+  // Polyfill for URL constructor (IE11)
+  if (typeof URL === 'undefined' || !URL.prototype || typeof URL.prototype.href === 'undefined') {
+    (function() {
+      try {
+        new URL('http://test');
+      } catch (e) {
+        window.URL = function(url, base) {
+          if (base) {
+            var doc = document.implementation.createHTMLDocument('');
+            var baseEl = doc.createElement('base');
+            baseEl.href = base;
+            doc.head.appendChild(baseEl);
+            var anchor = doc.createElement('a');
+            anchor.href = url;
+            this.href = anchor.href;
+          } else {
+            var anchor = document.createElement('a');
+            anchor.href = url;
+            this.href = anchor.href;
+          }
+        };
+      }
+    })();
+  }
+
+  // ============================================================================
+  // END POLYFILLS
+  // ============================================================================
+
   // Configuration: Set window.FORMS_CONFIG before loading this script to override defaults
   // For production, add this single block before the script tag:
   // <script>
@@ -466,7 +581,7 @@
   const setState = (updates) => {
     try {
       // Merge updates into state
-      state = { ...state, ...updates };
+      state = Object.assign({}, state, updates);
       
       // Debounce renders for performance on low-powered devices
       if (setStateDebounceTimer) clearTimeout(setStateDebounceTimer);
@@ -498,7 +613,7 @@
   const submitForm = async () => {
     // Collect current form values from DOM
     const currentValues = collectFormValues();
-    state.formData = { ...state.formData, ...currentValues };
+    state.formData = Object.assign({}, state.formData, currentValues);
     
     const currentPhase = phases[state.phase];
     const allFields = currentPhase.steps.flatMap(s => s.fields);
@@ -755,7 +870,7 @@
   // Helper to check if current step can proceed
   const canProceed = () => {
     const currentValues = collectFormValues();
-    const currentFormData = { ...state.formData, ...currentValues };
+    const currentFormData = Object.assign({}, state.formData, currentValues);
     
     const currentPhase = phases[state.phase];
     const currentStep = currentPhase.steps[state.step];
@@ -784,7 +899,7 @@
     try {
       // Collect current form values from DOM
       const currentValues = collectFormValues();
-      state.formData = { ...state.formData, ...currentValues };
+      state.formData = Object.assign({}, state.formData, currentValues);
       
       const currentPhase = phases[state.phase];
       const currentStep = currentPhase.steps[state.step];
@@ -935,7 +1050,7 @@
     try {
       const addr = item.address || {};
       const street = [addr.house_number, addr.road].filter(Boolean).join(' ');
-      const updates = { ...state.formData };
+      const updates = Object.assign({}, state.formData);
       updates.Street = street || (addr.road || '');
       updates.City = addr.city || addr.town || addr.village || addr.county || '';
       updates.State = addr.state || '';
@@ -1673,7 +1788,7 @@
           if (shouldDisableHeavyMedia) {
             info.images = null;
           }
-          const updates = { ...state.formData };
+          const updates = Object.assign({}, state.formData);
           // Keep EventName (backend field) as the original full title unless already set
           if (info.name && !updates.EventName) updates.EventName = info.name;
           if (info.startDate && !updates.EventDate) updates.EventDate = info.startDate;
@@ -2181,7 +2296,7 @@
         const requiresPayment = requiresPaymentField && paymentAmount >= 0.50;
         
         // Pre-fill event name/date when available
-        const updates = { ...state.formData };
+        const updates = Object.assign({}, state.formData);
         if (info.name && !updates.EventName) updates.EventName = info.name;
         if (info.startDate && !updates.EventDate) updates.EventDate = info.startDate;
         setState({ campaignInfo: info, formData: updates, requiresPayment, paymentAmount });
