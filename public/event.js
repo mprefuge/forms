@@ -10,6 +10,271 @@
 // ============================================================================
 
 (() => {
+  // ============================================================================
+  // POLYFILLS FOR CROSS-BROWSER COMPATIBILITY
+  // ============================================================================
+  
+  // Polyfill for Object.assign (IE11)
+  if (typeof Object.assign !== 'function') {
+    Object.assign = function(target) {
+      if (target == null) {
+        throw new TypeError('Cannot convert undefined or null to object');
+      }
+      var to = Object(target);
+      for (var index = 1; index < arguments.length; index++) {
+        var nextSource = arguments[index];
+        if (nextSource != null) {
+          for (var nextKey in nextSource) {
+            if (Object.prototype.hasOwnProperty.call(nextSource, nextKey)) {
+              to[nextKey] = nextSource[nextKey];
+            }
+          }
+        }
+      }
+      return to;
+    };
+  }
+
+  // Polyfill for Array.from (IE11)
+  if (!Array.from) {
+    Array.from = (function () {
+      var toStr = Object.prototype.toString;
+      var isCallable = function (fn) {
+        return typeof fn === 'function' || toStr.call(fn) === '[object Function]';
+      };
+      var toInteger = function (value) {
+        var number = Number(value);
+        if (isNaN(number)) { return 0; }
+        if (number === 0 || !isFinite(number)) { return number; }
+        return (number > 0 ? 1 : -1) * Math.floor(Math.abs(number));
+      };
+      var maxSafeInteger = Math.pow(2, 53) - 1;
+      var toLength = function (value) {
+        var len = toInteger(value);
+        return Math.min(Math.max(len, 0), maxSafeInteger);
+      };
+
+      return function from(arrayLike/*, mapFn, thisArg */) {
+        var C = this;
+        var items = Object(arrayLike);
+        if (arrayLike == null) {
+          throw new TypeError('Array.from requires an array-like object - not null or undefined');
+        }
+        var mapFn = arguments.length > 1 ? arguments[1] : void undefined;
+        var T;
+        if (typeof mapFn !== 'undefined') {
+          if (!isCallable(mapFn)) {
+            throw new TypeError('Array.from: when provided, the second argument must be a function');
+          }
+          if (arguments.length > 2) {
+            T = arguments[2];
+          }
+        }
+        var len = toLength(items.length);
+        var A = isCallable(C) ? Object(new C(len)) : new Array(len);
+        var k = 0;
+        var kValue;
+        while (k < len) {
+          kValue = items[k];
+          if (mapFn) {
+            A[k] = typeof T === 'undefined' ? mapFn(kValue, k) : mapFn.call(T, kValue, k);
+          } else {
+            A[k] = kValue;
+          }
+          k += 1;
+        }
+        A.length = len;
+        return A;
+      };
+    }());
+  }
+
+  // Polyfill for Array.prototype.find (IE11)
+  if (!Array.prototype.find) {
+    Array.prototype.find = function(predicate) {
+      if (this == null) {
+        throw new TypeError('Array.prototype.find called on null or undefined');
+      }
+      if (typeof predicate !== 'function') {
+        throw new TypeError('predicate must be a function');
+      }
+      var list = Object(this);
+      var length = list.length >>> 0;
+      var thisArg = arguments[1];
+      var value;
+      for (var i = 0; i < length; i++) {
+        value = list[i];
+        if (predicate.call(thisArg, value, i, list)) {
+          return value;
+        }
+      }
+      return undefined;
+    };
+  }
+
+  // Polyfill for Array.prototype.findIndex (IE11)
+  if (!Array.prototype.findIndex) {
+    Array.prototype.findIndex = function(predicate) {
+      if (this == null) {
+        throw new TypeError('Array.prototype.findIndex called on null or undefined');
+      }
+      if (typeof predicate !== 'function') {
+        throw new TypeError('predicate must be a function');
+      }
+      var list = Object(this);
+      var length = list.length >>> 0;
+      var thisArg = arguments[1];
+      var value;
+      for (var i = 0; i < length; i++) {
+        value = list[i];
+        if (predicate.call(thisArg, value, i, list)) {
+          return i;
+        }
+      }
+      return -1;
+    };
+  }
+
+  // Polyfill for Array.prototype.includes (IE11)
+  if (!Array.prototype.includes) {
+    Array.prototype.includes = function(searchElement, fromIndex) {
+      if (this == null) {
+        throw new TypeError('Array.prototype.includes called on null or undefined');
+      }
+      var O = Object(this);
+      var len = parseInt(O.length, 10) || 0;
+      if (len === 0) {
+        return false;
+      }
+      var n = parseInt(fromIndex, 10) || 0;
+      var k;
+      if (n >= 0) {
+        k = n;
+      } else {
+        k = len + n;
+        if (k < 0) { k = 0; }
+      }
+      while (k < len) {
+        var currentElement = O[k];
+        if (searchElement === currentElement ||
+           (searchElement !== searchElement && currentElement !== currentElement)) {
+          return true;
+        }
+        k++;
+      }
+      return false;
+    };
+  }
+
+  // Polyfill for String.prototype.includes (IE11)
+  if (!String.prototype.includes) {
+    String.prototype.includes = function(search, start) {
+      if (typeof start !== 'number') {
+        start = 0;
+      }
+      if (start + search.length > this.length) {
+        return false;
+      } else {
+        return this.indexOf(search, start) !== -1;
+      }
+    };
+  }
+
+  // Polyfill for String.prototype.startsWith (IE11)
+  if (!String.prototype.startsWith) {
+    String.prototype.startsWith = function(search, pos) {
+      pos = !pos || pos < 0 ? 0 : +pos;
+      return this.substring(pos, pos + search.length) === search;
+    };
+  }
+
+  // Polyfill for String.prototype.endsWith (IE11)
+  if (!String.prototype.endsWith) {
+    String.prototype.endsWith = function(search, this_len) {
+      if (this_len === undefined || this_len > this.length) {
+        this_len = this.length;
+      }
+      return this.substring(this_len - search.length, this_len) === search;
+    };
+  }
+
+  // Helper function to flatten arrays (replaces Array.flat)
+  function flattenArray(arr, depth) {
+    depth = depth === undefined ? 1 : depth;
+    var result = [];
+    for (var i = 0; i < arr.length; i++) {
+      if (Array.isArray(arr[i]) && depth > 0) {
+        var flattened = flattenArray(arr[i], depth - 1);
+        for (var j = 0; j < flattened.length; j++) {
+          result.push(flattened[j]);
+        }
+      } else {
+        result.push(arr[i]);
+      }
+    }
+    return result;
+  }
+
+  // Helper function to parse URL query parameters (replaces URLSearchParams)
+  function parseQueryString(search) {
+    var params = {};
+    if (!search) return params;
+    var queryString = search.charAt(0) === '?' ? search.substring(1) : search;
+    var pairs = queryString.split('&');
+    for (var i = 0; i < pairs.length; i++) {
+      var pair = pairs[i].split('=');
+      if (pair[0]) {
+        params[decodeURIComponent(pair[0])] = pair[1] ? decodeURIComponent(pair[1].replace(/\+/g, ' ')) : '';
+      }
+    }
+    return params;
+  }
+
+  // Helper function to build URL query string
+  function buildQueryString(params) {
+    var pairs = [];
+    for (var key in params) {
+      if (params.hasOwnProperty(key) && params[key] !== undefined && params[key] !== null) {
+        pairs.push(encodeURIComponent(key) + '=' + encodeURIComponent(params[key]));
+      }
+    }
+    return pairs.join('&');
+  }
+
+  // Helper function to resolve relative URLs (replaces new URL())
+  function resolveUrl(relative, base) {
+    if (!base) {
+      return relative;
+    }
+    // Simple resolution for same-directory files
+    var lastSlash = base.lastIndexOf('/');
+    if (lastSlash === -1) {
+      return relative;
+    }
+    return base.substring(0, lastSlash + 1) + relative;
+  }
+
+  // Polyfill for Promise.allSettled (IE11 and older browsers)
+  if (typeof Promise !== 'undefined' && !Promise.allSettled) {
+    Promise.allSettled = function(promises) {
+      var wrappedPromises = Array.prototype.slice.call(promises).map(function(p) {
+        return Promise.resolve(p).then(
+          function(value) {
+            return { status: 'fulfilled', value: value };
+          },
+          function(reason) {
+            return { status: 'rejected', reason: reason };
+          }
+        );
+      });
+      return Promise.all(wrappedPromises);
+    };
+  }
+
+  // ============================================================================
+  // END POLYFILLS
+  // ============================================================================
+
   // Configuration: Set window.FORMS_CONFIG before loading this script to override defaults
   // For production, add this single block before the script tag:
   // <script>
@@ -175,8 +440,8 @@
   
   // Fallback to URL parameter if not found in script tag
   if (!eventId) {
-    const urlParams = new URLSearchParams(window.location.search);
-    eventId = urlParams.get('eventId');
+    const urlParams = parseQueryString(window.location.search);
+    eventId = urlParams['eventId'] || null;
   }
 
   // Remember whether we started with an eventId provided; used to decide whether to show "Back" UI
@@ -340,7 +605,7 @@
     try {
       const scriptEl = document.currentScript;
       if (!scriptEl) return;
-      const cssHref = new URL("./event.css", scriptEl.src).toString();
+      const cssHref = resolveUrl("event.css", scriptEl.src);
       const exists = Array.from(document.styleSheets).some(ss => ss.href && ss.href.includes("event.css"));
       if (exists) return;
       const link = document.createElement("link");
@@ -430,7 +695,7 @@
       });
 
       // Safely flatten and filter children
-      const flatKids = kids.flat(Infinity).filter(kid => kid !== null && kid !== undefined && kid !== false);
+      const flatKids = flattenArray(kids, Infinity).filter(kid => kid !== null && kid !== undefined && kid !== false);
       
       flatKids.forEach(kid => {
         try {
@@ -499,7 +764,10 @@
     state.formData = { ...state.formData, ...currentValues };
     
     const currentPhase = phases[state.phase];
-    const allFields = currentPhase.steps.flatMap(s => s.fields);
+    const allFields = flattenArray(
+      currentPhase.steps.map(function(s) { return s.fields; }),
+      1
+    );
     
     // Validate required fields
     const missing = allFields.filter(fKey => {
@@ -609,8 +877,8 @@
           console.log('Payment session response:', session);
           
           // Extract URL from various possible response structures
-          const checkoutUrl = session?.url || session?.sessionUrl || session?.checkout_url || 
-                            (session?.id ? `https://checkout.stripe.com/c/pay/${session.id}` : null);
+          const checkoutUrl = (session && session.url) || (session && session.sessionUrl) || (session && session.checkout_url) || 
+                            (session && session.id ? `https://checkout.stripe.com/c/pay/${session.id}` : null);
           
           console.log('Extracted checkout URL:', checkoutUrl);
           
@@ -736,7 +1004,7 @@
 
       if (!res.ok) {
         console.error('Payment session failed', { status: res.status, statusText: res.statusText, response: json });
-        throw new Error(json?.error || json?.message || (json && json.raw) || `Payment endpoint returned ${res.status}`);
+        throw new Error((json && json.error) || (json && json.message) || (json && json.raw) || `Payment endpoint returned ${res.status}`);
       }
 
       return json;
@@ -962,7 +1230,8 @@
     if (!items || items.length === 0) return;
     items.forEach(it => {
       try {
-        const label = it.display_name || [it.address?.road, it.address?.city, it.address?.state].filter(Boolean).join(', ');
+        const address = it.address || {};
+        const label = it.display_name || [address.road, address.city, address.state].filter(Boolean).join(', ');
         const node = h('div', { className: 'ri-address-suggestion' }, label);
         node.addEventListener('click', () => fillAddressFromNominatim(it));
         if (addressSuggestionsEl && document.body.contains(addressSuggestionsEl)) {
@@ -1053,14 +1322,16 @@
             const data = await res.json();
             if (data.features && data.features.length > 0) {
               const feature = data.features[0];
-              const coords = feature.geometry?.coordinates;
+              const geometry = feature.geometry || {};
+              const coords = geometry.coordinates;
               if (coords && coords.length >= 2) {
                 const [lon, lat] = coords;
                 if (!Number.isNaN(lat) && !Number.isNaN(lon)) {
+                  const properties = feature.properties || {};
                   return { 
                     lat, 
                     lon, 
-                    label: feature.properties?.name || addr 
+                    label: properties.name || addr 
                   };
                 }
               }
@@ -1947,8 +2218,8 @@
         return s && e ? `${s}/${e}` : '';
       })();
 
-      const googleParams = new URLSearchParams({ action: 'TEMPLATE', text: ev.name || '', details: ev.description || '', location: ev.location || '', dates: googleDates || undefined });
-      const googleUrl = `https://calendar.google.com/calendar/render?${googleParams.toString()}`;
+      const googleParams = buildQueryString({ action: 'TEMPLATE', text: ev.name || '', details: ev.description || '', location: ev.location || '', dates: googleDates || undefined });
+      const googleUrl = `https://calendar.google.com/calendar/render?${googleParams}`;
 
       // Build Outlook web URL (compose deeplink)
       const fmtIso = (d) => {
@@ -1957,13 +2228,14 @@
       };
       const startDt = (ev.startDate && ev.startTime) ? new Date(`${ev.startDate} ${ev.startTime}`) : (ev.startDate ? new Date(ev.startDate) : null);
       const endDt = (ev.endDate && ev.endTime) ? new Date(`${ev.endDate} ${ev.endTime}`) : (ev.endDate ? new Date(ev.endDate) : null);
-      const outlookParams = new URLSearchParams();
-      if (startDt) outlookParams.set('startdt', fmtIso(startDt));
-      if (endDt) outlookParams.set('enddt', fmtIso(endDt));
-      outlookParams.set('subject', ev.name || '');
-      if (ev.description) outlookParams.set('body', ev.description);
-      if (ev.location) outlookParams.set('location', ev.location);
-      const outlookUrl = `https://outlook.live.com/calendar/0/deeplink/compose?${outlookParams.toString()}`;
+      const outlookParamsObj = {};
+      if (startDt) outlookParamsObj.startdt = fmtIso(startDt);
+      if (endDt) outlookParamsObj.enddt = fmtIso(endDt);
+      outlookParamsObj.subject = ev.name || '';
+      if (ev.description) outlookParamsObj.body = ev.description;
+      if (ev.location) outlookParamsObj.location = ev.location;
+      const outlookParams = buildQueryString(outlookParamsObj);
+      const outlookUrl = `https://outlook.live.com/calendar/0/deeplink/compose?${outlookParams}`;
 
       elements.push(
         h('div', { className: 'ri-success-calendar', style: { display: 'flex', gap: '12px', justifyContent: 'center', marginTop: '18px' } },
