@@ -545,8 +545,8 @@
         if (o === null || o === undefined) return null;
         if (typeof o === 'string') return { value: String(o), label: String(o) };
         // object heuristics
-        const value = o.value ?? o.code ?? o.id ?? o.name ?? o.label ?? String(o);
-        const label = o.label ?? o.name ?? o.value ?? o.code ?? String(o);
+        const value = (o.value !== null && o.value !== undefined) ? o.value : (o.code !== null && o.code !== undefined) ? o.code : (o.id !== null && o.id !== undefined) ? o.id : (o.name !== null && o.name !== undefined) ? o.name : (o.label !== null && o.label !== undefined) ? o.label : String(o);
+        const label = (o.label !== null && o.label !== undefined) ? o.label : (o.name !== null && o.name !== undefined) ? o.name : (o.value !== null && o.value !== undefined) ? o.value : (o.code !== null && o.code !== undefined) ? o.code : String(o);
         return { value: String(value), label: String(label) };
       }).filter(opt => opt && String(opt.value).trim() !== '');
 
