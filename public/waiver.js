@@ -496,7 +496,7 @@
   // UTILITY FUNCTIONS
   // ============================================================================
   function updateState(updates) {
-    state = { ...state, ...updates };
+    state = Object.assign({}, state, updates);
     render();
   }
 
