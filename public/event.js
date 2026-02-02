@@ -333,14 +333,13 @@
 
     const enqueue = (evt) => {
       try {
-        queue.push({
-          ...evt,
+        queue.push(Object.assign({}, evt, {
           ts: new Date().toISOString(),
-          sessionId,
+          sessionId: sessionId,
           formId: 'event',
           url: (typeof location !== 'undefined' && location.href) ? location.href : '',
           ua: (typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : ''
-        });
+        }));
         if (queue.length >= 10) {
           flush();
         } else if (!flushTimer) {
@@ -729,7 +728,7 @@
   const setState = (updates) => {
     try {
       // Merge updates into state
-      state = { ...state, ...updates };
+      state = Object.assign({}, state, updates);
       
       // Debounce renders for performance on low-powered devices
       if (setStateDebounceTimer) clearTimeout(setStateDebounceTimer);
@@ -761,7 +760,7 @@
   const submitForm = async () => {
     // Collect current form values from DOM
     const currentValues = collectFormValues();
-    state.formData = { ...state.formData, ...currentValues };
+    state.formData = Object.assign({}, state.formData, currentValues);
     
     const currentPhase = phases[state.phase];
     const allFields = flattenArray(
@@ -1021,7 +1020,7 @@
   // Helper to check if current step can proceed
   const canProceed = () => {
     const currentValues = collectFormValues();
-    const currentFormData = { ...state.formData, ...currentValues };
+    const currentFormData = Object.assign({}, state.formData, currentValues);
     
     const currentPhase = phases[state.phase];
     const currentStep = currentPhase.steps[state.step];
@@ -1050,7 +1049,7 @@
     try {
       // Collect current form values from DOM
       const currentValues = collectFormValues();
-      state.formData = { ...state.formData, ...currentValues };
+      state.formData = Object.assign({}, state.formData, currentValues);
       
       const currentPhase = phases[state.phase];
       const currentStep = currentPhase.steps[state.step];
@@ -1201,7 +1200,7 @@
     try {
       const addr = item.address || {};
       const street = [addr.house_number, addr.road].filter(Boolean).join(' ');
-      const updates = { ...state.formData };
+      const updates = Object.assign({}, state.formData);
       updates.Street = street || (addr.road || '');
       updates.City = addr.city || addr.town || addr.village || addr.county || '';
       updates.State = addr.state || '';
@@ -1939,7 +1938,7 @@
           if (shouldDisableHeavyMedia) {
             info.images = null;
           }
-          const updates = { ...state.formData };
+          const updates = Object.assign({}, state.formData);
           // Keep EventName (backend field) as the original full title unless already set
           if (info.name && !updates.EventName) updates.EventName = info.name;
           if (info.startDate && !updates.EventDate) updates.EventDate = info.startDate;
@@ -2448,7 +2447,7 @@
         const requiresPayment = requiresPaymentField && paymentAmount >= 0.50;
         
         // Pre-fill event name/date when available
-        const updates = { ...state.formData };
+        const updates = Object.assign({}, state.formData);
         if (info.name && !updates.EventName) updates.EventName = info.name;
         if (info.startDate && !updates.EventDate) updates.EventDate = info.startDate;
         setState({ campaignInfo: info, formData: updates, requiresPayment, paymentAmount });
