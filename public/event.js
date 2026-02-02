@@ -42,7 +42,8 @@
     Array.prototype.flat = function(depth) {
       var flattend = [];
       (function flat(array, depth) {
-        for (var el of array) {
+        for (var i = 0; i < array.length; i++) {
+          var el = array[i];
           if (Array.isArray(el) && depth > 0) {
             flat(el, depth - 1); 
           } else {
