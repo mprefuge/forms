@@ -926,7 +926,7 @@
 
   const fieldFor = (name) => {
     const meta = fieldMeta[name] || { label: name, type: "text", required: false };
-    const value = data[name] ?? "";
+    const value = (data[name] !== null && data[name] !== undefined) ? data[name] : "";
     const wrapper = h("div", { class: "ri-field" });
     
     // Build label with required indicator
@@ -1103,8 +1103,8 @@
       const container = h('div', { class: 'ri-multiselect-box' });
       if (opts.length === 0) container.append(h('div', { class: 'ri-muted', text: 'No options available' }));
       const visibleOpts = (opts || []).map(opt => {
-        const val = (opt && typeof opt === 'object') ? (opt.value ?? opt.text ?? '') : opt;
-        const txt = (opt && typeof opt === 'object') ? (opt.text ?? opt.value ?? '') : opt;
+        const val = (opt && typeof opt === 'object') ? ((opt.value !== null && opt.value !== undefined) ? opt.value : ((opt.text !== null && opt.text !== undefined) ? opt.text : '')) : opt;
+        const txt = (opt && typeof opt === 'object') ? ((opt.text !== null && opt.text !== undefined) ? opt.text : ((opt.value !== null && opt.value !== undefined) ? opt.value : '')) : opt;
         const txtNorm = (txt || '').toString().trim().toLowerCase();
         if (!val || txtNorm === '' || txtNorm.startsWith('select')) return null;
         return { val, txt };
@@ -1167,8 +1167,8 @@
       const helper = h('div', { class: 'ri-field-note', text: 'Click the star to indicate your primary language.' });
       if (opts.length === 0) container.append(h('div', { class: 'ri-muted', text: 'No options available' }));
       const visibleOpts = (opts || []).map(opt => {
-        const val = (opt && typeof opt === 'object') ? (opt.value ?? opt.text ?? '') : opt;
-        const txt = (opt && typeof opt === 'object') ? (opt.text ?? opt.value ?? '') : opt;
+        const val = (opt && typeof opt === 'object') ? ((opt.value !== null && opt.value !== undefined) ? opt.value : ((opt.text !== null && opt.text !== undefined) ? opt.text : '')) : opt;
+        const txt = (opt && typeof opt === 'object') ? ((opt.text !== null && opt.text !== undefined) ? opt.text : ((opt.value !== null && opt.value !== undefined) ? opt.value : '')) : opt;
         const txtNorm = (txt || '').toString().trim().toLowerCase();
         if (!val || txtNorm === '' || txtNorm.startsWith('select')) return null;
         return { val, txt };
@@ -1258,8 +1258,8 @@
       (meta.options || []).forEach(opt => {
         let val, txt;
         if (opt && typeof opt === 'object') {
-          val = opt.value ?? opt.text ?? '';
-          txt = opt.text ?? opt.value ?? '';
+          val = (opt.value !== null && opt.value !== undefined) ? opt.value : ((opt.text !== null && opt.text !== undefined) ? opt.text : '');
+          txt = (opt.text !== null && opt.text !== undefined) ? opt.text : ((opt.value !== null && opt.value !== undefined) ? opt.value : '');
         } else {
           val = opt;
           txt = opt;
@@ -1285,8 +1285,8 @@
         container.append(h('div', { class: 'ri-muted', text: 'No options available' }));
       }
       const visibleOpts = (opts || []).map(opt => {
-        const val = (opt && typeof opt === 'object') ? (opt.value ?? opt.text ?? '') : opt;
-        const txt = (opt && typeof opt === 'object') ? (opt.text ?? opt.value ?? '') : opt;
+        const val = (opt && typeof opt === 'object') ? ((opt.value !== null && opt.value !== undefined) ? opt.value : ((opt.text !== null && opt.text !== undefined) ? opt.text : '')) : opt;
+        const txt = (opt && typeof opt === 'object') ? ((opt.text !== null && opt.text !== undefined) ? opt.text : ((opt.value !== null && opt.value !== undefined) ? opt.value : '')) : opt;
         const txtNorm = (txt || '').toString().trim().toLowerCase();
         if (!val || txtNorm === '' || txtNorm.startsWith('select')) return null;
         return { val, txt };
