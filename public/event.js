@@ -2538,12 +2538,27 @@
   };
 
   if (typeof window !== 'undefined') {
+    let initAttempts = 0;
+    const MAX_INIT_ATTEMPTS = 100; // 5 seconds maximum (100 * 50ms)
+    
     const initializeApp = () => {
       try {
         // Verify DOM is ready
         if (!document.body || !document.getElementById(HOST_ID)) {
-          console.warn('DOM not ready, deferring initialization');
-          setTimeout(initializeApp, 50);
+          initAttempts++;
+          if (initAttempts < MAX_INIT_ATTEMPTS) {
+            console.warn('DOM not ready, deferring initialization (attempt ' + initAttempts + '/' + MAX_INIT_ATTEMPTS + ')');
+            setTimeout(initializeApp, 50);
+          } else {
+            console.error('Failed to initialize: ' + HOST_ID + ' element not found after ' + MAX_INIT_ATTEMPTS + ' attempts');
+            // Try to show error message if body exists
+            if (document.body) {
+              var errorDiv = document.createElement('div');
+              errorDiv.style.cssText = 'padding: 20px; margin: 20px; background: #fee; border: 1px solid #c00; border-radius: 4px; color: #c00;';
+              errorDiv.textContent = 'Error: Unable to load form. Please ensure the page contains an element with id="' + HOST_ID + '"';
+              document.body.appendChild(errorDiv);
+            }
+          }
           return;
         }
         
