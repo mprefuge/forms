@@ -615,7 +615,7 @@
     container.innerHTML = '';
     if (!items || items.length === 0) return;
     items.forEach(it => {
-      const label = it.display_name || [it.address?.road, it.address?.city, it.address?.state].filter(Boolean).join(', ');
+      const label = it.display_name || [it.address && it.address.road, it.address && it.address.city, it.address && it.address.state].filter(Boolean).join(', ');
       const node = document.createElement('div');
       node.className = 'ri-address-suggestion';
       node.textContent = label;
