@@ -49,14 +49,34 @@
   const TELEMETRY_KEY = 'ri_telemetry_event';
   const TELEMETRY_SESSION_KEY = 'ri_telemetry_session_event';
 
+  let localStorageAvailable = null; // Cache localStorage availability
+  const isLocalStorageAvailable = () => {
+    if (localStorageAvailable !== null) return localStorageAvailable;
+    try {
+      const test = '__ls_test__';
+      localStorage.setItem(test, 'true');
+      localStorage.removeItem(test);
+      localStorageAvailable = true;
+      return true;
+    } catch (e) {
+      // Safari private mode, quota exceeded, or localStorage disabled
+      localStorageAvailable = false;
+      return false;
+    }
+  };
+
   const getTelemetrySessionId = () => {
     try {
+      if (!isLocalStorageAvailable()) {
+        return `s_${Math.random().toString(36).slice(2)}_${Date.now()}`;
+      }
       const existing = localStorage.getItem(TELEMETRY_SESSION_KEY);
       if (existing) return existing;
       const id = `s_${Math.random().toString(36).slice(2)}_${Date.now()}`;
       localStorage.setItem(TELEMETRY_SESSION_KEY, id);
       return id;
     } catch (e) {
+      localStorageAvailable = false;
       return `s_${Math.random().toString(36).slice(2)}_${Date.now()}`;
     }
   };
@@ -86,10 +106,14 @@
 
     const storeLocal = (events) => {
       try {
+        if (!isLocalStorageAvailable()) return;
         const prev = JSON.parse(localStorage.getItem(TELEMETRY_KEY) || '[]');
         const next = prev.concat(events).slice(-50);
         localStorage.setItem(TELEMETRY_KEY, JSON.stringify(next));
-      } catch (e) {}
+      } catch (e) {
+        // ignore localStorage errors (quota exceeded, private mode, etc.)
+        localStorageAvailable = false;
+      }
     };
 
     const flush = () => {
