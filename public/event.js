@@ -85,8 +85,11 @@
     const sessionId = getTelemetrySessionId();
     let queue = [];
     let flushTimer = null;
+    let isProcessing = false; // Prevent recursive errors
 
     const enqueue = (evt) => {
+      // Silently skip telemetry if we're already processing or localStorage unavailable
+      if (isProcessing || localStorageAvailable === false) return;
       try {
         queue.push({
           ...evt,
@@ -101,24 +104,41 @@
         } else if (!flushTimer) {
           flushTimer = setTimeout(flush, 8000);
         }
-      } catch (e) {}
+      } catch (e) {
+        // Disable telemetry on any error to prevent cascading issues
+        localStorageAvailable = false;
+      }
     };
 
     const storeLocal = (events) => {
+      if (isProcessing) return; // Prevent recursion
       try {
+        isProcessing = true;
         if (!isLocalStorageAvailable()) return;
         const prev = JSON.parse(localStorage.getItem(TELEMETRY_KEY) || '[]');
         const next = prev.concat(events).slice(-50);
         localStorage.setItem(TELEMETRY_KEY, JSON.stringify(next));
       } catch (e) {
-        // ignore localStorage errors (quota exceeded, private mode, etc.)
+        // Disable telemetry completely on localStorage errors to prevent error loops
         localStorageAvailable = false;
+        queue = []; // Clear queue to prevent memory buildup
+        if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+      } finally {
+        isProcessing = false;
       }
     };
 
     const flush = () => {
+      if (isProcessing) return; // Prevent recursive calls
       if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
       if (!queue.length) return;
+      
+      // If localStorage is unavailable, clear queue and stop trying
+      if (localStorageAvailable === false) {
+        queue = [];
+        return;
+      }
+      
       const batch = queue;
       queue = [];
 
@@ -128,6 +148,7 @@
       }
 
       try {
+        isProcessing = true;
         const payload = JSON.stringify({ events: batch });
         if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
           navigator.sendBeacon(TELEMETRY_ENDPOINT, payload);
@@ -138,6 +159,8 @@
         }
       } catch (e) {
         storeLocal(batch);
+      } finally {
+        isProcessing = false;
       }
     };
 
