@@ -44,154 +44,6 @@
   const PAYMENT_ENDPOINT = config.paymentEndpoint || 'https://payment-processing-function.azurewebsites.net/api/transaction';
   const HOST_ID = "event-app";
 
-  // Optional telemetry (send to config.telemetryEndpoint if provided; otherwise keep a small local buffer)
-  const TELEMETRY_ENDPOINT = config.telemetryEndpoint || '';
-  const TELEMETRY_KEY = 'ri_telemetry_event';
-  const TELEMETRY_SESSION_KEY = 'ri_telemetry_session_event';
-
-  let localStorageAvailable = null; // Cache localStorage availability
-  const isLocalStorageAvailable = () => {
-    if (localStorageAvailable !== null) return localStorageAvailable;
-    try {
-      const test = '__ls_test__';
-      localStorage.setItem(test, 'true');
-      localStorage.removeItem(test);
-      localStorageAvailable = true;
-      return true;
-    } catch (e) {
-      // Safari private mode, quota exceeded, or localStorage disabled
-      localStorageAvailable = false;
-      return false;
-    }
-  };
-
-  const getTelemetrySessionId = () => {
-    try {
-      if (!isLocalStorageAvailable()) {
-        return `s_${Math.random().toString(36).slice(2)}_${Date.now()}`;
-      }
-      const existing = localStorage.getItem(TELEMETRY_SESSION_KEY);
-      if (existing) return existing;
-      const id = `s_${Math.random().toString(36).slice(2)}_${Date.now()}`;
-      localStorage.setItem(TELEMETRY_SESSION_KEY, id);
-      return id;
-    } catch (e) {
-      localStorageAvailable = false;
-      return `s_${Math.random().toString(36).slice(2)}_${Date.now()}`;
-    }
-  };
-
-  const telemetry = (() => {
-    const sessionId = getTelemetrySessionId();
-    let queue = [];
-    let flushTimer = null;
-    let isProcessing = false; // Prevent recursive errors
-
-    const enqueue = (evt) => {
-      // Silently skip telemetry if we're already processing or localStorage unavailable
-      if (isProcessing || localStorageAvailable === false) return;
-      try {
-        queue.push({
-          ...evt,
-          ts: new Date().toISOString(),
-          sessionId,
-          formId: 'event',
-          url: (typeof location !== 'undefined' && location.href) ? location.href : '',
-          ua: (typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : ''
-        });
-        if (queue.length >= 10) {
-          flush();
-        } else if (!flushTimer) {
-          flushTimer = setTimeout(flush, 8000);
-        }
-      } catch (e) {
-        // Disable telemetry on any error to prevent cascading issues
-        localStorageAvailable = false;
-      }
-    };
-
-    const storeLocal = (events) => {
-      if (isProcessing) return; // Prevent recursion
-      try {
-        isProcessing = true;
-        if (!isLocalStorageAvailable()) return;
-        const prev = JSON.parse(localStorage.getItem(TELEMETRY_KEY) || '[]');
-        const next = prev.concat(events).slice(-50);
-        localStorage.setItem(TELEMETRY_KEY, JSON.stringify(next));
-      } catch (e) {
-        // Disable telemetry completely on localStorage errors to prevent error loops
-        localStorageAvailable = false;
-        queue = []; // Clear queue to prevent memory buildup
-        if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
-      } finally {
-        isProcessing = false;
-      }
-    };
-
-    const flush = () => {
-      if (isProcessing) return; // Prevent recursive calls
-      if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
-      if (!queue.length) return;
-      
-      // If localStorage is unavailable, clear queue and stop trying
-      if (localStorageAvailable === false) {
-        queue = [];
-        return;
-      }
-      
-      const batch = queue;
-      queue = [];
-
-      if (!TELEMETRY_ENDPOINT) {
-        storeLocal(batch);
-        return;
-      }
-
-      try {
-        isProcessing = true;
-        const payload = JSON.stringify({ events: batch });
-        if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
-          navigator.sendBeacon(TELEMETRY_ENDPOINT, payload);
-        } else if (typeof fetch === 'function') {
-          fetch(TELEMETRY_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true }).catch(() => {});
-        } else {
-          storeLocal(batch);
-        }
-      } catch (e) {
-        storeLocal(batch);
-      } finally {
-        isProcessing = false;
-      }
-    };
-
-    return { enqueue, flush };
-  })();
-
-  if (typeof window !== 'undefined') {
-    // Guard against multiple listener attachments when multiple forms load
-    if (!window.__globalErrorListenersAttached) {
-      window.__globalErrorListenersAttached = true;
-
-      window.addEventListener('error', (e) => {
-        telemetry.enqueue({
-          type: 'error',
-          message: e && e.message ? String(e.message) : 'Unknown error',
-          stack: e && e.error && e.error.stack ? String(e.error.stack) : '',
-          source: e && e.filename ? String(e.filename) : ''
-        });
-      });
-
-      window.addEventListener('unhandledrejection', (e) => {
-        telemetry.enqueue({
-          type: 'unhandledrejection',
-          message: e && e.reason ? (e.reason.message || String(e.reason)) : 'Unhandled rejection',
-          stack: e && e.reason && e.reason.stack ? String(e.reason.stack) : ''
-        });
-        try { if (e && typeof e.preventDefault === 'function') e.preventDefault(); } catch (err) {}
-      });
-    }
-  }
-
   const orgTerms = {
     orgName: "Refuge International",
     labels: {
@@ -484,7 +336,6 @@
       scheduleRender();
     } catch (e) {
       console.error('Fatal error in setState:', e);
-      telemetry.enqueue({ type: 'setstate_error', message: String(e), stack: e && e.stack ? String(e.stack) : '' });
     }
   };
 
@@ -1841,7 +1692,6 @@
       }
     } catch (e) {
       console.error('Fatal error in render:', e);
-      telemetry.enqueue({ type: 'render_error', message: String(e), stack: e && e.stack ? String(e.stack) : '' });
     } finally {
       renderInProgress = false;
       if (renderNeedsRerun) {
@@ -2027,11 +1877,9 @@
       });
     });
 
-    window.addEventListener('pagehide', () => { telemetry.flush(); });
     if (typeof document !== 'undefined' && !document.__globalPageHideListenersAttached) {
       document.__globalPageHideListenersAttached = true;
       document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'hidden') telemetry.flush();
       });
     }
     
