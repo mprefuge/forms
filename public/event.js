@@ -16,158 +16,16 @@
   //   window.FORMS_CONFIG = { apiEndpoint: 'https://your-app.azurewebsites.net/api/form' };
   // </script>
   const config = window.FORMS_CONFIG || {};
-  // Ensure disableAddressLookup defaults to true (disabled) when not provided
-  config.disableAddressLookup = config.hasOwnProperty('disableAddressLookup') ? !!config.disableAddressLookup : true;
-  // Ensure disableMap defaults to true (map disabled by default)
-  config.disableMap = config.hasOwnProperty('disableMap') ? !!config.disableMap : true;
-  const isIpadDevice = (() => {
-    try {
-      if (typeof navigator === 'undefined') return false;
-      const ua = navigator.userAgent || '';
-      const isIpadUa = /iPad/i.test(ua);
-      const isIpadOs = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
-      return isIpadUa || isIpadOs;
-    } catch (e) {
-      return false;
-    }
-  })();
-  const isLowMemoryDevice = (() => {
-    try {
-      return typeof navigator !== 'undefined' && typeof navigator.deviceMemory === 'number' && navigator.deviceMemory <= 2;
-    } catch (e) {
-      return false;
-    }
-  })();
-  const shouldDisableMap = config.disableMap || isIpadDevice || isLowMemoryDevice;
-  const shouldDisableHeavyMedia = (config.hasOwnProperty('disableHeavyMedia') ? !!config.disableHeavyMedia : false) || isIpadDevice || isLowMemoryDevice;
+  const shouldDisableHeavyMedia = config.hasOwnProperty('disableHeavyMedia') ? !!config.disableHeavyMedia : false;
   const ENDPOINT = config.apiEndpoint || "https://rif-hhh8e6e7cbc2hvdw.eastus-01.azurewebsites.net/api/form"; //"http://localhost:7071/api/form"; 
   const PAYMENT_ENDPOINT = config.paymentEndpoint || 'https://payment-processing-function.azurewebsites.net/api/transaction';
   const HOST_ID = "event-app";
 
-  // Optional telemetry (send to config.telemetryEndpoint if provided; otherwise keep a small local buffer)
-  const TELEMETRY_ENDPOINT = config.telemetryEndpoint || '';
-  const TELEMETRY_KEY = 'ri_telemetry_event';
-  const TELEMETRY_SESSION_KEY = 'ri_telemetry_session_event';
 
-  let localStorageAvailable = null; // Cache localStorage availability
-  const isLocalStorageAvailable = () => {
-    if (localStorageAvailable !== null) return localStorageAvailable;
-    try {
-      const test = '__ls_test__';
-      localStorage.setItem(test, 'true');
-      localStorage.removeItem(test);
-      localStorageAvailable = true;
-      return true;
-    } catch (e) {
-      // Safari private mode, quota exceeded, or localStorage disabled
-      localStorageAvailable = false;
-      return false;
-    }
-  };
 
-  const getTelemetrySessionId = () => {
-    try {
-      if (!isLocalStorageAvailable()) {
-        return `s_${Math.random().toString(36).slice(2)}_${Date.now()}`;
-      }
-      const existing = localStorage.getItem(TELEMETRY_SESSION_KEY);
-      if (existing) return existing;
-      const id = `s_${Math.random().toString(36).slice(2)}_${Date.now()}`;
-      localStorage.setItem(TELEMETRY_SESSION_KEY, id);
-      return id;
-    } catch (e) {
-      localStorageAvailable = false;
-      return `s_${Math.random().toString(36).slice(2)}_${Date.now()}`;
-    }
-  };
 
-  const telemetry = (() => {
-    const sessionId = getTelemetrySessionId();
-    let queue = [];
-    let flushTimer = null;
 
-    const enqueue = (evt) => {
-      try {
-        queue.push({
-          ...evt,
-          ts: new Date().toISOString(),
-          sessionId,
-          formId: 'event',
-          url: (typeof location !== 'undefined' && location.href) ? location.href : '',
-          ua: (typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : ''
-        });
-        if (queue.length >= 10) {
-          flush();
-        } else if (!flushTimer) {
-          flushTimer = setTimeout(flush, 8000);
-        }
-      } catch (e) {}
-    };
 
-    const storeLocal = (events) => {
-      try {
-        if (!isLocalStorageAvailable()) return;
-        const prev = JSON.parse(localStorage.getItem(TELEMETRY_KEY) || '[]');
-        const next = prev.concat(events).slice(-50);
-        localStorage.setItem(TELEMETRY_KEY, JSON.stringify(next));
-      } catch (e) {
-        // ignore localStorage errors (quota exceeded, private mode, etc.)
-        localStorageAvailable = false;
-      }
-    };
-
-    const flush = () => {
-      if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
-      if (!queue.length) return;
-      const batch = queue;
-      queue = [];
-
-      if (!TELEMETRY_ENDPOINT) {
-        storeLocal(batch);
-        return;
-      }
-
-      try {
-        const payload = JSON.stringify({ events: batch });
-        if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
-          navigator.sendBeacon(TELEMETRY_ENDPOINT, payload);
-        } else if (typeof fetch === 'function') {
-          fetch(TELEMETRY_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true }).catch(() => {});
-        } else {
-          storeLocal(batch);
-        }
-      } catch (e) {
-        storeLocal(batch);
-      }
-    };
-
-    return { enqueue, flush };
-  })();
-
-  if (typeof window !== 'undefined') {
-    // Guard against multiple listener attachments when multiple forms load
-    if (!window.__globalErrorListenersAttached) {
-      window.__globalErrorListenersAttached = true;
-
-      window.addEventListener('error', (e) => {
-        telemetry.enqueue({
-          type: 'error',
-          message: e && e.message ? String(e.message) : 'Unknown error',
-          stack: e && e.error && e.error.stack ? String(e.error.stack) : '',
-          source: e && e.filename ? String(e.filename) : ''
-        });
-      });
-
-      window.addEventListener('unhandledrejection', (e) => {
-        telemetry.enqueue({
-          type: 'unhandledrejection',
-          message: e && e.reason ? (e.reason.message || String(e.reason)) : 'Unhandled rejection',
-          stack: e && e.reason && e.reason.stack ? String(e.reason.stack) : ''
-        });
-        try { if (e && typeof e.preventDefault === 'function') e.preventDefault(); } catch (err) {}
-      });
-    }
-  }
 
   const orgTerms = {
     orgName: "Refuge International",
@@ -509,7 +367,6 @@
       }
     } catch (e) {
       console.error('Fatal error in setState:', e);
-      telemetry.enqueue({ type: 'setstate_error', message: String(e), stack: e && e.stack ? String(e.stack) : '' });
     }
   };
 
@@ -883,441 +740,10 @@
     return values;
   };
 
-  // --- Lookup / Address Helpers (load lookup.js like application.js)
-  const LOOKUP_URL = 'https://mprefuge.github.io/site-assets/scripts/lookup.js';
-  let lookupPromise = null;
-  let cachedLookupData = null; // Cache lookup data to avoid repeated fetches
-  const loadLookup = () => {
-    // Return cached data if available
-    if (cachedLookupData) return Promise.resolve(cachedLookupData);
-    if (lookupPromise) return lookupPromise;
-    lookupPromise = new Promise((resolve) => {
-      if (window.lookup) {
-        cachedLookupData = window.lookup;
-        return resolve(cachedLookupData);
-      }
-      const script = document.createElement('script');
-      script.src = LOOKUP_URL;
-      script.async = true;
-      script.onload = () => {
-        cachedLookupData = window.lookup || {};
-        resolve(cachedLookupData);
-      };
-      script.onerror = () => {
-        cachedLookupData = {};
-        resolve(cachedLookupData);
-      };
-      document.head.appendChild(script);
-    });
-    return lookupPromise;
-  };
 
-  const applyLookupOptions = (lookup) => {
-    if (!lookup) return;
-    const map = {
-      Country: 'countries',
-      State: 'states'
-    };
-    Object.entries(map).forEach(([field, key]) => {
-      const opts = lookup[key];
-      if (Array.isArray(opts) && fieldMeta[field]) {
-        fieldMeta[field].options = opts;
-      }
-    });
-  };
 
-  // Nominatim address search and suggestions (open-source lookup)
-  let addressSearchTimeout = null;
-  let addressSuggestionsEl = null;
 
-  let addressSearchAbort = null;
 
-  const searchAddress = async (q) => {
-    if (!q || q.length < 3) return [];
-    try {
-      if (addressSearchAbort && typeof addressSearchAbort.abort === 'function') {
-        addressSearchAbort.abort();
-      }
-      const controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-      if (controller) addressSearchAbort = controller;
-
-      const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&q=${encodeURIComponent(q)}`;
-      const res = await fetch(url, controller ? { signal: controller.signal, headers: { 'Accept': 'application/json' } } : { headers: { 'Accept': 'application/json' } });
-      const json = await res.json().catch(() => []);
-      return Array.isArray(json) ? json : [];
-    } catch (e) {
-      if (e && e.name === 'AbortError') return [];
-      console.warn('Address lookup failed', e);
-      return [];
-    }
-  };
-
-  const fillAddressFromNominatim = (item) => {
-    if (!item) return;
-    try {
-      const addr = item.address || {};
-      const street = [addr.house_number, addr.road].filter(Boolean).join(' ');
-      const updates = { ...state.formData };
-      updates.Street = street || (addr.road || '');
-      updates.City = addr.city || addr.town || addr.village || addr.county || '';
-      updates.State = addr.state || '';
-      updates.Zip = addr.postcode || '';
-      updates.Country = addr.country || '';
-      setState({ formData: updates });
-      // close suggestions
-      if (addressSearchTimeout) clearTimeout(addressSearchTimeout);
-      if (addressSuggestionsEl && document.body && document.body.contains(addressSuggestionsEl)) {
-        try {
-          addressSuggestionsEl.innerHTML = '';
-        } catch (e) { /* ignore */ }
-      }
-    } catch (e) {
-      console.warn('Failed to fill address from Nominatim', e);
-    }
-  };
-
-  const renderAddressSuggestions = (items) => {
-    if (!addressSuggestionsEl || !document.body || !document.body.contains(addressSuggestionsEl)) return;
-    try {
-      addressSuggestionsEl.innerHTML = '';
-    } catch (e) {
-      return; // Can't update element, bail out
-    }
-    if (!items || items.length === 0) return;
-    items.forEach(it => {
-      try {
-        const label = it.display_name || [it.address?.road, it.address?.city, it.address?.state].filter(Boolean).join(', ');
-        const node = h('div', { className: 'ri-address-suggestion' }, label);
-        node.addEventListener('click', () => fillAddressFromNominatim(it));
-        if (addressSuggestionsEl && document.body.contains(addressSuggestionsEl)) {
-          addressSuggestionsEl.appendChild(node);
-        }
-      } catch (e) {
-        console.warn('Failed to render address suggestion', e);
-      }
-    });
-  };
-
-  // Leaflet + Nominatim map helpers for event location
-  let leafletPromise = null;
-  const loadLeaflet = () => {
-    if (leafletPromise) return leafletPromise;
-    leafletPromise = new Promise((resolve) => {
-      // Inject CSS once
-      const existingCss = Array.from(document.styleSheets).some(ss => ss.href && ss.href.includes('leaflet.css'));
-      if (!existingCss) {
-        const link = document.createElement('link');
-        link.rel = 'stylesheet';
-        link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-        document.head.appendChild(link);
-      }
-      // Inject JS once
-      if (window.L) return resolve(window.L);
-      const script = document.createElement('script');
-      script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-      script.async = true;
-      script.onload = () => resolve(window.L);
-      script.onerror = () => resolve(null);
-      document.head.appendChild(script);
-    });
-    return leafletPromise;
-  };
-
-  const geocodeLocation = async (q) => {
-    if (!q || q.length < 3) return null;
-    
-    // Helper to extract address from strings like "Title - Address" or "Title: Address"
-    const extractAddress = (str) => {
-      const variants = [];
-      
-      // Try original string first
-      variants.push(str.trim());
-      
-      // Try splitting by common separators (dash, colon, pipe, comma followed by space)
-      const separators = [' - ', ' – ', ' — ', ': ', ' | ', ', '];
-      for (const sep of separators) {
-        if (str.includes(sep)) {
-          const parts = str.split(sep);
-          // Take parts that look like addresses (contain numbers or common address keywords)
-          for (let i = parts.length - 1; i >= 0; i--) {
-            const part = parts[i].trim();
-            if (/\d/.test(part) && part.length > 5) {
-              variants.push(part);
-              // Also try joining remaining parts from this point
-              if (i < parts.length - 1) {
-                variants.push(parts.slice(i).join(' ').trim());
-              }
-            }
-          }
-          // Also try everything after first separator
-          const afterFirst = parts.slice(1).join(sep).trim();
-          if (afterFirst.length > 3) variants.push(afterFirst);
-        }
-      }
-      
-      // Try to find part with street number pattern (digits followed by street name)
-      const streetNumberMatch = str.match(/(\d+\s+[A-Z][a-z]+(?:\s+(?:St|Ave|Avenue|Rd|Road|Blvd|Boulevard|Dr|Drive|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway))?.+(?:\d{5}(?:-\d{4})?)?)/i);
-      if (streetNumberMatch && streetNumberMatch[1]) {
-        variants.push(streetNumberMatch[1].trim());
-      }
-      
-      return [...new Set(variants)]; // Remove duplicates
-    };
-    
-    try {
-      const addressVariants = extractAddress(q);
-      
-      // Try Photon API first (CORS-friendly, Nominatim-based)
-      for (const addr of addressVariants) {
-        try {
-          const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(addr)}&limit=1`;
-          const res = await fetch(url);
-          
-          if (res.ok) {
-            const data = await res.json();
-            if (data.features && data.features.length > 0) {
-              const feature = data.features[0];
-              const coords = feature.geometry?.coordinates;
-              if (coords && coords.length >= 2) {
-                const [lon, lat] = coords;
-                if (!Number.isNaN(lat) && !Number.isNaN(lon)) {
-                  return { 
-                    lat, 
-                    lon, 
-                    label: feature.properties?.name || addr 
-                  };
-                }
-              }
-            }
-          }
-        } catch (e) {
-          console.warn('Photon geocode attempt failed', e);
-        }
-        
-        // Delay between attempts to respect rate limits
-        if (addressVariants.indexOf(addr) < addressVariants.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 500));
-        }
-      }
-      
-      return null;
-    } catch (e) {
-      console.warn('Geocode failed', e);
-      return null;
-    }
-  };
-
-  let eventMapInstance = null;
-  let eventMapMarker = null;
-  let eventMapRenderedFor = null;
-  let eventMapRenderThrottle = null;
-
-  const getCurrentEventLocation = () => {
-    const src = state.campaignInfo || state.selectedEvent || null;
-    if (!src) return null;
-    // Prefer an explicit mapLocation (derived from address after ' - ') when available,
-    // otherwise fall back to the readable location/venue string used in the card.
-    return src.mapLocation || src.location || src.Location__c || src.Location || src.Venue__c || src.City__c || src.City || null;
-  };
-
-  const renderEventMap = async () => {
-    // Throttle map rendering to prevent excessive calls
-    if (eventMapRenderThrottle) {
-      clearTimeout(eventMapRenderThrottle);
-    }
-    
-    eventMapRenderThrottle = setTimeout(async () => {
-      try {
-        const container = document.getElementById('ri-event-map');
-        const locationText = (getCurrentEventLocation() || '').trim();
-
-      if (!container || !locationText) {
-        eventMapRenderedFor = null;
-        if (eventMapInstance && eventMapInstance.remove) {
-          try { eventMapInstance.remove(); } catch (e) { /* ignore cleanup errors */ }
-        }
-        eventMapInstance = null;
-        eventMapMarker = null;
-        return;
-      }
-
-      if (eventMapRenderedFor === locationText && eventMapInstance) return;
-      eventMapRenderedFor = locationText;
-      
-      // Check if container is visible before loading heavy resources
-      try {
-        const isVisible = container.offsetParent !== null;
-        if (!isVisible) {
-          // Defer map loading until visible
-          return;
-        }
-      } catch (e) {
-        // If offsetParent check fails, bail out safely
-        return;
-      }
-      
-      // Check if container still exists (might have been removed during async operations)
-      if (!document.body || !document.body.contains(container)) return;
-      
-      // Safely update container content
-      try {
-        container.innerHTML = 'Loading map...';
-      } catch (e) {
-        return; // Can't update container, abort
-      }
-
-        // If map is disabled via config or device constraints, show the plain address text and a link instead of an embedded map
-      if (shouldDisableMap) {
-        // Re-check container exists before manipulating DOM
-        if (!document.body.contains(container)) return;
-        container.innerHTML = '';
-        // Display the address text
-        const addrText = h('div', { style: { marginBottom: '8px', fontSize: '14px' } }, `📍 ${locationText}`);
-        // Provide a link to Google Maps
-        const link = h('a', {
-          href: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationText)}`,
-          target: '_blank',
-          style: { 
-            display: 'inline-block', 
-            padding: '8px 12px', 
-            backgroundColor: '#4285f4', 
-            color: 'white', 
-            textDecoration: 'none', 
-            borderRadius: '6px',
-            fontSize: '13px',
-            fontWeight: '500'
-          }
-        }, '📍 View on Map');
-        container.appendChild(addrText);
-        container.appendChild(link);
-        // Ensure any previous map instance is removed
-        if (eventMapInstance && eventMapInstance.remove) {
-          try { eventMapInstance.remove(); } catch (e) { /* ignore cleanup errors */ }
-        }
-        eventMapInstance = null;
-        eventMapMarker = null;
-        eventMapRenderedFor = locationText;
-        return;
-      }
-
-      const coords = await geocodeLocation(locationText);
-      
-      // Re-check container exists before manipulating DOM
-      if (!document.body.contains(container)) return;
-      
-      if (!coords) { 
-        // Fallback: show a link to Google Maps instead of embedded map
-        container.innerHTML = '';
-        const link = h('a', {
-          href: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationText)}`,
-          target: '_blank',
-          style: { 
-            display: 'inline-block', 
-            padding: '10px 16px', 
-            backgroundColor: '#4285f4', 
-            color: 'white', 
-            textDecoration: 'none', 
-            borderRadius: '6px',
-            fontSize: '14px',
-            fontWeight: '500'
-          }
-        }, '📍 View on Map');
-        container.appendChild(link);
-        return; 
-      }
-      
-      const L = await loadLeaflet();
-      
-      // Re-check container exists before manipulating DOM
-      if (!document.body.contains(container)) return;
-      
-      if (!L) { 
-        try {
-          if (container && document.body.contains(container)) {
-            container.innerHTML = ''; 
-          }
-        } catch (e) { /* ignore */ }
-        return; 
-      }
-
-      // Reset any prior map
-      if (eventMapInstance && eventMapInstance.remove) {
-        try { eventMapInstance.remove(); } catch (e) { /* ignore cleanup errors */ }
-      }
-      eventMapInstance = null;
-      eventMapMarker = null;
-      
-      // Safely clear container
-      try {
-        container.innerHTML = '';
-      } catch (e) {
-        return; // Can't update container, abort
-      }
-
-      // Verify container still exists and has dimensions before creating map
-      if (!document.body.contains(container) || container.offsetHeight === 0) {
-        return;
-      }
-
-      // Create map with error handling
-      try {
-        eventMapInstance = L.map(container).setView([coords.lat, coords.lon], 14);
-      } catch (mapErr) {
-        console.warn('Failed to create Leaflet map instance', mapErr);
-        // Show fallback link instead
-        try {
-          if (container && document.body.contains(container)) {
-            container.innerHTML = '';
-            const link = h('a', {
-              href: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationText)}`,
-              target: '_blank',
-              style: { 
-                display: 'inline-block', 
-                padding: '10px 16px', 
-                backgroundColor: '#4285f4', 
-                color: 'white', 
-                textDecoration: 'none', 
-                borderRadius: '6px',
-                fontSize: '14px',
-                fontWeight: '500'
-              }
-            }, '📍 View on Map');
-            container.appendChild(link);
-          }
-        } catch (e) { /* ignore */ }
-        return;
-      }
-      
-      // Add tile layer with error handling
-      try {
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '\u00a9 OpenStreetMap contributors'
-        }).addTo(eventMapInstance);
-      } catch (tileErr) {
-        console.warn('Failed to load map tiles', tileErr);
-        // Continue without tiles - map will still show marker
-      }
-      
-      // Ensure only a single marker exists for this map
-      if (eventMapMarker && eventMapInstance && typeof eventMapInstance.removeLayer === 'function') {
-        try { eventMapInstance.removeLayer(eventMapMarker); } catch (e) { /* ignore */ }
-        eventMapMarker = null;
-      }
-      
-      // Add marker with error handling
-      try {
-        eventMapMarker = L.marker([coords.lat, coords.lon]).addTo(eventMapInstance);
-        eventMapMarker.bindPopup(coords.label || locationText).openPopup();
-      } catch (markerErr) {
-        console.warn('Failed to add map marker', markerErr);
-        // Map will still work without marker
-      }
-    } catch (e) {
-      // Silently fail - map is a nice-to-have, not critical
-      console.warn('renderEventMap error:', e);
-    }
-    }, 100); // Throttle to max once per 100ms
-  };
 
 
   // ============================================================================
@@ -1533,7 +959,7 @@
 
       const datePart = (startDate && endDate && !datesSame) ? `${startDate} to ${endDate}` : (startDate || endDate);
 
-      const locationText = getCurrentEventLocation() || '';
+      const locationText = state.campaignInfo.mapLocation || state.campaignInfo.location || state.campaignInfo.Location__c || state.campaignInfo.Location || state.campaignInfo.Venue__c || state.campaignInfo.City__c || state.campaignInfo.City || '';
 
       const elements = [
         h('div', { className: 'ri-event-title' }, title),
@@ -1571,13 +997,7 @@
           )
         ) : null),
         // Description
-        (loc ? h('div', { className: 'ri-event-hero-desc', style: { marginBottom: '10px', color: 'var(--muted)' } }, state.campaignInfo && state.campaignInfo.description ? state.campaignInfo.description : null) : null),
-        // Map container (rendered only when a location exists AND maps are enabled for this device)
-        (loc && !shouldDisableMap ? h('div', { 
-          id: 'ri-event-map', 
-          className: 'ri-event-map',
-          style: { height: '260px', marginTop: '12px', border: '1px solid #e5e5e5', borderRadius: '10px', overflow: 'hidden' }
-        }, h('div', { className: 'ri-map-placeholder' }, 'Loading map...')) : null)
+        (loc ? h('div', { className: 'ri-event-hero-desc', style: { marginBottom: '10px', color: 'var(--muted)' } }, state.campaignInfo && state.campaignInfo.description ? state.campaignInfo.description : null) : null)
       ];
 
       const contentEl = h('div', { className: 'ri-event-hero-content' }, ...elements.filter(Boolean));
@@ -1894,7 +1314,7 @@
                   ),
                   // Row 3 - Street (full width)
                   h('div', { style: { display: 'flex', gap: '12px', flexWrap: 'wrap' } },
-                    h('div', { style: { flex: '1 1 100%' } }, renderField('Street'), h('div', { className: 'ri-address-suggestions' }))
+                    h('div', { style: { flex: '1 1 100%' } }, renderField('Street'))
                   ),
                   // Row 4 - City / State / Zip / Country
                   h('div', { style: { display: 'flex', gap: '12px', flexWrap: 'wrap' } },
@@ -2072,56 +1492,8 @@
       } else {
         root.appendChild(renderForm());
       }
-    
-      // Render event map (async; no-op when location missing)
-      // Wrap in try-catch to prevent map failures from crashing the entire page
-      try {
-        renderEventMap();
-      } catch (e) {
-        console.warn('Map rendering failed, continuing without map', e);
-      }
-
-      try {
-        if (!config.disableAddressLookup) {
-          addressSuggestionsEl = root.querySelector('.ri-address-suggestions');
-          // Use root.querySelector to ensure we get the street input from this form, not stale references
-          const streetInput = root.querySelector('#ri-input-Street');
-          if (streetInput && !streetInput._riHandlerAttached) {
-            streetInput._riHandlerAttached = true;
-            streetInput.addEventListener('input', (e) => {
-              try {
-                const q = (e.target && e.target.value) ? e.target.value.toString().trim() : '';
-                if (addressSearchTimeout) clearTimeout(addressSearchTimeout);
-                addressSearchTimeout = setTimeout(async () => {
-                  try {
-                    if (!q || q.length < 3) { 
-                      if (addressSuggestionsEl && document.body.contains(addressSuggestionsEl)) {
-                        addressSuggestionsEl.innerHTML = ''; 
-                      }
-                      return; 
-                    }
-                    const items = await searchAddress(q);
-                    if (addressSuggestionsEl && document.body.contains(addressSuggestionsEl)) {
-                      renderAddressSuggestions(items);
-                    }
-                  } catch (err) {
-                    console.warn('Address search failed', err);
-                  }
-                }, 300);
-              } catch (e) {
-                console.warn('Error in street input listener:', e);
-              }
-            });
-          }
-        } else {
-          addressSuggestionsEl = null;
-        }
-      } catch (e) { 
-        console.warn('Failed to attach address listener', e);
-      }
     } catch (e) {
       console.error('Fatal error in render:', e);
-      telemetry.enqueue({ type: 'render_error', message: String(e), stack: e && e.stack ? String(e.stack) : '' });
       // Try to show a basic error message to the user
       try {
         const root = document.getElementById(HOST_ID);
@@ -2305,39 +1677,20 @@
         // Show loading state immediately
         setState({ initialLoading: true });
         
-        // Parallel load of lookup data and event metadata for faster initial load
+        // Parallel load of event metadata for faster initial load
         Promise.allSettled([
-          loadLookup(),
           fetchEventMetadata(),
           fetchActiveEvents()
-        ]).then(([lookupResult, metaResult, eventsResult]) => {
+        ]).then(([metaResult, eventsResult]) => {
           // Verify DOM still exists after async operations
           if (!document.body || !document.getElementById(HOST_ID)) {
             console.warn('DOM no longer available after data fetch');
             return;
           }
           
-          // Apply lookup data if successful
-          if (lookupResult.status === 'fulfilled' && lookupResult.value) {
-            applyLookupOptions(lookupResult.value);
-          }
-          
           // Initial render with all data loaded
           render();
           setState({ initialLoading: false });
-          
-          // Defer non-critical address suggestion handlers initialization
-          // Note: actual listener attachment is done in render() with guard flag _riHandlerAttached
-          setTimeout(() => {
-            const root = document.getElementById(HOST_ID);
-            if (!root || !document.body || !document.body.contains(root)) return;
-            if (!config.disableAddressLookup) {
-              addressSuggestionsEl = root.querySelector('.ri-address-suggestions');
-              // Listener will be attached in render() with guard flag to prevent duplicates
-            } else {
-              addressSuggestionsEl = null;
-            }
-          }, 100);
         }).catch((err) => {
           console.error('Initialization error:', err);
           // Ensure we render even if something fails
@@ -2364,10 +1717,8 @@
     }
 
     window.addEventListener('pagehide', () => { 
-      // Comprehensive cleanup
+      // Cleanup
       try {
-        telemetry.flush();
-        
         // Cancel any pending requests
         if (eventMetadataAbortController) {
           try { eventMetadataAbortController.abort(); } catch (e) { /* ignore */ }
@@ -2375,29 +1726,13 @@
         if (activeEventsAbortController) {
           try { activeEventsAbortController.abort(); } catch (e) { /* ignore */ }
         }
-        if (addressSearchAbort) {
-          try { addressSearchAbort.abort(); } catch (e) { /* ignore */ }
-        }
         
-        // Clean up map
-        if (eventMapInstance && eventMapInstance.remove) {
-          try { eventMapInstance.remove(); } catch (e) { /* ignore */ }
-        }
-        
-        // Clear timers
-        if (addressSearchTimeout) clearTimeout(addressSearchTimeout);
+        // Clear timer
         if (setStateDebounceTimer) clearTimeout(setStateDebounceTimer);
-        if (eventMapRenderThrottle) clearTimeout(eventMapRenderThrottle);
       } catch (e) {
         console.warn('Cleanup error:', e);
       }
     });
-    if (typeof document !== 'undefined' && !document.__globalPageHideListenersAttached) {
-      document.__globalPageHideListenersAttached = true;
-      document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'hidden') telemetry.flush();
-      });
-    }
     
     // For testing
     window.__riTest = window.__riTest || {};
