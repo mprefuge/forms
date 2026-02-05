@@ -21,6 +21,19 @@
   const PAYMENT_ENDPOINT = config.paymentEndpoint || 'https://payment-processing-function.azurewebsites.net/api/transaction';
   const HOST_ID = "event-app";
 
+  // Idempotency guard: if this script was already initialized on the page, skip re-initialization.
+  try {
+    if (typeof window !== 'undefined') {
+      window.__ri = window.__ri || {};
+      if (window.__ri.event && window.__ri.event.__initialized) {
+        console.warn('Event script already initialized; skipping duplicate initialization.');
+        return;
+      }
+      window.__ri.event = window.__ri.event || {};
+      window.__ri.event.__initialized = true;
+    }
+  } catch (e) { /* ignore */ }
+
 
 
 
