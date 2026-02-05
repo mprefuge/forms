@@ -1,5 +1,5 @@
 // ============================================================================
-// EVENT REGISTRATION FORM v3
+// EVENT REGISTRATION FORM
 // ============================================================================
 // Event registration form with optional campaign association.
 // 
@@ -43,6 +43,131 @@
   const ENDPOINT = config.apiEndpoint || "https://rif-hhh8e6e7cbc2hvdw.eastus-01.azurewebsites.net/api/form"; //"http://localhost:7071/api/form"; 
   const PAYMENT_ENDPOINT = config.paymentEndpoint || 'https://payment-processing-function.azurewebsites.net/api/transaction';
   const HOST_ID = "event-app";
+
+  // Optional telemetry (send to config.telemetryEndpoint if provided; otherwise keep a small local buffer)
+  const TELEMETRY_ENDPOINT = config.telemetryEndpoint || '';
+  const TELEMETRY_KEY = 'ri_telemetry_event';
+  const TELEMETRY_SESSION_KEY = 'ri_telemetry_session_event';
+
+  let localStorageAvailable = null; // Cache localStorage availability
+  const isLocalStorageAvailable = () => {
+    if (localStorageAvailable !== null) return localStorageAvailable;
+    try {
+      const test = '__ls_test__';
+      localStorage.setItem(test, 'true');
+      localStorage.removeItem(test);
+      localStorageAvailable = true;
+      return true;
+    } catch (e) {
+      // Safari private mode, quota exceeded, or localStorage disabled
+      localStorageAvailable = false;
+      return false;
+    }
+  };
+
+  const getTelemetrySessionId = () => {
+    try {
+      if (!isLocalStorageAvailable()) {
+        return `s_${Math.random().toString(36).slice(2)}_${Date.now()}`;
+      }
+      const existing = localStorage.getItem(TELEMETRY_SESSION_KEY);
+      if (existing) return existing;
+      const id = `s_${Math.random().toString(36).slice(2)}_${Date.now()}`;
+      localStorage.setItem(TELEMETRY_SESSION_KEY, id);
+      return id;
+    } catch (e) {
+      localStorageAvailable = false;
+      return `s_${Math.random().toString(36).slice(2)}_${Date.now()}`;
+    }
+  };
+
+  const telemetry = (() => {
+    const sessionId = getTelemetrySessionId();
+    let queue = [];
+    let flushTimer = null;
+
+    const enqueue = (evt) => {
+      try {
+        queue.push({
+          ...evt,
+          ts: new Date().toISOString(),
+          sessionId,
+          formId: 'event',
+          url: (typeof location !== 'undefined' && location.href) ? location.href : '',
+          ua: (typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : ''
+        });
+        if (queue.length >= 10) {
+          flush();
+        } else if (!flushTimer) {
+          flushTimer = setTimeout(flush, 8000);
+        }
+      } catch (e) {}
+    };
+
+    const storeLocal = (events) => {
+      try {
+        if (!isLocalStorageAvailable()) return;
+        const prev = JSON.parse(localStorage.getItem(TELEMETRY_KEY) || '[]');
+        const next = prev.concat(events).slice(-50);
+        localStorage.setItem(TELEMETRY_KEY, JSON.stringify(next));
+      } catch (e) {
+        // ignore localStorage errors (quota exceeded, private mode, etc.)
+        localStorageAvailable = false;
+      }
+    };
+
+    const flush = () => {
+      if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+      if (!queue.length) return;
+      const batch = queue;
+      queue = [];
+
+      if (!TELEMETRY_ENDPOINT) {
+        storeLocal(batch);
+        return;
+      }
+
+      try {
+        const payload = JSON.stringify({ events: batch });
+        if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+          navigator.sendBeacon(TELEMETRY_ENDPOINT, payload);
+        } else if (typeof fetch === 'function') {
+          fetch(TELEMETRY_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true }).catch(() => {});
+        } else {
+          storeLocal(batch);
+        }
+      } catch (e) {
+        storeLocal(batch);
+      }
+    };
+
+    return { enqueue, flush };
+  })();
+
+  if (typeof window !== 'undefined') {
+    // Guard against multiple listener attachments when multiple forms load
+    if (!window.__globalErrorListenersAttached) {
+      window.__globalErrorListenersAttached = true;
+
+      window.addEventListener('error', (e) => {
+        telemetry.enqueue({
+          type: 'error',
+          message: e && e.message ? String(e.message) : 'Unknown error',
+          stack: e && e.error && e.error.stack ? String(e.error.stack) : '',
+          source: e && e.filename ? String(e.filename) : ''
+        });
+      });
+
+      window.addEventListener('unhandledrejection', (e) => {
+        telemetry.enqueue({
+          type: 'unhandledrejection',
+          message: e && e.reason ? (e.reason.message || String(e.reason)) : 'Unhandled rejection',
+          stack: e && e.reason && e.reason.stack ? String(e.reason.stack) : ''
+        });
+        try { if (e && typeof e.preventDefault === 'function') e.preventDefault(); } catch (err) {}
+      });
+    }
+  }
 
   const orgTerms = {
     orgName: "Refuge International",
@@ -296,46 +421,95 @@
   // HELPER FUNCTIONS
   // ============================================================================
   const h = (tag, attrs = {}, ...kids) => {
-    const el = document.createElement(tag);
-    // Temporarily hold value so we can set it AFTER children (important for <select>)
-    const valueToSet = Object.prototype.hasOwnProperty.call(attrs, 'value') ? attrs.value : undefined;
+    try {
+      const el = document.createElement(tag);
+      // Temporarily hold value so we can set it AFTER children (important for <select>)
+      const valueToSet = Object.prototype.hasOwnProperty.call(attrs, 'value') ? attrs.value : undefined;
 
-    Object.entries(attrs).forEach(([k, v]) => {
-      if (k === 'className') {
-        el.className = v;
-      } else if (k === 'disabled') {
-        if (v) el.setAttribute('disabled', '');
-      } else if (k.startsWith('on')) {
-        el.addEventListener(k.slice(2).toLowerCase(), v);
-      } else if (k === 'style' && typeof v === 'object') {
-        Object.assign(el.style, v);
-      } else if (k === 'value') {
-        // skip here; set after children appended to ensure proper selection for <select>
-      } else {
-        // fallback to setting attribute for other keys
-        el.setAttribute(k, v);
+      Object.entries(attrs).forEach(([k, v]) => {
+        try {
+          if (v === null || v === undefined) return; // Skip null/undefined values
+          
+          if (k === 'className') {
+            el.className = v;
+          } else if (k === 'disabled') {
+            if (v) el.setAttribute('disabled', '');
+          } else if (k.startsWith('on')) {
+            // Use passive listeners for scroll/touch events, non-passive for others
+            const eventName = k.slice(2).toLowerCase();
+            const isPassiveEvent = ['scroll', 'wheel', 'touchstart', 'touchmove'].includes(eventName);
+            const options = isPassiveEvent ? { passive: true } : (eventName === 'keydown' ? { passive: false } : undefined);
+            el.addEventListener(eventName, v, options);
+          } else if (k === 'style' && typeof v === 'object') {
+            Object.assign(el.style, v);
+          } else if (k === 'value') {
+            // skip here; set after children appended to ensure proper selection for <select>
+          } else if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+            // Only set valid attribute values
+            el.setAttribute(k, String(v));
+          }
+        } catch (attrErr) {
+          console.warn(`Failed to set attribute ${k}:`, attrErr);
+        }
+      });
+
+      // Safely flatten and filter children
+      const flatKids = kids.flat(Infinity).filter(kid => kid !== null && kid !== undefined && kid !== false);
+      
+      flatKids.forEach(kid => {
+        try {
+          if (typeof kid === 'string' || typeof kid === 'number') {
+            el.appendChild(document.createTextNode(String(kid)));
+          } else if (kid && kid.nodeType) {
+            el.appendChild(kid);
+          }
+        } catch (childErr) {
+          console.warn('Failed to append child:', childErr);
+        }
+      });
+
+      // Now set value property for inputs/selects/textareas so their state persists after re-render
+      if (typeof valueToSet !== 'undefined' && (tag === 'input' || tag === 'select' || tag === 'textarea')) {
+        try { el.value = valueToSet; } catch (e) { /* ignore if not supported */ }
       }
-    });
 
-    kids.flat().forEach(kid => {
-      if (typeof kid === 'string') el.appendChild(document.createTextNode(kid));
-      else if (kid) el.appendChild(kid);
-    });
-
-    // Now set value property for inputs/selects/textareas so their state persists after re-render
-    if (typeof valueToSet !== 'undefined' && (tag === 'input' || tag === 'select' || tag === 'textarea')) {
-      try { el.value = valueToSet; } catch (e) { /* ignore if not supported */ }
+      return el;
+    } catch (e) {
+      console.error('Fatal error in h():', e);
+      // Return empty div as fallback
+      const fallback = document.createElement('div');
+      fallback.className = 'ri-error';
+      fallback.textContent = 'Error rendering component';
+      return fallback;
     }
-
-    return el;
   };
 
+  let setStateDebounceTimer = null;
   const setState = (updates) => {
     try {
+      // Merge updates into state
       state = { ...state, ...updates };
-      scheduleRender();
+      
+      // Debounce renders for performance on low-powered devices
+      if (setStateDebounceTimer) clearTimeout(setStateDebounceTimer);
+      
+      // Immediate render for critical state changes
+      const isCritical = updates.hasOwnProperty('error') || 
+                        updates.hasOwnProperty('loading') || 
+                        updates.hasOwnProperty('status') ||
+                        updates.hasOwnProperty('initialLoading');
+      
+      if (isCritical) {
+        scheduleRender();
+      } else {
+        // Debounce non-critical updates
+        setStateDebounceTimer = setTimeout(() => {
+          scheduleRender();
+        }, 16); // ~60fps
+      }
     } catch (e) {
       console.error('Fatal error in setState:', e);
+      telemetry.enqueue({ type: 'setstate_error', message: String(e), stack: e && e.stack ? String(e.stack) : '' });
     }
   };
 
@@ -419,18 +593,11 @@
         payload['__selectedEvent'] = selected;
       }
 
-      // Add timeout to prevent hanging on Safari
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 10000); // 10 seconds for form submission
-
       const response = await fetch(ENDPOINT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-        signal: controller.signal
       });
-      
-      clearTimeout(timeout);
 
       const result = await response.json();
 
@@ -581,19 +748,11 @@
 
     try {
       console.debug('Payment payload:', cleanedPayload);
-      
-      // Add timeout to prevent hanging on Safari
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 10000); // 10 seconds
-      
       const res = await fetch(PAYMENT_ENDPOINT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(cleanedPayload),
-        signal: controller.signal
+        body: JSON.stringify(cleanedPayload)
       });
-      
-      clearTimeout(timeout);
 
       const text = await res.text().catch(() => null);
       let json = {};
@@ -666,6 +825,9 @@
 
       // Defer state update to allow the click event to fully complete before DOM manipulation
       setTimeout(() => {
+        // Verify DOM still exists before proceeding
+        if (!document.body || !document.getElementById(HOST_ID)) return;
+        
         if (state.step < currentPhase.steps.length - 1) {
           setState({ step: state.step + 1, error: null });
         } else {
@@ -674,7 +836,9 @@
       }, 0);
     } catch (e) {
       console.error('Error in nextStep:', e);
-      setState({ error: 'An error occurred. Please try again.' });
+      if (document.body && document.getElementById(HOST_ID)) {
+        setState({ error: 'An error occurred. Please try again.' });
+      }
     }
   };
 
@@ -682,6 +846,9 @@
     try {
       // Defer state update to allow the click event to fully complete before DOM manipulation
       setTimeout(() => {
+        // Verify DOM still exists before proceeding
+        if (!document.body || !document.getElementById(HOST_ID)) return;
+        
         if (state.step > 0) {
           setState({ step: state.step - 1, error: null });
         }
@@ -729,23 +896,14 @@
         cachedLookupData = window.lookup;
         return resolve(cachedLookupData);
       }
-      
-      // Add 3-second timeout for Safari
-      const timeout = setTimeout(() => {
-        cachedLookupData = {};
-        resolve(cachedLookupData);
-      }, 3000);
-      
       const script = document.createElement('script');
       script.src = LOOKUP_URL;
       script.async = true;
       script.onload = () => {
-        clearTimeout(timeout);
         cachedLookupData = window.lookup || {};
         resolve(cachedLookupData);
       };
       script.onerror = () => {
-        clearTimeout(timeout);
         cachedLookupData = {};
         resolve(cachedLookupData);
       };
@@ -768,7 +926,398 @@
     });
   };
 
-  // All map and address lookup functionality removed to prevent Safari crashes
+  // Nominatim address search and suggestions (open-source lookup)
+  let addressSearchTimeout = null;
+  let addressSuggestionsEl = null;
+
+  let addressSearchAbort = null;
+
+  const searchAddress = async (q) => {
+    if (!q || q.length < 3) return [];
+    try {
+      if (addressSearchAbort && typeof addressSearchAbort.abort === 'function') {
+        addressSearchAbort.abort();
+      }
+      const controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+      if (controller) addressSearchAbort = controller;
+
+      const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&q=${encodeURIComponent(q)}`;
+      const res = await fetch(url, controller ? { signal: controller.signal, headers: { 'Accept': 'application/json' } } : { headers: { 'Accept': 'application/json' } });
+      const json = await res.json().catch(() => []);
+      return Array.isArray(json) ? json : [];
+    } catch (e) {
+      if (e && e.name === 'AbortError') return [];
+      console.warn('Address lookup failed', e);
+      return [];
+    }
+  };
+
+  const fillAddressFromNominatim = (item) => {
+    if (!item) return;
+    try {
+      const addr = item.address || {};
+      const street = [addr.house_number, addr.road].filter(Boolean).join(' ');
+      const updates = { ...state.formData };
+      updates.Street = street || (addr.road || '');
+      updates.City = addr.city || addr.town || addr.village || addr.county || '';
+      updates.State = addr.state || '';
+      updates.Zip = addr.postcode || '';
+      updates.Country = addr.country || '';
+      setState({ formData: updates });
+      // close suggestions
+      if (addressSearchTimeout) clearTimeout(addressSearchTimeout);
+      if (addressSuggestionsEl && document.body && document.body.contains(addressSuggestionsEl)) {
+        try {
+          addressSuggestionsEl.innerHTML = '';
+        } catch (e) { /* ignore */ }
+      }
+    } catch (e) {
+      console.warn('Failed to fill address from Nominatim', e);
+    }
+  };
+
+  const renderAddressSuggestions = (items) => {
+    if (!addressSuggestionsEl || !document.body || !document.body.contains(addressSuggestionsEl)) return;
+    try {
+      addressSuggestionsEl.innerHTML = '';
+    } catch (e) {
+      return; // Can't update element, bail out
+    }
+    if (!items || items.length === 0) return;
+    items.forEach(it => {
+      try {
+        const label = it.display_name || [it.address?.road, it.address?.city, it.address?.state].filter(Boolean).join(', ');
+        const node = h('div', { className: 'ri-address-suggestion' }, label);
+        node.addEventListener('click', () => fillAddressFromNominatim(it));
+        if (addressSuggestionsEl && document.body.contains(addressSuggestionsEl)) {
+          addressSuggestionsEl.appendChild(node);
+        }
+      } catch (e) {
+        console.warn('Failed to render address suggestion', e);
+      }
+    });
+  };
+
+  // Leaflet + Nominatim map helpers for event location
+  let leafletPromise = null;
+  const loadLeaflet = () => {
+    if (leafletPromise) return leafletPromise;
+    leafletPromise = new Promise((resolve) => {
+      // Inject CSS once
+      const existingCss = Array.from(document.styleSheets).some(ss => ss.href && ss.href.includes('leaflet.css'));
+      if (!existingCss) {
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+        document.head.appendChild(link);
+      }
+      // Inject JS once
+      if (window.L) return resolve(window.L);
+      const script = document.createElement('script');
+      script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+      script.async = true;
+      script.onload = () => resolve(window.L);
+      script.onerror = () => resolve(null);
+      document.head.appendChild(script);
+    });
+    return leafletPromise;
+  };
+
+  const geocodeLocation = async (q) => {
+    if (!q || q.length < 3) return null;
+    
+    // Helper to extract address from strings like "Title - Address" or "Title: Address"
+    const extractAddress = (str) => {
+      const variants = [];
+      
+      // Try original string first
+      variants.push(str.trim());
+      
+      // Try splitting by common separators (dash, colon, pipe, comma followed by space)
+      const separators = [' - ', ' – ', ' — ', ': ', ' | ', ', '];
+      for (const sep of separators) {
+        if (str.includes(sep)) {
+          const parts = str.split(sep);
+          // Take parts that look like addresses (contain numbers or common address keywords)
+          for (let i = parts.length - 1; i >= 0; i--) {
+            const part = parts[i].trim();
+            if (/\d/.test(part) && part.length > 5) {
+              variants.push(part);
+              // Also try joining remaining parts from this point
+              if (i < parts.length - 1) {
+                variants.push(parts.slice(i).join(' ').trim());
+              }
+            }
+          }
+          // Also try everything after first separator
+          const afterFirst = parts.slice(1).join(sep).trim();
+          if (afterFirst.length > 3) variants.push(afterFirst);
+        }
+      }
+      
+      // Try to find part with street number pattern (digits followed by street name)
+      const streetNumberMatch = str.match(/(\d+\s+[A-Z][a-z]+(?:\s+(?:St|Ave|Avenue|Rd|Road|Blvd|Boulevard|Dr|Drive|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway))?.+(?:\d{5}(?:-\d{4})?)?)/i);
+      if (streetNumberMatch && streetNumberMatch[1]) {
+        variants.push(streetNumberMatch[1].trim());
+      }
+      
+      return [...new Set(variants)]; // Remove duplicates
+    };
+    
+    try {
+      const addressVariants = extractAddress(q);
+      
+      // Try Photon API first (CORS-friendly, Nominatim-based)
+      for (const addr of addressVariants) {
+        try {
+          const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(addr)}&limit=1`;
+          const res = await fetch(url);
+          
+          if (res.ok) {
+            const data = await res.json();
+            if (data.features && data.features.length > 0) {
+              const feature = data.features[0];
+              const coords = feature.geometry?.coordinates;
+              if (coords && coords.length >= 2) {
+                const [lon, lat] = coords;
+                if (!Number.isNaN(lat) && !Number.isNaN(lon)) {
+                  return { 
+                    lat, 
+                    lon, 
+                    label: feature.properties?.name || addr 
+                  };
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('Photon geocode attempt failed', e);
+        }
+        
+        // Delay between attempts to respect rate limits
+        if (addressVariants.indexOf(addr) < addressVariants.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+      
+      return null;
+    } catch (e) {
+      console.warn('Geocode failed', e);
+      return null;
+    }
+  };
+
+  let eventMapInstance = null;
+  let eventMapMarker = null;
+  let eventMapRenderedFor = null;
+  let eventMapRenderThrottle = null;
+
+  const getCurrentEventLocation = () => {
+    const src = state.campaignInfo || state.selectedEvent || null;
+    if (!src) return null;
+    // Prefer an explicit mapLocation (derived from address after ' - ') when available,
+    // otherwise fall back to the readable location/venue string used in the card.
+    return src.mapLocation || src.location || src.Location__c || src.Location || src.Venue__c || src.City__c || src.City || null;
+  };
+
+  const renderEventMap = async () => {
+    // Throttle map rendering to prevent excessive calls
+    if (eventMapRenderThrottle) {
+      clearTimeout(eventMapRenderThrottle);
+    }
+    
+    eventMapRenderThrottle = setTimeout(async () => {
+      try {
+        const container = document.getElementById('ri-event-map');
+        const locationText = (getCurrentEventLocation() || '').trim();
+
+      if (!container || !locationText) {
+        eventMapRenderedFor = null;
+        if (eventMapInstance && eventMapInstance.remove) {
+          try { eventMapInstance.remove(); } catch (e) { /* ignore cleanup errors */ }
+        }
+        eventMapInstance = null;
+        eventMapMarker = null;
+        return;
+      }
+
+      if (eventMapRenderedFor === locationText && eventMapInstance) return;
+      eventMapRenderedFor = locationText;
+      
+      // Check if container is visible before loading heavy resources
+      try {
+        const isVisible = container.offsetParent !== null;
+        if (!isVisible) {
+          // Defer map loading until visible
+          return;
+        }
+      } catch (e) {
+        // If offsetParent check fails, bail out safely
+        return;
+      }
+      
+      // Check if container still exists (might have been removed during async operations)
+      if (!document.body || !document.body.contains(container)) return;
+      
+      // Safely update container content
+      try {
+        container.innerHTML = 'Loading map...';
+      } catch (e) {
+        return; // Can't update container, abort
+      }
+
+        // If map is disabled via config or device constraints, show the plain address text and a link instead of an embedded map
+      if (shouldDisableMap) {
+        // Re-check container exists before manipulating DOM
+        if (!document.body.contains(container)) return;
+        container.innerHTML = '';
+        // Display the address text
+        const addrText = h('div', { style: { marginBottom: '8px', fontSize: '14px' } }, `📍 ${locationText}`);
+        // Provide a link to Google Maps
+        const link = h('a', {
+          href: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationText)}`,
+          target: '_blank',
+          style: { 
+            display: 'inline-block', 
+            padding: '8px 12px', 
+            backgroundColor: '#4285f4', 
+            color: 'white', 
+            textDecoration: 'none', 
+            borderRadius: '6px',
+            fontSize: '13px',
+            fontWeight: '500'
+          }
+        }, '📍 View on Map');
+        container.appendChild(addrText);
+        container.appendChild(link);
+        // Ensure any previous map instance is removed
+        if (eventMapInstance && eventMapInstance.remove) {
+          try { eventMapInstance.remove(); } catch (e) { /* ignore cleanup errors */ }
+        }
+        eventMapInstance = null;
+        eventMapMarker = null;
+        eventMapRenderedFor = locationText;
+        return;
+      }
+
+      const coords = await geocodeLocation(locationText);
+      
+      // Re-check container exists before manipulating DOM
+      if (!document.body.contains(container)) return;
+      
+      if (!coords) { 
+        // Fallback: show a link to Google Maps instead of embedded map
+        container.innerHTML = '';
+        const link = h('a', {
+          href: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationText)}`,
+          target: '_blank',
+          style: { 
+            display: 'inline-block', 
+            padding: '10px 16px', 
+            backgroundColor: '#4285f4', 
+            color: 'white', 
+            textDecoration: 'none', 
+            borderRadius: '6px',
+            fontSize: '14px',
+            fontWeight: '500'
+          }
+        }, '📍 View on Map');
+        container.appendChild(link);
+        return; 
+      }
+      
+      const L = await loadLeaflet();
+      
+      // Re-check container exists before manipulating DOM
+      if (!document.body.contains(container)) return;
+      
+      if (!L) { 
+        try {
+          if (container && document.body.contains(container)) {
+            container.innerHTML = ''; 
+          }
+        } catch (e) { /* ignore */ }
+        return; 
+      }
+
+      // Reset any prior map
+      if (eventMapInstance && eventMapInstance.remove) {
+        try { eventMapInstance.remove(); } catch (e) { /* ignore cleanup errors */ }
+      }
+      eventMapInstance = null;
+      eventMapMarker = null;
+      
+      // Safely clear container
+      try {
+        container.innerHTML = '';
+      } catch (e) {
+        return; // Can't update container, abort
+      }
+
+      // Verify container still exists and has dimensions before creating map
+      if (!document.body.contains(container) || container.offsetHeight === 0) {
+        return;
+      }
+
+      // Create map with error handling
+      try {
+        eventMapInstance = L.map(container).setView([coords.lat, coords.lon], 14);
+      } catch (mapErr) {
+        console.warn('Failed to create Leaflet map instance', mapErr);
+        // Show fallback link instead
+        try {
+          if (container && document.body.contains(container)) {
+            container.innerHTML = '';
+            const link = h('a', {
+              href: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationText)}`,
+              target: '_blank',
+              style: { 
+                display: 'inline-block', 
+                padding: '10px 16px', 
+                backgroundColor: '#4285f4', 
+                color: 'white', 
+                textDecoration: 'none', 
+                borderRadius: '6px',
+                fontSize: '14px',
+                fontWeight: '500'
+              }
+            }, '📍 View on Map');
+            container.appendChild(link);
+          }
+        } catch (e) { /* ignore */ }
+        return;
+      }
+      
+      // Add tile layer with error handling
+      try {
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '\u00a9 OpenStreetMap contributors'
+        }).addTo(eventMapInstance);
+      } catch (tileErr) {
+        console.warn('Failed to load map tiles', tileErr);
+        // Continue without tiles - map will still show marker
+      }
+      
+      // Ensure only a single marker exists for this map
+      if (eventMapMarker && eventMapInstance && typeof eventMapInstance.removeLayer === 'function') {
+        try { eventMapInstance.removeLayer(eventMapMarker); } catch (e) { /* ignore */ }
+        eventMapMarker = null;
+      }
+      
+      // Add marker with error handling
+      try {
+        eventMapMarker = L.marker([coords.lat, coords.lon]).addTo(eventMapInstance);
+        eventMapMarker.bindPopup(coords.label || locationText).openPopup();
+      } catch (markerErr) {
+        console.warn('Failed to add map marker', markerErr);
+        // Map will still work without marker
+      }
+    } catch (e) {
+      // Silently fail - map is a nice-to-have, not critical
+      console.warn('renderEventMap error:', e);
+    }
+    }, 100); // Throttle to max once per 100ms
+  };
 
 
   // ============================================================================
@@ -776,9 +1325,15 @@
   // ============================================================================
   
   const renderField = (fieldKey) => {
-    const meta = fieldMeta[fieldKey];
-    const value = state.formData[fieldKey] || '';
-    const labelText = orgTerms.labels[fieldKey] || meta.label;
+    try {
+      const meta = fieldMeta[fieldKey];
+      if (!meta) {
+        console.warn(`Field metadata not found for: ${fieldKey}`);
+        return h('div', { className: 'ri-field' });
+      }
+      
+      const value = state.formData[fieldKey] || '';
+      const labelText = (orgTerms.labels && orgTerms.labels[fieldKey]) || meta.label || fieldKey;
 
     // Render checkbox fields inline (no top label) to avoid duplicate labels
     if (meta.type === 'checkbox') {
@@ -843,6 +1398,14 @@
             onInput: (e) => updateField(fieldKey, e.target.value),
           })
     );
+    } catch (e) {
+      console.error(`Error rendering field ${fieldKey}:`, e);
+      return h('div', { className: 'ri-field ri-field-error' },
+        h('div', { className: 'ri-error', style: { fontSize: '12px', padding: '8px' } }, 
+          `Error loading field: ${fieldKey}`
+        )
+      );
+    }
   };
 
   const renderProgress = () => {
@@ -1008,7 +1571,13 @@
           )
         ) : null),
         // Description
-        (loc ? h('div', { className: 'ri-event-hero-desc', style: { marginBottom: '10px', color: 'var(--muted)' } }, state.campaignInfo && state.campaignInfo.description ? state.campaignInfo.description : null) : null)
+        (loc ? h('div', { className: 'ri-event-hero-desc', style: { marginBottom: '10px', color: 'var(--muted)' } }, state.campaignInfo && state.campaignInfo.description ? state.campaignInfo.description : null) : null),
+        // Map container (rendered only when a location exists AND maps are enabled for this device)
+        (loc && !shouldDisableMap ? h('div', { 
+          id: 'ri-event-map', 
+          className: 'ri-event-map',
+          style: { height: '260px', marginTop: '12px', border: '1px solid #e5e5e5', borderRadius: '10px', overflow: 'hidden' }
+        }, h('div', { className: 'ri-map-placeholder' }, 'Loading map...')) : null)
       ];
 
       const contentEl = h('div', { className: 'ri-event-hero-content' }, ...elements.filter(Boolean));
@@ -1017,9 +1586,30 @@
       if (!shouldDisableHeavyMedia && state.campaignInfo && state.campaignInfo.images && state.campaignInfo.images.length) {
         console.log('renderEventHero: Rendering with image', state.campaignInfo.images[0]);
         const img = state.campaignInfo.images[0];
-        const mediaEl = h('div', { className: 'ri-event-hero-media' },
-          h('img', { src: img.url, alt: img.title || title || 'Event image', loading: 'lazy', decoding: 'async', style: { width: '100%', height: 'auto', borderRadius: '8px' } })
-        );
+        
+        // Create image element with error handler
+        const imgEl = document.createElement('img');
+        imgEl.src = img.url;
+        imgEl.alt = img.title || title || 'Event image';
+        imgEl.loading = 'lazy';
+        imgEl.decoding = 'async';
+        Object.assign(imgEl.style, { width: '100%', height: 'auto', borderRadius: '8px' });
+        
+        // Handle image load failures gracefully
+        imgEl.onerror = function() {
+          try {
+            if (this.parentNode && document.body.contains(this.parentNode)) {
+              this.style.display = 'none';
+            }
+          } catch (e) { /* ignore */ }
+        };
+        
+        const mediaEl = h('div', { className: 'ri-event-hero-media' });
+        try {
+          mediaEl.appendChild(imgEl);
+        } catch (e) {
+          console.warn('Failed to append image:', e);
+        }
 
         return h('div', { className: 'ri-event-hero ri-card ri-event-hero-with-media' }, mediaEl, contentEl);
       }
@@ -1038,7 +1628,13 @@
   const renderEventList = () => {
     if (state.eventId || !Array.isArray(state.availableEvents) || state.availableEvents.length === 0) return null;
 
+    // Limit number of events rendered at once to prevent memory issues
+    const MAX_EVENTS_DISPLAYED = 20;
+    const eventsToRender = state.availableEvents.slice(0, MAX_EVENTS_DISPLAYED);
+    const hasMore = state.availableEvents.length > MAX_EVENTS_DISPLAYED;
+
     const makeCard = (rec) => {
+      if (!rec) return null;
       const title = rec.Name || rec.name || 'Event';
       // Split title into main header and optional subtitle if a ' - ' exists
       const titleParts = (title || '').split(/\s*-\s*/);
@@ -1103,26 +1699,66 @@
           // Defer state update to allow the click event to fully complete before DOM manipulation
           // This prevents Safari from crashing when DOM is cleared while event is being processed
           setTimeout(() => {
+            // Verify DOM still exists and page is active before state update
+            if (!document.body || !document.getElementById(HOST_ID) || document.visibilityState === 'hidden') {
+              return;
+            }
             setState({ eventId: info.id, campaignInfo: info, selectedEvent: info, formData: updates, availableEvents: null });
           }, 0);
         } catch (e) {
           console.error('Error in onChoose:', e);
-          setState({ error: 'Error selecting event. Please try again.' });
+          // Only update state if DOM is still available
+          if (document.body && document.getElementById(HOST_ID)) {
+            setState({ error: 'Error selecting event. Please try again.' });
+          }
         }
       };
 
       const onCardKeyDown = (e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onChoose();
+        try {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onChoose();
+          }
+        } catch (err) {
+          console.warn('Error in card keydown handler:', err);
         }
       };
 
       const cardImageUrl = (rec.images && rec.images.length) ? (rec.images[0].url) : null;
 
-      const cardImageEl = (!shouldDisableHeavyMedia && cardImageUrl) ? h('div', { className: 'ri-event-card-media' },
-        h('img', { src: cardImageUrl, alt: rec.Name || rec.name || '', loading: 'lazy', decoding: 'async', style: { width: '100%', height: '140px', objectFit: 'cover', borderRadius: '8px', marginBottom: '10px' } })
-      ) : null;
+      let cardImageEl = null;
+      if (!shouldDisableHeavyMedia && cardImageUrl) {
+        try {
+          const imgEl = document.createElement('img');
+          imgEl.src = cardImageUrl;
+          imgEl.alt = rec.Name || rec.name || '';
+          imgEl.loading = 'lazy';
+          imgEl.decoding = 'async';
+          Object.assign(imgEl.style, { 
+            width: '100%', 
+            height: '140px', 
+            objectFit: 'cover', 
+            borderRadius: '8px', 
+            marginBottom: '10px' 
+          });
+          
+          // Handle image load failures
+          imgEl.onerror = function() {
+            try {
+              if (this.parentNode && document.body.contains(this.parentNode)) {
+                this.style.display = 'none';
+              }
+            } catch (e) { /* ignore */ }
+          };
+          
+          cardImageEl = h('div', { className: 'ri-event-card-media' });
+          cardImageEl.appendChild(imgEl);
+        } catch (e) {
+          console.warn('Failed to create card image:', e);
+          cardImageEl = null;
+        }
+      }
 
       return h('div', { className: 'ri-event-card', tabindex: '0', onKeydown: onCardKeyDown, role: 'button', 'aria-label': `Choose ${mainTitle}` },
         cardImageEl,
@@ -1152,11 +1788,32 @@
       );
     };
 
-    return h('div', { className: 'ri-event-list ri-card' },
-      h('div', { className: 'ri-event-list-grid' },
-        ...state.availableEvents.map(makeCard)
-      )
-    );
+    // Render cards with error handling
+    const cards = [];
+    for (const event of eventsToRender) {
+      try {
+        const card = makeCard(event);
+        if (card) cards.push(card);
+      } catch (e) {
+        console.warn('Failed to render event card:', e);
+        // Continue rendering other cards
+      }
+    }
+
+    const elements = [
+      h('div', { className: 'ri-event-list-grid' }, ...cards)
+    ];
+
+    // Add "showing X of Y" message if there are more events
+    if (hasMore) {
+      elements.push(
+        h('div', { className: 'ri-event-list-info', style: { textAlign: 'center', padding: '16px', color: 'var(--muted)' } },
+          `Showing ${eventsToRender.length} of ${state.availableEvents.length} events`
+        )
+      );
+    }
+
+    return h('div', { className: 'ri-event-list ri-card' }, ...elements);
   };
 
   const clearSelection = () => {
@@ -1164,11 +1821,26 @@
       // Clear local selection and campaign info so the user returns to the event overview
       // Defer state update to allow the click event to fully complete before DOM manipulation
       setTimeout(() => {
+        // Check if page is still active before updating state
+        if (!document.body || document.visibilityState === 'hidden') return;
+        
         setState({ eventId: null, campaignInfo: null, selectedEvent: null, step: 0, availableEvents: null });
+        
         // scroll back to top of the event list for clarity
-        try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) { /* ignore */ }
+        try { 
+          if (window && typeof window.scrollTo === 'function') {
+            window.scrollTo({ top: 0, behavior: 'smooth' }); 
+          }
+        } catch (e) { /* ignore */ }
+        
         // Re-fetch events after returning to the list to avoid keeping large lists in memory
-        setTimeout(() => { try { fetchActiveEvents(); } catch (e) {} }, 50);
+        setTimeout(() => { 
+          try { 
+            if (document.body && document.visibilityState !== 'hidden') {
+              fetchActiveEvents(); 
+            }
+          } catch (e) {} 
+        }, 50);
       }, 0);
     } catch (e) {
       console.error('Error in clearSelection:', e);
@@ -1379,7 +2051,19 @@
     renderInProgress = true;
     try {
       const root = document.getElementById(HOST_ID);
-      if (!root) return;
+      if (!root || !document.body || !document.body.contains(root)) {
+        renderInProgress = false;
+        return;
+      }
+
+      // Clear any existing event listeners before clearing innerHTML
+      // This helps prevent memory leaks on devices with limited memory
+      try {
+        const oldStreetInput = root.querySelector('#ri-input-Street');
+        if (oldStreetInput && oldStreetInput._riHandlerAttached) {
+          oldStreetInput._riHandlerAttached = false;
+        }
+      } catch (e) { /* ignore cleanup errors */ }
 
       root.innerHTML = '';
       
@@ -1389,8 +2073,62 @@
         root.appendChild(renderForm());
       }
     
+      // Render event map (async; no-op when location missing)
+      // Wrap in try-catch to prevent map failures from crashing the entire page
+      try {
+        renderEventMap();
+      } catch (e) {
+        console.warn('Map rendering failed, continuing without map', e);
+      }
+
+      try {
+        if (!config.disableAddressLookup) {
+          addressSuggestionsEl = root.querySelector('.ri-address-suggestions');
+          // Use root.querySelector to ensure we get the street input from this form, not stale references
+          const streetInput = root.querySelector('#ri-input-Street');
+          if (streetInput && !streetInput._riHandlerAttached) {
+            streetInput._riHandlerAttached = true;
+            streetInput.addEventListener('input', (e) => {
+              try {
+                const q = (e.target && e.target.value) ? e.target.value.toString().trim() : '';
+                if (addressSearchTimeout) clearTimeout(addressSearchTimeout);
+                addressSearchTimeout = setTimeout(async () => {
+                  try {
+                    if (!q || q.length < 3) { 
+                      if (addressSuggestionsEl && document.body.contains(addressSuggestionsEl)) {
+                        addressSuggestionsEl.innerHTML = ''; 
+                      }
+                      return; 
+                    }
+                    const items = await searchAddress(q);
+                    if (addressSuggestionsEl && document.body.contains(addressSuggestionsEl)) {
+                      renderAddressSuggestions(items);
+                    }
+                  } catch (err) {
+                    console.warn('Address search failed', err);
+                  }
+                }, 300);
+              } catch (e) {
+                console.warn('Error in street input listener:', e);
+              }
+            });
+          }
+        } else {
+          addressSuggestionsEl = null;
+        }
+      } catch (e) { 
+        console.warn('Failed to attach address listener', e);
+      }
     } catch (e) {
       console.error('Fatal error in render:', e);
+      telemetry.enqueue({ type: 'render_error', message: String(e), stack: e && e.stack ? String(e.stack) : '' });
+      // Try to show a basic error message to the user
+      try {
+        const root = document.getElementById(HOST_ID);
+        if (root && document.body && document.body.contains(root)) {
+          root.innerHTML = '<div class="ri-error">An error occurred loading the form. Please refresh the page.</div>';
+        }
+      } catch (fallbackErr) { /* ignore */ }
     } finally {
       renderInProgress = false;
       if (renderNeedsRerun) {
@@ -1404,19 +2142,24 @@
   // INITIALIZATION
   // ============================================================================
   
+  // Store abort controllers for cleanup
+  let eventMetadataAbortController = null;
+  let activeEventsAbortController = null;
+  
   // Fetch event metadata when eventId is present
   const fetchEventMetadata = async () => {
     if (!state.eventId) return;
+    
+    // Cancel any pending request
+    if (eventMetadataAbortController) {
+      try { eventMetadataAbortController.abort(); } catch (e) { /* ignore */ }
+    }
+    
     try {
-      // Aggressive 3-second timeout for Safari
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 3000);
-      
+      eventMetadataAbortController = typeof AbortController !== 'undefined' ? new AbortController() : null;
       const formConfigParam = encodeURIComponent(JSON.stringify(FORM_CONFIG));
       const url = `${ENDPOINT}?eventid=${encodeURIComponent(state.eventId)}&formConfig=${formConfigParam}`;
-      const res = await fetch(url, { signal: controller.signal });
-      clearTimeout(timeout);
-      
+      const res = await fetch(url, eventMetadataAbortController ? { signal: eventMetadataAbortController.signal } : {});
       if (!res.ok) {
         // Do not surface as error; proceed gracefully
         return;
@@ -1471,16 +2214,17 @@
   // Fetch active events when no eventId provided
   const fetchActiveEvents = async () => {
     if (state.eventId) return;
+    
+    // Cancel any pending request
+    if (activeEventsAbortController) {
+      try { activeEventsAbortController.abort(); } catch (e) { /* ignore */ }
+    }
+    
     try {
-      // Aggressive 3-second timeout for Safari
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 3000);
-      
+      activeEventsAbortController = typeof AbortController !== 'undefined' ? new AbortController() : null;
       const formConfigParam = encodeURIComponent(JSON.stringify(FORM_CONFIG));
       const url = `${ENDPOINT}?listActiveEvents=true&formConfig=${formConfigParam}`;
-      const res = await fetch(url, { signal: controller.signal });
-      clearTimeout(timeout);
-      
+      const res = await fetch(url, activeEventsAbortController ? { signal: activeEventsAbortController.signal } : {});
       if (!res.ok) return;
       const data = await res.json();
       const list = data && Array.isArray(data.campaigns) ? data.campaigns : [];
@@ -1547,34 +2291,111 @@
   };
 
   if (typeof window !== 'undefined') {
-    window.addEventListener('DOMContentLoaded', () => {
-      applyCustomFields();
-      
-      // Render immediately - don't wait for data loading
-      render();
-      setState({ initialLoading: false });
-      
-      // Load data in background without blocking render
-      Promise.allSettled([
-        loadLookup(),
-        fetchEventMetadata(),
-        fetchActiveEvents()
-      ]).then(([lookupResult, metaResult, eventsResult]) => {
-        // Apply lookup data if successful
-        if (lookupResult.status === 'fulfilled' && lookupResult.value) {
-          applyLookupOptions(lookupResult.value);
+    const initializeApp = () => {
+      try {
+        // Verify DOM is ready
+        if (!document.body || !document.getElementById(HOST_ID)) {
+          console.warn('DOM not ready, deferring initialization');
+          setTimeout(initializeApp, 50);
+          return;
         }
         
-        // Re-render with loaded data
-        render();
-      }).catch((err) => {
-        console.error('Background data load error:', err);
-      });
-    });
+        applyCustomFields();
+        
+        // Show loading state immediately
+        setState({ initialLoading: true });
+        
+        // Parallel load of lookup data and event metadata for faster initial load
+        Promise.allSettled([
+          loadLookup(),
+          fetchEventMetadata(),
+          fetchActiveEvents()
+        ]).then(([lookupResult, metaResult, eventsResult]) => {
+          // Verify DOM still exists after async operations
+          if (!document.body || !document.getElementById(HOST_ID)) {
+            console.warn('DOM no longer available after data fetch');
+            return;
+          }
+          
+          // Apply lookup data if successful
+          if (lookupResult.status === 'fulfilled' && lookupResult.value) {
+            applyLookupOptions(lookupResult.value);
+          }
+          
+          // Initial render with all data loaded
+          render();
+          setState({ initialLoading: false });
+          
+          // Defer non-critical address suggestion handlers initialization
+          // Note: actual listener attachment is done in render() with guard flag _riHandlerAttached
+          setTimeout(() => {
+            const root = document.getElementById(HOST_ID);
+            if (!root || !document.body || !document.body.contains(root)) return;
+            if (!config.disableAddressLookup) {
+              addressSuggestionsEl = root.querySelector('.ri-address-suggestions');
+              // Listener will be attached in render() with guard flag to prevent duplicates
+            } else {
+              addressSuggestionsEl = null;
+            }
+          }, 100);
+        }).catch((err) => {
+          console.error('Initialization error:', err);
+          // Ensure we render even if something fails
+          try {
+            if (document.body && document.getElementById(HOST_ID)) {
+              render();
+              setState({ initialLoading: false });
+            }
+          } catch (renderErr) {
+            console.error('Failed to recover from initialization error', renderErr);
+          }
+        });
+      } catch (e) {
+        console.error('Critical initialization error:', e);
+      }
+    };
+    
+    // Use both DOMContentLoaded and a fallback check
+    if (document.readyState === 'loading') {
+      window.addEventListener('DOMContentLoaded', initializeApp);
+    } else {
+      // DOM already loaded, initialize immediately
+      initializeApp();
+    }
 
+    window.addEventListener('pagehide', () => { 
+      // Comprehensive cleanup
+      try {
+        telemetry.flush();
+        
+        // Cancel any pending requests
+        if (eventMetadataAbortController) {
+          try { eventMetadataAbortController.abort(); } catch (e) { /* ignore */ }
+        }
+        if (activeEventsAbortController) {
+          try { activeEventsAbortController.abort(); } catch (e) { /* ignore */ }
+        }
+        if (addressSearchAbort) {
+          try { addressSearchAbort.abort(); } catch (e) { /* ignore */ }
+        }
+        
+        // Clean up map
+        if (eventMapInstance && eventMapInstance.remove) {
+          try { eventMapInstance.remove(); } catch (e) { /* ignore */ }
+        }
+        
+        // Clear timers
+        if (addressSearchTimeout) clearTimeout(addressSearchTimeout);
+        if (setStateDebounceTimer) clearTimeout(setStateDebounceTimer);
+        if (eventMapRenderThrottle) clearTimeout(eventMapRenderThrottle);
+      } catch (e) {
+        console.warn('Cleanup error:', e);
+      }
+    });
     if (typeof document !== 'undefined' && !document.__globalPageHideListenersAttached) {
       document.__globalPageHideListenersAttached = true;
       document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') telemetry.flush();
       });
     }
     
