@@ -1312,13 +1312,7 @@
           )
         ) : null),
         // Description
-        (loc ? h('div', { className: 'ri-event-hero-desc', style: { marginBottom: '10px', color: 'var(--muted)' } }, state.campaignInfo && state.campaignInfo.description ? state.campaignInfo.description : null) : null),
-        // Map container (rendered only when a location exists AND maps are enabled for this device)
-        (loc && !shouldDisableMap ? h('div', { 
-          id: 'ri-event-map', 
-          className: 'ri-event-map',
-          style: { height: '260px', marginTop: '12px', border: '1px solid #e5e5e5', borderRadius: '10px', overflow: 'hidden' }
-        }, h('div', { className: 'ri-map-placeholder' }, 'Loading map...')) : null)
+        (loc ? h('div', { className: 'ri-event-hero-desc', style: { marginBottom: '10px', color: 'var(--muted)' } }, state.campaignInfo && state.campaignInfo.description ? state.campaignInfo.description : null) : null)
       ];
 
       const contentEl = h('div', { className: 'ri-event-hero-content' }, ...elements.filter(Boolean));
@@ -1699,36 +1693,6 @@
         root.appendChild(renderForm());
       }
     
-      // Render event map (async; no-op when location missing)
-      renderEventMap();
-
-      try {
-        if (!config.disableAddressLookup) {
-          addressSuggestionsEl = root.querySelector('.ri-address-suggestions');
-          // Use root.querySelector to ensure we get the street input from this form, not stale references
-          const streetInput = root.querySelector('#ri-input-Street');
-          if (streetInput && !streetInput._riHandlerAttached) {
-            streetInput._riHandlerAttached = true;
-            streetInput.addEventListener('input', (e) => {
-              try {
-                const q = (e.target.value || '').toString().trim();
-                if (addressSearchTimeout) clearTimeout(addressSearchTimeout);
-                addressSearchTimeout = setTimeout(async () => {
-                  if (!q || q.length < 3) { if (addressSuggestionsEl) addressSuggestionsEl.innerHTML = ''; return; }
-                  const items = await searchAddress(q);
-                  renderAddressSuggestions(items);
-                }, 300);
-              } catch (e) {
-                console.warn('Error in street input listener:', e);
-              }
-            });
-          }
-        } else {
-          addressSuggestionsEl = null;
-        }
-      } catch (e) { 
-        console.warn('Failed to attach address listener', e);
-      }
     } catch (e) {
       console.error('Fatal error in render:', e);
     } finally {
@@ -1895,19 +1859,6 @@
         // Initial render with all data loaded
         render();
         setState({ initialLoading: false });
-        
-        // Defer non-critical address suggestion handlers initialization
-        // Note: actual listener attachment is done in render() with guard flag _riHandlerAttached
-        setTimeout(() => {
-          const root = document.getElementById(HOST_ID);
-          if (!root) return;
-          if (!config.disableAddressLookup) {
-            addressSuggestionsEl = root.querySelector('.ri-address-suggestions');
-            // Listener will be attached in render() with guard flag to prevent duplicates
-          } else {
-            addressSuggestionsEl = null;
-          }
-        }, 100);
       }).catch((err) => {
         console.error('Initialization error:', err);
         // Ensure we render even if something fails
