@@ -1512,6 +1512,8 @@
   // Store abort controllers for cleanup
   let eventMetadataAbortController = null;
   let activeEventsAbortController = null;
+  // Watchdog timer to avoid hanging initialization (defensive - clears loading state after 25s)
+  let initWatchdogTimer = null;
   
   // Fetch event metadata when eventId is present
   const fetchEventMetadata = async () => {
@@ -1526,12 +1528,27 @@
       eventMetadataAbortController = typeof AbortController !== 'undefined' ? new AbortController() : null;
       const formConfigParam = encodeURIComponent(JSON.stringify(FORM_CONFIG));
       const url = `${ENDPOINT}?eventid=${encodeURIComponent(state.eventId)}&formConfig=${formConfigParam}`;
-      const res = await fetch(url, eventMetadataAbortController ? { signal: eventMetadataAbortController.signal } : {});
-      if (!res.ok) {
-        // Do not surface as error; proceed gracefully
-        return;
+      // Add a per-request timeout to avoid waiting indefinitely (20s)
+      let metaTimeout = null;
+      try {
+        if (eventMetadataAbortController) {
+          metaTimeout = setTimeout(() => {
+            try {
+              eventMetadataAbortController.abort();
+              console.warn('fetchEventMetadata: request timed out and was aborted');
+            } catch (e) { /* ignore */ }
+          }, 20000);
+        }
+
+        const res = await fetch(url, eventMetadataAbortController ? { signal: eventMetadataAbortController.signal } : {});
+        if (!res.ok) {
+          // Do not surface as error; proceed gracefully
+          return;
+        }
+        const data = await res.json();
+      } finally {
+        try { if (metaTimeout) clearTimeout(metaTimeout); } catch (e) { /* ignore */ }
       }
-      const data = await res.json();
       const c = data && data.campaign ? data.campaign : null;
       console.log('fetchEventMetadata: campaign data =', c);
       console.log('fetchEventMetadata: images =', c && c.images);
@@ -1591,9 +1608,21 @@
       activeEventsAbortController = typeof AbortController !== 'undefined' ? new AbortController() : null;
       const formConfigParam = encodeURIComponent(JSON.stringify(FORM_CONFIG));
       const url = `${ENDPOINT}?listActiveEvents=true&formConfig=${formConfigParam}`;
-      const res = await fetch(url, activeEventsAbortController ? { signal: activeEventsAbortController.signal } : {});
-      if (!res.ok) return;
-      const data = await res.json();
+      // Add a per-request timeout to avoid waiting indefinitely (20s)
+      let listTimeout = null;
+      try {
+        if (activeEventsAbortController) {
+          listTimeout = setTimeout(() => {
+            try { activeEventsAbortController.abort(); console.warn('fetchActiveEvents: request timed out and was aborted'); } catch (e) { /* ignore */ }
+          }, 20000);
+        }
+
+        const res = await fetch(url, activeEventsAbortController ? { signal: activeEventsAbortController.signal } : {});
+        if (!res.ok) return;
+        const data = await res.json();
+      } finally {
+        try { if (listTimeout) clearTimeout(listTimeout); } catch (e) { /* ignore */ }
+      }
       const list = data && Array.isArray(data.campaigns) ? data.campaigns : [];
       if (list.length > 0) {
         // Sort events by start date (oldest first). Use parseLocalDate to handle multiple formats.
@@ -1671,12 +1700,25 @@
         
         // Show loading state immediately
         setState({ initialLoading: true });
+        // Start a watchdog timer to avoid the UI staying stuck if initialization hangs
+        try { if (initWatchdogTimer) clearTimeout(initWatchdogTimer); } catch(e){}
+        initWatchdogTimer = setTimeout(() => {
+          try {
+            if (document.body && document.getElementById(HOST_ID)) {
+              console.warn('Initialization watchdog triggered; clearing loading state');
+              render();
+              setState({ initialLoading: false, error: 'Loading timed out. Please check your connection and try again.' });
+            }
+          } catch (e) { /* ignore */ }
+        }, 25000);
         
         // Parallel load of event metadata for faster initial load
         Promise.allSettled([
           fetchEventMetadata(),
           fetchActiveEvents()
         ]).then(([metaResult, eventsResult]) => {
+          // Clear watchdog on success
+          try { if (initWatchdogTimer) { clearTimeout(initWatchdogTimer); initWatchdogTimer = null; } } catch(e){}
           // Verify DOM still exists after async operations
           if (!document.body || !document.getElementById(HOST_ID)) {
             console.warn('DOM no longer available after data fetch');
@@ -1687,6 +1729,8 @@
           render();
           setState({ initialLoading: false });
         }).catch((err) => {
+          // Clear watchdog on failure
+          try { if (initWatchdogTimer) { clearTimeout(initWatchdogTimer); initWatchdogTimer = null; } } catch(e){}
           console.error('Initialization error:', err);
           // Ensure we render even if something fails
           try {
@@ -1722,8 +1766,9 @@
           try { activeEventsAbortController.abort(); } catch (e) { /* ignore */ }
         }
         
-        // Clear timer
+        // Clear timers
         if (setStateDebounceTimer) clearTimeout(setStateDebounceTimer);
+        try { if (initWatchdogTimer) { clearTimeout(initWatchdogTimer); initWatchdogTimer = null; } } catch(e) {}
       } catch (e) {
         console.warn('Cleanup error:', e);
       }
