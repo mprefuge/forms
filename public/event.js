@@ -800,9 +800,19 @@
 
   // Leaflet + Nominatim map helpers for event location
   let leafletPromise = null;
+  let leafletLoadFailed = false;
+  
   const loadLeaflet = () => {
+    if (leafletLoadFailed) return Promise.resolve(null);
     if (leafletPromise) return leafletPromise;
+    
     leafletPromise = new Promise((resolve) => {
+      // Add timeout to prevent hanging on Safari
+      const timeout = setTimeout(() => {
+        leafletLoadFailed = true;
+        resolve(null);
+      }, 10000); // 10 second timeout
+      
       // Inject CSS once
       const existingCss = Array.from(document.styleSheets).some(ss => ss.href && ss.href.includes('leaflet.css'));
       if (!existingCss) {
@@ -812,12 +822,22 @@
         document.head.appendChild(link);
       }
       // Inject JS once
-      if (window.L) return resolve(window.L);
+      if (window.L) {
+        clearTimeout(timeout);
+        return resolve(window.L);
+      }
       const script = document.createElement('script');
       script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
       script.async = true;
-      script.onload = () => resolve(window.L);
-      script.onerror = () => resolve(null);
+      script.onload = () => {
+        clearTimeout(timeout);
+        resolve(window.L);
+      };
+      script.onerror = () => {
+        clearTimeout(timeout);
+        leafletLoadFailed = true;
+        resolve(null);
+      };
       document.head.appendChild(script);
     });
     return leafletPromise;
@@ -826,52 +846,59 @@
   const geocodeLocation = async (q) => {
     if (!q || q.length < 3) return null;
     
-    // Helper to extract address from strings like "Title - Address" or "Title: Address"
-    const extractAddress = (str) => {
-      const variants = [];
+    try {
+      // Add timeout to prevent hanging requests on Safari
+      const timeoutMs = 5000;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
       
-      // Try original string first
-      variants.push(str.trim());
-      
-      // Try splitting by common separators (dash, colon, pipe, comma followed by space)
-      const separators = [' - ', ' – ', ' — ', ': ', ' | ', ', '];
-      for (const sep of separators) {
-        if (str.includes(sep)) {
-          const parts = str.split(sep);
-          // Take parts that look like addresses (contain numbers or common address keywords)
-          for (let i = parts.length - 1; i >= 0; i--) {
-            const part = parts[i].trim();
-            if (/\d/.test(part) && part.length > 5) {
-              variants.push(part);
-              // Also try joining remaining parts from this point
-              if (i < parts.length - 1) {
-                variants.push(parts.slice(i).join(' ').trim());
+      // Helper to extract address from strings like "Title - Address" or "Title: Address"
+      const extractAddress = (str) => {
+        const variants = [];
+        
+        // Try original string first
+        variants.push(str.trim());
+        
+        // Try splitting by common separators (dash, colon, pipe, comma followed by space)
+        const separators = [' - ', ' – ', ' — ', ': ', ' | ', ', '];
+        for (const sep of separators) {
+          if (str.includes(sep)) {
+            const parts = str.split(sep);
+            // Take parts that look like addresses (contain numbers or common address keywords)
+            for (let i = parts.length - 1; i >= 0; i--) {
+              const part = parts[i].trim();
+              if (/\d/.test(part) && part.length > 5) {
+                variants.push(part);
+                // Also try joining remaining parts from this point
+                if (i < parts.length - 1) {
+                  variants.push(parts.slice(i).join(' ').trim());
+                }
               }
             }
+            // Also try everything after first separator
+            const afterFirst = parts.slice(1).join(sep).trim();
+            if (afterFirst.length > 3) variants.push(afterFirst);
           }
-          // Also try everything after first separator
-          const afterFirst = parts.slice(1).join(sep).trim();
-          if (afterFirst.length > 3) variants.push(afterFirst);
         }
-      }
+        
+        // Try to find part with street number pattern (digits followed by street name)
+        const streetNumberMatch = str.match(/(\d+\s+[A-Z][a-z]+(?:\s+(?:St|Ave|Avenue|Rd|Road|Blvd|Boulevard|Dr|Drive|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway))?.+(?:\d{5}(?:-\d{4})?)?)/i);
+        if (streetNumberMatch && streetNumberMatch[1]) {
+          variants.push(streetNumberMatch[1].trim());
+        }
+        
+        return [...new Set(variants)]; // Remove duplicates
+      };
       
-      // Try to find part with street number pattern (digits followed by street name)
-      const streetNumberMatch = str.match(/(\d+\s+[A-Z][a-z]+(?:\s+(?:St|Ave|Avenue|Rd|Road|Blvd|Boulevard|Dr|Drive|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway))?.+(?:\d{5}(?:-\d{4})?)?)/i);
-      if (streetNumberMatch && streetNumberMatch[1]) {
-        variants.push(streetNumberMatch[1].trim());
-      }
-      
-      return [...new Set(variants)]; // Remove duplicates
-    };
-    
-    try {
       const addressVariants = extractAddress(q);
       
       // Try Photon API first (CORS-friendly, Nominatim-based)
       for (const addr of addressVariants) {
         try {
           const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(addr)}&limit=1`;
-          const res = await fetch(url);
+          const res = await fetch(url, { signal: controller.signal });
+          
+          clearTimeout(timeout); // Clear timeout on successful response
           
           if (res.ok) {
             const data = await res.json();
@@ -892,6 +919,7 @@
           }
         } catch (e) {
           console.warn('Photon geocode attempt failed', e);
+          clearTimeout(timeout); // Ensure timeout is cleared on error
         }
         
         // Delay between attempts to respect rate limits
@@ -900,6 +928,7 @@
         }
       }
       
+      clearTimeout(timeout); // Clear timeout before returning
       return null;
     } catch (e) {
       console.warn('Geocode failed', e);
@@ -910,6 +939,7 @@
   let eventMapInstance = null;
   let eventMapMarker = null;
   let eventMapRenderedFor = null;
+  let eventMapRenderInProgress = false;
 
   const getCurrentEventLocation = () => {
     const src = state.campaignInfo || state.selectedEvent || null;
@@ -920,19 +950,26 @@
   };
 
   const renderEventMap = async () => {
+    // Prevent concurrent map rendering to avoid memory issues on Safari
+    if (eventMapRenderInProgress) return;
+    
     try {
       const container = document.getElementById('ri-event-map');
       const locationText = (getCurrentEventLocation() || '').trim();
 
       if (!container || !locationText) {
         eventMapRenderedFor = null;
-        if (eventMapInstance && eventMapInstance.remove) eventMapInstance.remove();
+        if (eventMapInstance && eventMapInstance.remove) {
+          try { eventMapInstance.remove(); } catch (e) {}
+        }
         eventMapInstance = null;
         eventMapMarker = null;
         return;
       }
 
       if (eventMapRenderedFor === locationText && eventMapInstance) return;
+      
+      eventMapRenderInProgress = true;
       eventMapRenderedFor = locationText;
       
       // Check if container is visible before loading heavy resources
@@ -1032,6 +1069,8 @@
     } catch (e) {
       // Silently fail - map is a nice-to-have, not critical
       console.warn('renderEventMap error:', e);
+    } finally {
+      eventMapRenderInProgress = false;
     }
   };
 
