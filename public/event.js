@@ -34,6 +34,17 @@
     }
   } catch (e) { /* ignore */ }
 
+  // SAFETY NOTES (Safari/iOS + Squarespace) 🔧
+  // - Avoid using innerHTML/outerHTML and Element.remove() for large tree updates.
+  //   Rapid reparenting or innerHTML replacements have been observed to cause
+  //   crashes or reload loops in certain Safari/iOS builds and some embed
+  //   environments (e.g., Squarespace).
+  // - Batch DOM writes inside requestAnimationFrame via setState()/scheduleRender
+  //   so all reads and writes happen together and avoid interleaved sync writes.
+  // - Use a stable content container and replace its children via removeChild
+  //   + appendChild with a DocumentFragment to minimize reparenting and layout
+  //   churn. Fail silently when required elements are unavailable to remain idempotent.
+
 
 
 
@@ -1456,7 +1467,9 @@
               a.download = `${(ev.name || 'event').replace(/[^a-z0-9_-]/gi,'_')}.ics`;
               document.body.appendChild(a);
               a.click();
-              a.remove();
+              // Use removeChild instead of Element.remove() to avoid potential reparenting issues
+              // that can trigger crashes in some Safari/iOS builds.
+              try { document.body.removeChild(a); } catch (e) { /* ignore */ }
               setTimeout(() => URL.revokeObjectURL(url), 5000);
             } catch (e) { console.error('Failed to download ics', e); }
           } }, 'Add to Apple / Download .ics')
@@ -1484,8 +1497,12 @@
         return;
       }
 
-      // Clear any existing event listeners before clearing innerHTML
-      // This helps prevent memory leaks on devices with limited memory
+      // Clear any existing event listeners before updating content.
+      // This helps prevent memory leaks on devices with limited memory and avoids
+      // using innerHTML which is known to cause crashes on some Safari/iOS builds
+      // when large tree replacements happen during event handling. We perform a
+      // minimal, targeted update: create a stable content container and replace
+      // its children using removeChild + appendChild inside this rAF callback.
       try {
         const oldStreetInput = root.querySelector('#ri-input-Street');
         if (oldStreetInput && oldStreetInput._riHandlerAttached) {
@@ -1493,20 +1510,44 @@
         }
       } catch (e) { /* ignore cleanup errors */ }
 
-      root.innerHTML = '';
-      
-      if (state.status === 'success') {
-        root.appendChild(renderSuccess());
-      } else {
-        root.appendChild(renderForm());
+      // Ensure a stable container exists so we perform minimal DOM writes
+      let contentEl = root.querySelector('.ri-root-content');
+      if (!contentEl) {
+        contentEl = document.createElement('div');
+        contentEl.className = 'ri-root-content';
+        root.appendChild(contentEl);
       }
+
+      // Build new content off-DOM and then swap children in a single batch
+      const frag = document.createDocumentFragment();
+      const newNode = (state.status === 'success') ? renderSuccess() : renderForm();
+      if (newNode && newNode.nodeType) frag.appendChild(newNode);
+
+      // Remove existing children safely and append new content (batched write)
+      while (contentEl.firstChild) {
+        try { contentEl.removeChild(contentEl.firstChild); } catch (e) { break; }
+      }
+      contentEl.appendChild(frag);
     } catch (e) {
       console.error('Fatal error in render:', e);
       // Try to show a basic error message to the user
       try {
         const root = document.getElementById(HOST_ID);
         if (root && document.body && document.body.contains(root)) {
-          root.innerHTML = '<div class="ri-error">An error occurred loading the form. Please refresh the page.</div>';
+          // Avoid innerHTML for error fallback to prevent unstable reflows on iOS Safari.
+          const fallback = document.createElement('div');
+          fallback.className = 'ri-error';
+          fallback.textContent = 'An error occurred loading the form. Please refresh the page.';
+          let contentEl = root.querySelector('.ri-root-content');
+          if (!contentEl) {
+            contentEl = document.createElement('div');
+            contentEl.className = 'ri-root-content';
+            root.appendChild(contentEl);
+          }
+          while (contentEl.firstChild) {
+            try { contentEl.removeChild(contentEl.firstChild); } catch (e) { break; }
+          }
+          contentEl.appendChild(fallback);
         }
       } catch (fallbackErr) { /* ignore */ }
     } finally {
@@ -1696,15 +1737,15 @@
             return;
           }
           
-          // Initial render with all data loaded
-          render();
+          // Schedule initial render by updating state; this ensures rendering
+          // happens inside requestAnimationFrame (see scheduleRender) and avoids
+          // synchronous DOM writes which can trigger issues on some platforms.
           setState({ initialLoading: false });
         }).catch((err) => {
           console.error('Initialization error:', err);
           // Ensure we render even if something fails
           try {
             if (document.body && document.getElementById(HOST_ID)) {
-              render();
               setState({ initialLoading: false });
             }
           } catch (renderErr) {
