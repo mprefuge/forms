@@ -422,11 +422,6 @@
         eventRegistration: EMAIL_TEMPLATES.eventRegistration
       };
 
-      // Attach client time zone so server can generate calendar links appropriately
-      try {
-        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        if (tz) payload['__clientTimeZone'] = tz;
-      } catch (e) { /* ignore */ }
 
       // Resolve selected event/campaign info
       const selected = state.selectedEvent || state.campaignInfo || null;
