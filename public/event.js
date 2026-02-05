@@ -1,5 +1,5 @@
 // ============================================================================
-// EVENT REGISTRATION FORM
+// EVENT REGISTRATION FORM v3
 // ============================================================================
 // Event registration form with optional campaign association.
 // 
@@ -419,11 +419,18 @@
         payload['__selectedEvent'] = selected;
       }
 
+      // Add timeout to prevent hanging on Safari
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000); // 10 seconds for form submission
+
       const response = await fetch(ENDPOINT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
+        signal: controller.signal
       });
+      
+      clearTimeout(timeout);
 
       const result = await response.json();
 
@@ -574,11 +581,19 @@
 
     try {
       console.debug('Payment payload:', cleanedPayload);
+      
+      // Add timeout to prevent hanging on Safari
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000); // 10 seconds
+      
       const res = await fetch(PAYMENT_ENDPOINT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(cleanedPayload)
+        body: JSON.stringify(cleanedPayload),
+        signal: controller.signal
       });
+      
+      clearTimeout(timeout);
 
       const text = await res.text().catch(() => null);
       let json = {};
@@ -714,14 +729,23 @@
         cachedLookupData = window.lookup;
         return resolve(cachedLookupData);
       }
+      
+      // Add 3-second timeout for Safari
+      const timeout = setTimeout(() => {
+        cachedLookupData = {};
+        resolve(cachedLookupData);
+      }, 3000);
+      
       const script = document.createElement('script');
       script.src = LOOKUP_URL;
       script.async = true;
       script.onload = () => {
+        clearTimeout(timeout);
         cachedLookupData = window.lookup || {};
         resolve(cachedLookupData);
       };
       script.onerror = () => {
+        clearTimeout(timeout);
         cachedLookupData = {};
         resolve(cachedLookupData);
       };
@@ -1712,9 +1736,15 @@
   const fetchEventMetadata = async () => {
     if (!state.eventId) return;
     try {
+      // Aggressive 3-second timeout for Safari
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3000);
+      
       const formConfigParam = encodeURIComponent(JSON.stringify(FORM_CONFIG));
       const url = `${ENDPOINT}?eventid=${encodeURIComponent(state.eventId)}&formConfig=${formConfigParam}`;
-      const res = await fetch(url);
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeout);
+      
       if (!res.ok) {
         // Do not surface as error; proceed gracefully
         return;
@@ -1770,9 +1800,15 @@
   const fetchActiveEvents = async () => {
     if (state.eventId) return;
     try {
+      // Aggressive 3-second timeout for Safari
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3000);
+      
       const formConfigParam = encodeURIComponent(JSON.stringify(FORM_CONFIG));
       const url = `${ENDPOINT}?listActiveEvents=true&formConfig=${formConfigParam}`;
-      const res = await fetch(url);
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeout);
+      
       if (!res.ok) return;
       const data = await res.json();
       const list = data && Array.isArray(data.campaigns) ? data.campaigns : [];
@@ -1842,10 +1878,11 @@
     window.addEventListener('DOMContentLoaded', () => {
       applyCustomFields();
       
-      // Show loading state immediately
-      setState({ initialLoading: true });
+      // Render immediately - don't wait for data loading
+      render();
+      setState({ initialLoading: false });
       
-      // Parallel load of lookup data and event metadata for faster initial load
+      // Load data in background without blocking render
       Promise.allSettled([
         loadLookup(),
         fetchEventMetadata(),
@@ -1856,14 +1893,10 @@
           applyLookupOptions(lookupResult.value);
         }
         
-        // Initial render with all data loaded
+        // Re-render with loaded data
         render();
-        setState({ initialLoading: false });
       }).catch((err) => {
-        console.error('Initialization error:', err);
-        // Ensure we render even if something fails
-        render();
-        setState({ initialLoading: false });
+        console.error('Background data load error:', err);
       });
     });
 
