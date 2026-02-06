@@ -21,6 +21,15 @@
   const PAYMENT_ENDPOINT = config.paymentEndpoint || 'https://payment-processing-function.azurewebsites.net/api/transaction';
   const HOST_ID = "event-app";
 
+  // Polyfill Promise.allSettled for older Safari/iOS builds
+  if (typeof Promise !== 'undefined' && typeof Promise.allSettled !== 'function') {
+    Promise.allSettled = (promises) => Promise.all((promises || []).map(p =>
+      Promise.resolve(p)
+        .then(value => ({ status: 'fulfilled', value }))
+        .catch(reason => ({ status: 'rejected', reason }))
+    ));
+  }
+
   // Idempotency guard: if this script was already initialized on the page, skip re-initialization.
   try {
     if (typeof window !== 'undefined') {
@@ -302,6 +311,20 @@
   // ============================================================================
   // HELPER FUNCTIONS
   // ============================================================================
+  const flattenKids = (items) => {
+    const out = [];
+    const stack = Array.isArray(items) ? items.slice() : [items];
+    while (stack.length) {
+      const item = stack.shift();
+      if (Array.isArray(item)) {
+        stack.unshift(...item);
+      } else {
+        out.push(item);
+      }
+    }
+    return out;
+  };
+
   const h = (tag, attrs = {}, ...kids) => {
     try {
       const el = document.createElement(tag);
@@ -336,7 +359,7 @@
       });
 
       // Safely flatten and filter children
-      const flatKids = kids.flat(Infinity).filter(kid => kid !== null && kid !== undefined && kid !== false);
+      const flatKids = flattenKids(kids).filter(kid => kid !== null && kid !== undefined && kid !== false);
       
       flatKids.forEach(kid => {
         try {
