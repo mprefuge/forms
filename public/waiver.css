@@ -24,11 +24,85 @@
 /* Consent rows: make each waiver checkbox take full row */
 .waiver-row--consent { grid-template-columns: 1fr; }
 .waiver-row--consent .ri-field { width: 100%; }
-/* Align checkbox left and make label span remaining width */
-.waiver-row--consent .ri-checkbox { display: grid; grid-template-columns: 22px 1fr; gap: 12px; align-items: start; }
-.waiver-row--consent .ri-checkbox input { grid-column: 1; margin-top: 6px; width: 18px; height: 18px; }
-.waiver-row--consent .ri-checkbox label { grid-column: 2; display: block; margin: 0; }
-.waiver-row--consent .ri-statement-top { display: block; margin-bottom: 6px; }
+/* Align checkbox left and make label span remaining width - card-style layout */
+.waiver-row--consent .ri-checkbox { 
+  display: grid; 
+  grid-template-columns: 28px 1fr; 
+  gap: 16px; 
+  align-items: center;
+  background: linear-gradient(135deg, #fafbfc 0%, #f5f7f9 100%);
+  border: 1.5px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 14px 16px;
+  transition: all 0.2s ease;
+}
+.waiver-row--consent .ri-checkbox:hover { 
+  background: linear-gradient(135deg, #ffffff 0%, #fafbfc 100%);
+  border-color: #bd2135;
+  box-shadow: 0 4px 12px rgba(189, 33, 53, 0.08);
+}
+.waiver-row--consent .ri-checkbox input { 
+  grid-column: 1; 
+  width: 24px; 
+  height: 24px;
+  cursor: pointer;
+  accent-color: #bd2135;
+  flex-shrink: 0;
+}
+.waiver-row--consent .ri-checkbox label { 
+  grid-column: 2; 
+  display: block; 
+  margin: 0;
+}
+.waiver-row--consent .ri-statement-top { 
+  display: block; 
+  margin-bottom: 8px;
+  font-weight: 700;
+  color: #0b1720;
+  font-size: 15px;
+}
+.waiver-row--consent .ri-checkbox label span:not(.ri-required) {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #374151;
+  font-weight: 400;
+}
+.waiver-row--consent .ri-required {
+  color: #ef4444;
+  font-weight: 800;
+  margin-left: 4px;
+}
+/* Adjust checkbox for better focus visibility */
+.waiver-row--consent .ri-checkbox input:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(189, 33, 53, 0.2);
+}
+
+/* Responsive adjustments for consent checkboxes on mobile */
+@media (max-width: 768px) {
+  .waiver-row--consent .ri-checkbox {
+    gap: 12px;
+    padding: 12px 14px;
+    grid-template-columns: 24px 1fr;
+  }
+  .waiver-row--consent .ri-checkbox input {
+    width: 22px;
+    height: 22px;
+  }
+  .waiver-row--consent .ri-statement-top {
+    font-size: 14px;
+  }
+  .waiver-row--consent .ri-checkbox label span:not(.ri-required) {
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .waiver-row--consent .ri-checkbox {
+    padding: 10px 12px;
+    gap: 10px;
+  }
+}
 
 /* Signature: signature input grows, date is fixed width */
 .waiver-row--signature { grid-template-columns: 1fr 240px; gap: 12px; align-items: center; }
