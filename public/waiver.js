@@ -139,8 +139,8 @@
   const EMAIL_TEMPLATES = {
     waiverCopy: {
       subject: 'Volunteer Waiver Form Submission - The Nations Next Door',
-      text: 'Hello {{ParentName__c}},\n\nYour volunteer waiver for {{ParticipantName__c}} has been successfully submitted for The Nations Next Door program. Your confirmation code is {{codeText}}.\n\nThank you,\nRefuge International',
-      html: '<p>Hello {{ParentName__c}},</p><p>Your volunteer waiver for <strong>{{ParticipantName__c}}</strong> has been successfully submitted for The Nations Next Door program. Your confirmation code is <strong>{{codeHtml}}</strong>.</p><p>Thank you,<br/>Refuge International</p>'
+      text: 'Hello {{ParentFirstName__c}},\n\nYour volunteer waiver for {{FirstName__c}} has been successfully submitted for The Nations Next Door program. Your confirmation code is {{codeText}}.\n\nThank you,\nRefuge International',
+      html: '<p>Hello {{ParentFirstName__c}},</p><p>Your volunteer waiver for <strong>{{FirstName__c}}</strong> has been successfully submitted for The Nations Next Door program. Your confirmation code is <strong>{{codeHtml}}</strong>.</p><p>Thank you,<br/>Refuge International</p>'
     },
     applicationCode: {
       subject: 'Your Waiver Code - The Nations Next Door',
@@ -159,8 +159,9 @@
       skipContactCreation: true, // Waiver form doesn't need contact records
       allowedFields: [
         // Volunteer Information
-        'ParentName__c', 'ParticipantName__c', 'Church__c', 'Address__c',
-        'Email__c', 'PhoneNumber__c',
+        'ParentFirstName__c', 'ParentLastName__c', 'FirstName__c', 'LastName__c', 'Church__c',
+        'Street__c', 'City__c', 'State__c', 'Zip__c', 'Country__c',
+        'Email__c', 'Phone__c',
         
         // Legal Acknowledgments
         'ReleaseOfLiability__c', 'NeglianceClause__c', 'RiskAcknowledgment__c',
@@ -175,7 +176,7 @@
         'EmailUpdatesConsent__c', 'TransportationConsent__c',
       ],
       queryFields: [
-        'Id', 'FormCode__c', 'ParentName__c', 'ParticipantName__c', 'Email__c',
+        'Id', 'FormCode__c', 'ParentFirstName__c', 'ParentLastName__c', 'FirstName__c', 'LastName__c', 'Email__c',
         'CreatedDate'
       ],
       updateFields: [],
@@ -228,12 +229,18 @@
           title: 'Volunteer Information',
           description: 'Please provide your contact information',
           fields: [
-            { key: 'ParentName__c', label: 'Parent/Guardian Name (if under 18)', type: 'text', required: true },
-            { key: 'ParticipantName__c', label: 'Participant Name', type: 'text', required: true },
+            { key: 'ParentFirstName__c', label: 'Parent/Guardian First Name (if under 18)', type: 'text', required: false },
+            { key: 'ParentLastName__c', label: 'Parent/Guardian Last Name (if under 18)', type: 'text', required: false },
+            { key: 'FirstName__c', label: 'Participant First Name', type: 'text', required: true },
+            { key: 'LastName__c', label: 'Participant Last Name', type: 'text', required: true },
             { key: 'Church__c', label: 'Church', type: 'text', required: false },
-            { key: 'Address__c', label: 'Address', type: 'text', required: true },
+            { key: 'Street__c', label: 'Street Address', type: 'text', required: true },
+            { key: 'City__c', label: 'City', type: 'text', required: true },
+            { key: 'State__c', label: orgTerms.labels.State, type: 'text', required: true },
+            { key: 'Zip__c', label: orgTerms.labels.Zip, type: 'text', required: true },
+            { key: 'Country__c', label: orgTerms.labels.Country, type: 'text', required: true },
             { key: 'Email__c', label: 'Email', type: 'email', required: true },
-            { key: 'PhoneNumber__c', label: 'Phone Number', type: 'tel', required: true },
+            { key: 'Phone__c', label: 'Phone Number', type: 'tel', required: true },
           ]
         },
         {
@@ -436,11 +443,11 @@
     if (!item) return;
     const addr = item.address || {};
     const street = [addr.house_number, addr.road].filter(Boolean).join(' ');
-    const city = addr.city || addr.town || addr.village || addr.county || '';
-    const state = addr.state || '';
-    const zip = addr.postcode || '';
-    const fullAddress = [street, city, state, zip].filter(Boolean).join(', ');
-    state.formData.Address__c = fullAddress;
+    state.formData.Street__c = street || (addr.road || '');
+    state.formData.City__c = addr.city || addr.town || addr.village || addr.county || '';
+    state.formData.State__c = addr.state || '';
+    state.formData.Zip__c = addr.postcode || '';
+    state.formData.Country__c = addr.country || '';
     updateState({});
   };
 
@@ -747,21 +754,30 @@
         ${FORM_CONFIG && FORM_CONFIG.id === 'waiver' && currentStep.title === 'Volunteer Information' ? `
           <div class="ri-grid">
             <div class="waiver-row waiver-row--two">
-              ${renderField(currentStep.fields.find(f => f.key === 'ParentName__c'))}
-              ${renderField(currentStep.fields.find(f => f.key === 'ParticipantName__c'))}
+              ${renderField(currentStep.fields.find(f => f.key === 'ParentFirstName__c'))}
+              ${renderField(currentStep.fields.find(f => f.key === 'ParentLastName__c'))}
+            </div>
+
+            <div class="waiver-row waiver-row--two">
+              ${renderField(currentStep.fields.find(f => f.key === 'FirstName__c'))}
+              ${renderField(currentStep.fields.find(f => f.key === 'LastName__c'))}
             </div>
 
             <div class="waiver-row waiver-row--full">
               ${renderField(currentStep.fields.find(f => f.key === 'Church__c'))}
             </div>
 
-            <div class="waiver-row waiver-row--full">
-              ${renderField(currentStep.fields.find(f => f.key === 'Address__c'))}
+            <div class="waiver-row waiver-row--address">
+              ${renderField(currentStep.fields.find(f => f.key === 'Street__c'))}
+              ${renderField(currentStep.fields.find(f => f.key === 'City__c'))}
+              ${renderField(currentStep.fields.find(f => f.key === 'State__c'))}
+              ${renderField(currentStep.fields.find(f => f.key === 'Zip__c'))}
+              ${renderField(currentStep.fields.find(f => f.key === 'Country__c'))}
             </div>
 
-            <div class="waiver-row waiver-row--three">
+            <div class="waiver-row waiver-row--two">
               ${renderField(currentStep.fields.find(f => f.key === 'Email__c'))}
-              ${renderField(currentStep.fields.find(f => f.key === 'PhoneNumber__c'))}
+              ${renderField(currentStep.fields.find(f => f.key === 'Phone__c'))}
             </div>
           </div>
         ` : FORM_CONFIG && FORM_CONFIG.id === 'waiver' && currentStep.title === 'Legal Acknowledgments' ? `
@@ -866,15 +882,15 @@
   function attachAddressLookupListener() {
     const container = document.getElementById(HOST_ID);
     if (!container || config.disableAddressLookup) return;
-    const addressInput = container.querySelector('#Address__c');
-    if (!addressInput || addressInput._waiverHandlerAttached) return;
-    addressInput._waiverHandlerAttached = true;
+    const streetInput = container.querySelector('#Street__c');
+    if (!streetInput || streetInput._waiverHandlerAttached) return;
+    streetInput._waiverHandlerAttached = true;
 
-    let suggestionsEl = addressInput.parentNode.querySelector('.ri-address-suggestions');
+    let suggestionsEl = streetInput.parentNode.querySelector('.ri-address-suggestions');
     if (!suggestionsEl) {
       suggestionsEl = document.createElement('div');
       suggestionsEl.className = 'ri-address-suggestions';
-      addressInput.parentNode.appendChild(suggestionsEl);
+      streetInput.parentNode.appendChild(suggestionsEl);
     }
     const onInput = debounce(async (ev) => {
       const q = ev.target.value;
@@ -882,7 +898,7 @@
       const items = await searchAddress(q);
       renderAddressSuggestions(items, suggestionsEl);
     }, 350);
-    addressInput.addEventListener('input', onInput);
+    streetInput.addEventListener('input', onInput);
   }
 
   function render() {
