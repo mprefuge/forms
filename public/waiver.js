@@ -164,7 +164,7 @@
         'Email__c', 'Phone__c',
         
         // Legal Acknowledgments
-        'ReleaseOfLiability__c', 'NeglianceClause__c', 'RiskAcknowledgment__c',
+        'ReleaseOfLiability__c', 'NegligenceClause__c', 'RiskAcknowledgment__c',
         'VulnerablePopulationsAcknowledgment__c', 'SeverabilityClause__c',
         'MedicalConsent__c', 'ContractAcknowledgment__c',
         
@@ -255,7 +255,7 @@
               text: 'In return for being allowed to participate in Refuge International\'s "The Nations Next Door", I release and agree to hold harmless Refuge International or its directors, employees, sub-contractors, donors, and affiliates from all present and future claims that may be made by me, my family, estate, heirs, or assigns for property damage, personal injury, or wrongful death arising as a result of my participation.'
             },
             { 
-              key: 'NeglianceClause__c', 
+              key: 'NegligenceClause__c', 
               label: 'Negligence Clause', 
               type: 'checkbox', 
               required: true,
