@@ -114,13 +114,21 @@
   // Organization terminology
   let orgTerms = {
     orgName: "Refuge International",
+    programName: "The Nations Next Door",
+    address: {
+      street: "5590 Bruce Ave",
+      city: "Louisville",
+      state: "KY",
+      zip: "40214",
+      website: "refugeintl.org"
+    },
     labels: {
-      Zip: "Postal Code",
-      State: "State/Province",
-      Country: "Country/Region",
+      Zip: "Zip Code",
+      State: "State",
+      Country: "Country",
     },
     phaseNames: {
-      initial: "Waiver Submission",
+      initial: "Volunteer Waiver",
     }
   };
 
@@ -130,46 +138,45 @@
 
   const EMAIL_TEMPLATES = {
     waiverCopy: {
-      subject: 'Parental Waiver Form Submission',
-      text: 'Hello {{ParentFirstName__c}},\n\nYour waiver for {{FirstName__c}} has been successfully submitted. Your confirmation code is {{codeText}}.\n\nThank you,\nRefuge International',
-      html: '<p>Hello {{ParentFirstName__c}},</p><p>Your waiver for <strong>{{FirstName__c}}</strong> has been successfully submitted. Your confirmation code is <strong>{{codeHtml}}</strong>.</p><p>Thank you,<br/>Refuge International</p>'
+      subject: 'Volunteer Waiver Form Submission - The Nations Next Door',
+      text: 'Hello {{ParentName__c}},\n\nYour volunteer waiver for {{ParticipantName__c}} has been successfully submitted for The Nations Next Door program. Your confirmation code is {{codeText}}.\n\nThank you,\nRefuge International',
+      html: '<p>Hello {{ParentName__c}},</p><p>Your volunteer waiver for <strong>{{ParticipantName__c}}</strong> has been successfully submitted for The Nations Next Door program. Your confirmation code is <strong>{{codeHtml}}</strong>.</p><p>Thank you,<br/>Refuge International</p>'
     },
     applicationCode: {
-      subject: 'Your Waiver Code',
-      text: 'Hello,\n\nWe received a request to retrieve your waiver code. Your waiver code is: {{FormCode__c}}\n\nYou can use this code to view or update your waiver at our website. If you did not request this email, please ignore it.\n\nThank you',
-      html: '<p>Hello,</p><p>We received a request to retrieve your waiver code. <strong>Your waiver code is: <code>{{FormCode__c}}</code></strong></p><p>You can use this code to view or update your waiver at our website. If you did not request this email, please ignore it.</p><p>Thank you</p>'
+      subject: 'Your Waiver Code - The Nations Next Door',
+      text: 'Hello,\n\nWe received a request to retrieve your waiver code for The Nations Next Door program. Your waiver code is: {{FormCode__c}}\n\nYou can use this code to view or update your waiver at our website. If you did not request this email, please ignore it.\n\nThank you,\nRefuge International',
+      html: '<p>Hello,</p><p>We received a request to retrieve your waiver code for The Nations Next Door program. <strong>Your waiver code is: <code>{{FormCode__c}}</code></strong></p><p>You can use this code to view or update your waiver at our website. If you did not request this email, please ignore it.</p><p>Thank you,<br/>Refuge International</p>'
     }
   };
 
   const FORM_CONFIG = {
     id: 'waiver',
-    name: 'Parental Waiver & Consent Form',
+    name: 'Volunteer Waiver and Release Form',
+    subtitle: 'The Nations Next Door',
     salesforce: {
       objectName: 'Form__c',
-      recordTypeName: 'Parental Waiver',
+      recordTypeName: 'Volunteer Waiver',
       skipContactCreation: true, // Waiver form doesn't need contact records
       allowedFields: [
-        // Parent/Guardian Information
-        'ParentFirstName__c', 'ParentLastName__c', 'Email__c', 'Phone__c',
-        'Street__c', 'City__c', 'State__c', 'Zip__c', 'Country__c',
+        // Volunteer Information
+        'ParentName__c', 'ParticipantName__c', 'Church__c', 'Address__c',
+        'Email__c', 'PhoneNumber__c',
         
-        // Child Information
-        'FirstName__c', 'LastName__c', 'Birthdate__c', 'Gender__c',
+        // Legal Acknowledgments
+        'ReleaseOfLiability__c', 'NeglianceClause__c', 'RiskAcknowledgment__c',
+        'VulnerablePopulationsAcknowledgment__c', 'SeverabilityClause__c',
+        'MedicalConsent__c', 'ContractAcknowledgment__c',
         
-        // Medical Information
-        'Allergies__c', 'Medications__c', 'MedicalConditions__c',
+        // Signatures
+        'ParentSignature__c', 'ParentSignatureDate__c',
+        'TransportationConsentSignature__c', 'TransportationConsentDate__c',
         
-        // Waivers & Consents
-        'LiabilityWaiver__c', 'PhotoRelease__c', 'MedicalTreatmentConsent__c',
-        'CodeOfConduct__c',
-        
-        // Signature
-        'ParentSignature__c', 'SignatureDate__c',
-        
+        // Consents
+        'EmailUpdatesConsent__c', 'TransportationConsent__c',
       ],
       queryFields: [
-        'Id', 'FormCode__c', 'ParentFirstName__c', 'ParentLastName__c', 'Email__c',
-        'FirstName__c', 'LastName__c', 'CreatedDate'
+        'Id', 'FormCode__c', 'ParentName__c', 'ParticipantName__c', 'Email__c',
+        'CreatedDate'
       ],
       updateFields: [],
       searchField: 'FormCode__c',
@@ -218,69 +225,101 @@
       title: orgTerms.phaseNames.initial,
       steps: [
         {
-          title: 'Parent/Guardian Information',
+          title: 'Volunteer Information',
           description: 'Please provide your contact information',
           fields: [
-            { key: 'ParentFirstName__c', label: 'First Name', type: 'text', required: true },
-            { key: 'ParentLastName__c', label: 'Last Name', type: 'text', required: true },
-            { key: 'Email__c', label: 'Email Address', type: 'email', required: true },
-            { key: 'ReceiveUpdates', label: 'I agree to receive periodic updates from Refuge International', type: 'checkbox', required: false },
-            { key: 'Phone__c', label: 'Phone Number', type: 'tel', required: true },
-            { key: 'Street__c', label: 'Street Address', type: 'text', required: true },
-            { key: 'City__c', label: 'City', type: 'text', required: true },
-            { key: 'State__c', label: orgTerms.labels.State, type: 'text', required: true },
-            { key: 'Zip__c', label: orgTerms.labels.Zip, type: 'text', required: true },
-            { key: 'Country__c', label: orgTerms.labels.Country, type: 'text', required: true },
+            { key: 'ParentName__c', label: 'Parent/Guardian Name (if under 18)', type: 'text', required: true },
+            { key: 'ParticipantName__c', label: 'Participant Name', type: 'text', required: true },
+            { key: 'Church__c', label: 'Church', type: 'text', required: false },
+            { key: 'Address__c', label: 'Address', type: 'text', required: true },
+            { key: 'Email__c', label: 'Email', type: 'email', required: true },
+            { key: 'PhoneNumber__c', label: 'Phone Number', type: 'tel', required: true },
           ]
         },
         {
-          title: 'Child Information',
-          description: 'Please provide information about your child and any relevant medical details',
+          title: 'Legal Acknowledgments',
+          description: 'Please read and acknowledge the following statements',
           fields: [
-            { key: 'FirstName__c', label: 'Child\'s First Name', type: 'text', required: true },
-            { key: 'LastName__c', label: 'Child\'s Last Name', type: 'text', required: true },
-            { key: 'Birthdate__c', label: 'Date of Birth', type: 'date', required: true },
-            { key: 'Gender__c', label: 'Gender', type: 'select', required: false, options: ['Male', 'Female'] },
-            { key: 'Allergies__c', label: 'Allergies', type: 'textarea', required: false, placeholder: 'List any allergies (food, medication, environmental, etc.)' },
-            { key: 'Medications__c', label: 'Current Medications', type: 'textarea', required: false, placeholder: 'List any medications your child is currently taking' },
-            { key: 'MedicalConditions__c', label: 'Medical Conditions', type: 'textarea', required: false, placeholder: 'List any medical conditions, disabilities, or special needs' },
+            { 
+              key: 'ReleaseOfLiability__c', 
+              label: 'Release of Liability', 
+              type: 'checkbox', 
+              required: true,
+              text: 'In return for being allowed to participate in Refuge International\'s "The Nations Next Door", I release and agree to hold harmless Refuge International or its directors, employees, sub-contractors, donors, and affiliates from all present and future claims that may be made by me, my family, estate, heirs, or assigns for property damage, personal injury, or wrongful death arising as a result of my participation.'
+            },
+            { 
+              key: 'NeglianceClause__c', 
+              label: 'Negligence Clause', 
+              type: 'checkbox', 
+              required: true,
+              text: 'I understand and agree that the Organization is not responsible for any injury or property damage arising out of "The Nations Next Door," even if caused by their ordinary negligence or otherwise.'
+            },
+            { 
+              key: 'RiskAcknowledgment__c', 
+              label: 'Risk Acknowledgment', 
+              type: 'checkbox', 
+              required: true,
+              text: 'I understand that participation in "The Nations Next Door" involves certain risks, up to and including, but not limited to, mental or emotional trauma, serious physical injury, and death.'
+            },
+            { 
+              key: 'VulnerablePopulationsAcknowledgment__c', 
+              label: 'Vulnerable Populations Acknowledgment', 
+              type: 'checkbox', 
+              required: true,
+              text: 'I am aware that I will be working with vulnerable populations (including refugees, immigrants, and young children) possibly in their place of residence. I understand that this comes with a unique set of possible risks and repercussions and I voluntarily agree to accept all risks of participation.'
+            },
+            { 
+              key: 'SeverabilityClause__c', 
+              label: 'Severability Clause', 
+              type: 'checkbox', 
+              required: true,
+              text: 'I understand that this document is intended to be as broad and inclusive as permitted by the laws of the state in which "The Nations Next Door" takes place and agree that if any portion of this Agreement is invalid, the remainder will continue in full legal force and effect.'
+            },
+            { 
+              key: 'MedicalConsent__c', 
+              label: 'Medical Consent', 
+              type: 'checkbox', 
+              required: true,
+              text: 'I agree and consent to the provision of medical treatment in the event of an accident or emergency and accept full financial responsibility for any such treatment provided to me.'
+            },
+            { 
+              key: 'ContractAcknowledgment__c', 
+              label: 'Contract Acknowledgment', 
+              type: 'checkbox', 
+              required: true,
+              text: 'I understand that this document is a contract which grants certain rights to and eliminates the liability of the Organization.'
+            },
           ]
         },
-
         {
-          title: 'Consent & Signature',
-          description: 'Please review the waivers, provide consent, and sign to submit',
+          title: 'Signatures & Consents',
+          description: 'Please sign and provide consent to submit',
           fields: [
+            { key: 'ParentSignature__c', label: 'Parent/Legal Guardian Signature (Full Name)', type: 'text', required: true, placeholder: 'Type your full name' },
+            { key: 'ParentSignatureDate__c', label: 'Date of Signature', type: 'date', required: true },
             { 
-              key: 'LiabilityWaiver__c', 
-              label: 'Liability Waiver', 
+              key: 'SignatureAcknowledgment__c', 
+              label: 'Signature Acknowledgment', 
               type: 'checkbox', 
               required: true,
-              text: 'I hereby release and hold harmless Refuge International and its staff from any and all liability for injuries or damages that may occur during participation in activities.'
+              text: 'I am the parent or legal guardian of the Volunteer. I am of legal age and am freely signing this agreement. I have read this form and understand that by signing this form, I am giving up legal rights and remedies.'
             },
+            { key: 'TransportationConsentSignature__c', label: 'Transportation Consent Signature (Full Name)', type: 'text', required: true, placeholder: 'Type your full name' },
+            { key: 'TransportationConsentDate__c', label: 'Transportation Consent Date', type: 'date', required: true },
             { 
-              key: 'PhotoRelease__c', 
-              label: 'Photo & Video Release', 
+              key: 'TransportationConsent__c', 
+              label: 'Transportation Consent', 
               type: 'checkbox', 
               required: true,
-              text: 'I grant permission for my child\'s image to be used in photographs, videos, and other media for promotional and educational purposes.'
+              text: 'I give my permission for my child to ride in any vehicle designated by "The Nations Next Door" adult employees and adult volunteers while participating in "The Nations Next Door" summer events.'
             },
             { 
-              key: 'MedicalTreatmentConsent__c', 
-              label: 'Medical Treatment Authorization', 
+              key: 'EmailUpdatesConsent__c', 
+              label: 'Email Updates Consent', 
               type: 'checkbox', 
-              required: true,
-              text: 'I authorize Refuge International staff to seek emergency medical treatment for my child if I cannot be reached immediately.'
+              required: false,
+              text: 'By signing this form, I agree to receive periodic updates from Refuge International.'
             },
-            { 
-              key: 'CodeOfConduct__c', 
-              label: 'Code of Conduct Agreement', 
-              type: 'checkbox', 
-              required: true,
-              text: 'I agree that my child will follow all rules and code of conduct guidelines established by Refuge International.'
-            },
-            { key: 'ParentSignature__c', label: 'Parent/Guardian Full Name (Electronic Signature)', type: 'text', required: true, placeholder: 'Type your full name' },
-            { key: 'SignatureDate__c', label: 'Date', type: 'date', required: true },
           ]
         }
       ]
@@ -397,11 +436,11 @@
     if (!item) return;
     const addr = item.address || {};
     const street = [addr.house_number, addr.road].filter(Boolean).join(' ');
-    state.formData.Street__c = street || (addr.road || '');
-    state.formData.City__c = addr.city || addr.town || addr.village || addr.county || '';
-    state.formData.State__c = addr.state || '';
-    state.formData.Zip__c = addr.postcode || '';
-    state.formData.Country__c = addr.country || '';
+    const city = addr.city || addr.town || addr.village || addr.county || '';
+    const state = addr.state || '';
+    const zip = addr.postcode || '';
+    const fullAddress = [street, city, state, zip].filter(Boolean).join(', ');
+    state.formData.Address__c = fullAddress;
     updateState({});
   };
 
@@ -526,8 +565,8 @@
       <div class="ri-modal-overlay"></div>
       <div class="ri-modal-content">
         <div class="ri-success-icon">✓</div>
-        <h2 class="ri-modal-title">Waiver Submitted Successfully!</h2>
-        <p class="ri-modal-subtitle">Your parental waiver has been submitted. Please save your confirmation code for your records.</p>
+        <h2 class="ri-modal-title">Volunteer Waiver Submitted Successfully!</h2>
+        <p class="ri-modal-subtitle">Your volunteer waiver has been submitted. Please save your confirmation code for your records.</p>
         <div class="ri-code-display">
           <code>${formCode}</code>
         </div>
@@ -705,63 +744,56 @@
       </div>
 
       <form class="${state.step === 0 ? 'ri-form ri-form--first-step' : 'ri-form'}" onsubmit="return false;">
-        ${FORM_CONFIG && FORM_CONFIG.id === 'waiver' && currentStep.title === 'Parent/Guardian Information' ? `
+        ${FORM_CONFIG && FORM_CONFIG.id === 'waiver' && currentStep.title === 'Volunteer Information' ? `
           <div class="ri-grid">
             <div class="waiver-row waiver-row--two">
-              ${renderField(currentStep.fields.find(f => f.key === 'ParentFirstName__c'))}
-              ${renderField(currentStep.fields.find(f => f.key === 'ParentLastName__c'))}
-            </div>
-
-            <div class="waiver-row waiver-row--two">
-              ${renderField(currentStep.fields.find(f => f.key === 'Email__c'))}
-              ${renderField(currentStep.fields.find(f => f.key === 'Phone__c'))}
+              ${renderField(currentStep.fields.find(f => f.key === 'ParentName__c'))}
+              ${renderField(currentStep.fields.find(f => f.key === 'ParticipantName__c'))}
             </div>
 
             <div class="waiver-row waiver-row--full">
-              ${renderField(currentStep.fields.find(f => f.key === 'ReceiveUpdates'))}
+              ${renderField(currentStep.fields.find(f => f.key === 'Church__c'))}
             </div>
 
-            <div class="waiver-row waiver-row--address">
-              ${renderField(currentStep.fields.find(f => f.key === 'Street__c'))}
-              ${renderField(currentStep.fields.find(f => f.key === 'City__c'))}
-              ${renderField(currentStep.fields.find(f => f.key === 'State__c'))}
-              ${renderField(currentStep.fields.find(f => f.key === 'Zip__c'))}
-              ${renderField(currentStep.fields.find(f => f.key === 'Country__c'))}
-            </div>
-          </div>
-        ` : FORM_CONFIG && FORM_CONFIG.id === 'waiver' && currentStep.title === 'Child Information' ? `
-          <div class="ri-grid">
-            <div class="waiver-row waiver-row--child-top">
-              ${renderField(currentStep.fields.find(f => f.key === 'FirstName__c'))}
-              ${renderField(currentStep.fields.find(f => f.key === 'LastName__c'))}
-              ${renderField(currentStep.fields.find(f => f.key === 'Birthdate__c'))}
-              ${renderField(currentStep.fields.find(f => f.key === 'Gender__c'))}
+            <div class="waiver-row waiver-row--full">
+              ${renderField(currentStep.fields.find(f => f.key === 'Address__c'))}
             </div>
 
-            <div class="waiver-row waiver-row--child-bottom">
-              ${renderField(currentStep.fields.find(f => f.key === 'Allergies__c'))}
-              ${renderField(currentStep.fields.find(f => f.key === 'Medications__c'))}
-              ${renderField(currentStep.fields.find(f => f.key === 'MedicalConditions__c'))}
+            <div class="waiver-row waiver-row--three">
+              ${renderField(currentStep.fields.find(f => f.key === 'Email__c'))}
+              ${renderField(currentStep.fields.find(f => f.key === 'PhoneNumber__c'))}
             </div>
           </div>
-        ` : FORM_CONFIG && FORM_CONFIG.id === 'waiver' && currentStep.title === 'Consent & Signature' ? `
+        ` : FORM_CONFIG && FORM_CONFIG.id === 'waiver' && currentStep.title === 'Legal Acknowledgments' ? `
           <div class="ri-grid">
-            <div class="waiver-row waiver-row--consent">
-              ${renderField(currentStep.fields.find(f => f.key === 'LiabilityWaiver__c'))}
+            ${currentStep.fields.map(field => `
+              <div class="waiver-row waiver-row--consent">
+                ${renderField(field)}
+              </div>
+            `).join('')}
+          </div>
+        ` : FORM_CONFIG && FORM_CONFIG.id === 'waiver' && currentStep.title === 'Signatures & Consents' ? `
+          <div class="ri-grid">
+            <div class="waiver-row waiver-row--signature">
+              ${renderField(currentStep.fields.find(f => f.key === 'ParentSignature__c'))}
+              ${renderField(currentStep.fields.find(f => f.key === 'ParentSignatureDate__c'))}
             </div>
+
             <div class="waiver-row waiver-row--consent">
-              ${renderField(currentStep.fields.find(f => f.key === 'PhotoRelease__c'))}
-            </div>
-            <div class="waiver-row waiver-row--consent">
-              ${renderField(currentStep.fields.find(f => f.key === 'MedicalTreatmentConsent__c'))}
-            </div>
-            <div class="waiver-row waiver-row--consent">
-              ${renderField(currentStep.fields.find(f => f.key === 'CodeOfConduct__c'))}
+              ${renderField(currentStep.fields.find(f => f.key === 'SignatureAcknowledgment__c'))}
             </div>
 
             <div class="waiver-row waiver-row--signature">
-              ${renderField(currentStep.fields.find(f => f.key === 'ParentSignature__c'))}
-              ${renderField(currentStep.fields.find(f => f.key === 'SignatureDate__c'))}
+              ${renderField(currentStep.fields.find(f => f.key === 'TransportationConsentSignature__c'))}
+              ${renderField(currentStep.fields.find(f => f.key === 'TransportationConsentDate__c'))}
+            </div>
+
+            <div class="waiver-row waiver-row--consent">
+              ${renderField(currentStep.fields.find(f => f.key === 'TransportationConsent__c'))}
+            </div>
+
+            <div class="waiver-row waiver-row--consent">
+              ${renderField(currentStep.fields.find(f => f.key === 'EmailUpdatesConsent__c'))}
             </div>
           </div>
         ` : `
@@ -820,22 +852,6 @@
       } else {
         state.formData[e.target.name] = e.target.value;
       }
-      // Compute age when birthdate changes, but DON'T call updateState({})
-      // to avoid exponential re-renders. Just update the age silently.
-      if (e.target.name === 'ChildBirthdate__c') {
-        const age = computeAge(e.target.value);
-        state.formData.ChildAge__c = age;
-        // Update display WITHOUT full re-render
-        const ageDisplay = container.querySelector(`[data-age-display="${e.target.name}"]`);
-        if (ageDisplay) ageDisplay.textContent = `Child age: ${age}`;
-      }
-
-      // Auto-copy parent fields -> emergency contact fields
-      if (e.target.name === 'ParentFirstName__c') state.formData.EmergencyContactFirstName__c = e.target.value;
-      if (e.target.name === 'ParentLastName__c') state.formData.EmergencyContactLastName__c = e.target.value;
-      if (e.target.name === 'Phone__c' || e.target.name === 'ParentPhone__c') state.formData.EmergencyContactPhone__c = e.target.value;
-      if (e.target.name === 'Email__c' || e.target.name === 'ParentEmail__c') state.formData.EmergencyContactEmail__c = e.target.value;
-      state.formData.EmergencyContactRelationship__c = 'Parent';
     });
 
     form.addEventListener('change', (e) => {
@@ -844,34 +860,21 @@
       } else {
         state.formData[e.target.name] = e.target.value;
       }
-      // Same as above: don't re-render on birthdate change
-      if (e.target.name === 'ChildBirthdate__c') {
-        const age = computeAge(e.target.value);
-        state.formData.ChildAge__c = age;
-        const ageDisplay = container.querySelector(`[data-age-display="${e.target.name}"]`);
-        if (ageDisplay) ageDisplay.textContent = `Child age: ${age}`;
-      }
-
-      if (e.target.name === 'ParentFirstName__c') state.formData.EmergencyContactFirstName__c = e.target.value;
-      if (e.target.name === 'ParentLastName__c') state.formData.EmergencyContactLastName__c = e.target.value;
-      if (e.target.name === 'Phone__c' || e.target.name === 'ParentPhone__c') state.formData.EmergencyContactPhone__c = e.target.value;
-      if (e.target.name === 'Email__c' || e.target.name === 'ParentEmail__c') state.formData.EmergencyContactEmail__c = e.target.value;
-      state.formData.EmergencyContactRelationship__c = 'Parent';
     });
   }
 
   function attachAddressLookupListener() {
     const container = document.getElementById(HOST_ID);
     if (!container || config.disableAddressLookup) return;
-    const streetInput = container.querySelector('#Street__c');
-    if (!streetInput || streetInput._waiverHandlerAttached) return;
-    streetInput._waiverHandlerAttached = true;
+    const addressInput = container.querySelector('#Address__c');
+    if (!addressInput || addressInput._waiverHandlerAttached) return;
+    addressInput._waiverHandlerAttached = true;
 
-    let suggestionsEl = streetInput.parentNode.querySelector('.ri-address-suggestions');
+    let suggestionsEl = addressInput.parentNode.querySelector('.ri-address-suggestions');
     if (!suggestionsEl) {
       suggestionsEl = document.createElement('div');
       suggestionsEl.className = 'ri-address-suggestions';
-      streetInput.parentNode.appendChild(suggestionsEl);
+      addressInput.parentNode.appendChild(suggestionsEl);
     }
     const onInput = debounce(async (ev) => {
       const q = ev.target.value;
@@ -879,7 +882,7 @@
       const items = await searchAddress(q);
       renderAddressSuggestions(items, suggestionsEl);
     }, 350);
-    streetInput.addEventListener('input', onInput);
+    addressInput.addEventListener('input', onInput);
   }
 
   function render() {
@@ -914,9 +917,10 @@
   window.prevStep = prevStep;
   window.goToStep = goToStep;
 
-  // Auto-fill today's date for signature date
+  // Auto-fill today's date for signature dates
   const today = new Date().toISOString().split('T')[0];
-  state.formData.SignatureDate__c = today;
+  state.formData.ParentSignatureDate__c = today;
+  state.formData.TransportationConsentDate__c = today;
 
   // Initial render
   if (document.readyState === 'loading') {
