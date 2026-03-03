@@ -4,6 +4,17 @@ import { Logger } from '../../services/logger';
 import { initializeFormRegistry, getFormConfig } from '../../config/FormConfigLoader';
 import { convertToSalesforceFormat, filterAllowedFields } from '../../config/FormConfigUtils';
 import { EmailTemplate } from '../../services/emailService';
+import { resolveRequestObject, resolveRequestId } from '../shared/requestUtils';
+import { buildSalesforceConfig } from '../shared/salesforceUtils';
+import { mapCommonHandlerError } from '../shared/errorUtils';
+import {
+  getFirstQueryValue,
+  getTrimmedQueryValue,
+  getTrimmedFirstQueryValue,
+  isTruthyQueryFlag,
+  parseJsonFromQuery,
+  parseDecodedJsonFromQuery,
+} from '../shared/queryUtils';
 
 // Ensure sendCode (and its diagnostics) are registered by importing its module so its top-level app.http calls run
 import '../sendCode';
@@ -12,28 +23,9 @@ import '../sendCode';
 initializeFormRegistry();
 
 async function createFormHandler(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
-  // Resolve incoming request object (the runtime sometimes swaps params)
-  let reqObj: any = request;
-  let ctxObj: any = context;
-
-  // Case A: (request, context) => request.method exists
-  // Case B: (context, request) => context is actually the request object
-  if (!reqObj || typeof reqObj.method === 'undefined') {
-    const ctxAny: any = context;
-
-    // If the second param (context) looks like HttpRequest, swap
-    if (ctxAny && typeof ctxAny.method !== 'undefined') {
-      reqObj = ctxAny;
-      ctxObj = request;
-    } else {
-      // fallback to context.req/raw shapes
-      reqObj = (ctxAny && (ctxAny.req || ctxAny.bindingData || ctxAny.raw?.req)) || reqObj;
-    }
-  }
-
-  // Support both Azure Functions header objects and testing header.get() API
+  const reqObj: any = resolveRequestObject(request, context);
   const headersAny: any = reqObj?.headers || request.headers || {};
-  const requestId = (typeof headersAny.get === 'function' ? headersAny.get('X-Request-Id') : headersAny['x-request-id'] || headersAny['X-Request-Id']) || context.invocationId || '';
+  const requestId = resolveRequestId(request, context, reqObj);
   const logger = new Logger(requestId, context.invocationId);
 
   logger.info('createForm function triggered', { method: reqObj?.method });
@@ -64,24 +56,12 @@ async function createFormHandler(request: HttpRequest, context: InvocationContex
     }
   } catch (error: any) {
     logger.error('Error in createForm handler', error, { errorMessage: error?.message });
-
-    // Determine appropriate HTTP status code
-    let statusCode = 500;
-    let errorMessage = 'Internal server error';
-
-    if (error.message?.includes('RecordType not found')) {
-      statusCode = 400;
-      errorMessage = error.message;
-    } else if (error.message?.includes('Salesforce error')) {
-      statusCode = 400;
-      errorMessage = error.message;
-    } else if (error.message?.includes('Form not found')) {
-      statusCode = 404;
-      errorMessage = error.message;
-    } else if (error.message?.includes('Missing Salesforce credentials')) {
-      statusCode = 500;
-      errorMessage = 'Missing Salesforce credentials';
-    }
+    const { statusCode, errorMessage } = mapCommonHandlerError(error, {
+      includeRecordTypeNotFound: true,
+      includeSalesforceError: true,
+      includeFormNotFound: true,
+      includeMissingCredentials: true,
+    });
 
     return {
       status: statusCode,
@@ -313,14 +293,7 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
         return baseVars;
       };
 
-    // Initialize Salesforce Service (credential validation is centralized in the service)
-    const sfConfig = {
-      loginUrl: process.env.SF_LOGIN_URL || 'https://login.salesforce.com',
-      clientId: process.env.SF_CLIENT_ID || '',
-      clientSecret: process.env.SF_CLIENT_SECRET || '',
-    };
-
-    const salesforceService = new SalesforceService(sfConfig);
+    const salesforceService = new SalesforceService(buildSalesforceConfig());
 
     // Authenticate with Salesforce
     logger.info('Authenticating with Salesforce');
@@ -1072,20 +1045,11 @@ Stack Trace:
       }
     })().catch(() => {});
 
-    // Determine appropriate HTTP status code
-    let statusCode = 500;
-    let errorMessage = 'Internal server error';
-
-    if (error.message?.includes('RecordType not found')) {
-      statusCode = 400;
-      errorMessage = error.message;
-    } else if (error.message?.includes('Salesforce error')) {
-      statusCode = 400;
-      errorMessage = error.message;
-    } else if (error.message?.includes('Missing Salesforce credentials')) {
-      statusCode = 500;
-      errorMessage = 'Missing Salesforce credentials';
-    }
+    const { statusCode, errorMessage } = mapCommonHandlerError(error, {
+      includeRecordTypeNotFound: true,
+      includeSalesforceError: true,
+      includeMissingCredentials: true,
+    });
 
     return {
       status: statusCode,
@@ -1104,13 +1068,7 @@ async function getFormHandler(request: HttpRequest, context: InvocationContext, 
     if (downloadContentVersion || downloadAttachment) {
       logger.info('File download request', { downloadContentVersion, downloadAttachment });
       
-      // Initialize Salesforce Service and authenticate
-      const sfConfig = {
-        loginUrl: process.env.SF_LOGIN_URL || 'https://login.salesforce.com',
-        clientId: process.env.SF_CLIENT_ID || '',
-        clientSecret: process.env.SF_CLIENT_SECRET || '',
-      };
-      const salesforceService = new SalesforceService(sfConfig);
+      const salesforceService = new SalesforceService(buildSalesforceConfig());
       logger.info('Authenticating with Salesforce to proxy file download');
       await salesforceService.authenticate();
 
@@ -1138,27 +1096,21 @@ async function getFormHandler(request: HttpRequest, context: InvocationContext, 
     }
 
     // Support event campaign info retrieval: ?eventId=... or ?eventid=...
-    const eventId = request.query.get('eventId') || request.query.get('eventid');
+    const eventId = getFirstQueryValue(request, ['eventId', 'eventid']);
     if (eventId) {
       // Determine form config to obtain event query fields if provided
       let formConfig: any = undefined;
       try {
-        const fcParam = request.query.get('formConfig');
+        const fcParam = getFirstQueryValue(request, ['formConfig']);
         if (fcParam) {
-          formConfig = JSON.parse(fcParam);
+          formConfig = parseJsonFromQuery(fcParam);
           logger.info('Using form configuration from client query for event lookup', { formId: formConfig.id, formName: formConfig.name });
         }
       } catch (e: any) {
         logger.debug('Failed to parse formConfig from query', { error: e?.message });
       }
 
-      // Initialize Salesforce Service
-      const sfConfig = {
-        loginUrl: process.env.SF_LOGIN_URL || 'https://login.salesforce.com',
-        clientId: process.env.SF_CLIENT_ID || '',
-        clientSecret: process.env.SF_CLIENT_SECRET || '',
-      };
-      const salesforceService = new SalesforceService(sfConfig);
+      const salesforceService = new SalesforceService(buildSalesforceConfig());
       logger.info('Authenticating with Salesforce for event lookup');
       await salesforceService.authenticate();
 
@@ -1185,27 +1137,21 @@ async function getFormHandler(request: HttpRequest, context: InvocationContext, 
     }
 
     // If requested, list active Event campaigns
-    const listActiveEvents = request.query.get('listActiveEvents');
-    if (listActiveEvents && (listActiveEvents === '1' || listActiveEvents.toLowerCase() === 'true' || listActiveEvents.toLowerCase() === 'yes')) {
+    const listActiveEvents = getFirstQueryValue(request, ['listActiveEvents']);
+    if (isTruthyQueryFlag(listActiveEvents)) {
       // Determine form config to obtain event query fields if provided
       let formConfig: any = undefined;
       try {
-        const fcParam = request.query.get('formConfig');
+        const fcParam = getFirstQueryValue(request, ['formConfig']);
         if (fcParam) {
-          formConfig = JSON.parse(fcParam);
+          formConfig = parseJsonFromQuery(fcParam);
           logger.info('Using form configuration from client query for listing events', { formId: formConfig.id, formName: formConfig.name });
         }
       } catch (e: any) {
         logger.debug('Failed to parse formConfig from query', { error: e?.message });
       }
 
-      // Initialize Salesforce Service
-      const sfConfig = {
-        loginUrl: process.env.SF_LOGIN_URL || 'https://login.salesforce.com',
-        clientId: process.env.SF_CLIENT_ID || '',
-        clientSecret: process.env.SF_CLIENT_SECRET || '',
-      };
-      const salesforceService = new SalesforceService(sfConfig);
+      const salesforceService = new SalesforceService(buildSalesforceConfig());
       logger.info('Authenticating with Salesforce for active events list');
       await salesforceService.authenticate();
 
@@ -1223,20 +1169,20 @@ async function getFormHandler(request: HttpRequest, context: InvocationContext, 
     }
 
     // Get form code from query parameter (support multiple casings / legacy names)
-    const formCodeRaw = request.query.get('code')
-      || request.query.get('name')
-      || request.query.get('FormCode')
-      || request.query.get('formCode')
-      || request.query.get('FormCode__c')
-      || request.query.get('form_code');
-    const formCode = formCodeRaw ? `${formCodeRaw}`.trim() : undefined;
+    const formCode = getTrimmedFirstQueryValue(request, [
+      'code',
+      'name',
+      'FormCode',
+      'formCode',
+      'FormCode__c',
+      'form_code',
+    ]);
     // Also support lookup by email: ?email=foo@bar.com
-    const emailQueryRaw = request.query.get('email');
-    const emailQuery = emailQueryRaw ? `${emailQueryRaw}`.trim() : undefined;
+    const emailQuery = getTrimmedQueryValue(request, 'email');
 
     // Support a diagnostics query for local troubleshooting: ?diagnostics=1
-    const diagnosticsQuery = request.query.get('diagnostics');
-    if (diagnosticsQuery && (diagnosticsQuery === '1' || diagnosticsQuery === 'true' || diagnosticsQuery === 'yes')) {
+    const diagnosticsQuery = getFirstQueryValue(request, ['diagnostics']);
+    if (isTruthyQueryFlag(diagnosticsQuery)) {
       if (process.env.NODE_ENV === 'production') {
         return { status: 403, body: JSON.stringify({ error: 'Diagnostics not available in production' }), headers: { 'Content-Type': 'application/json' } };
       }
@@ -1272,10 +1218,10 @@ async function getFormHandler(request: HttpRequest, context: InvocationContext, 
     // Determine which form configuration to use
     // First check if form config was sent from client (application.js) via query parameter
     let formConfig;
-    const formConfigParam = request.query.get('formConfig');
+    const formConfigParam = getFirstQueryValue(request, ['formConfig']);
     if (formConfigParam) {
       try {
-        formConfig = JSON.parse(decodeURIComponent(formConfigParam));
+        formConfig = parseDecodedJsonFromQuery(formConfigParam);
         logger.info('Using form configuration from client request', { formId: formConfig.id, formName: formConfig.name });
       } catch (e: any) {
         logger.info('Failed to parse formConfig from query parameter, will use server registry', { error: e?.message });
@@ -1285,7 +1231,7 @@ async function getFormHandler(request: HttpRequest, context: InvocationContext, 
 
     // Fallback to loading from server-side registry
     if (!formConfig) {
-      const formId = request.query.get('formId') || request.query.get('form_id') || request.query.get('FormId') || 'general';
+      const formId = getFirstQueryValue(request, ['formId', 'form_id', 'FormId']) || 'general';
       try {
         formConfig = getFormConfig(formId);
         logger.info('Using form configuration from server registry', { formId, formName: formConfig.name });
@@ -1299,14 +1245,7 @@ async function getFormHandler(request: HttpRequest, context: InvocationContext, 
       }
     }
 
-    // Initialize Salesforce Service (credential validation is centralized in the service)
-    const sfConfig = {
-      loginUrl: process.env.SF_LOGIN_URL || 'https://login.salesforce.com',
-      clientId: process.env.SF_CLIENT_ID || '',
-      clientSecret: process.env.SF_CLIENT_SECRET || '',
-    };
-
-    const salesforceService = new SalesforceService(sfConfig);
+    const salesforceService = new SalesforceService(buildSalesforceConfig());
 
     // Authenticate with Salesforce
     logger.info('Authenticating with Salesforce');
@@ -1358,18 +1297,10 @@ async function getFormHandler(request: HttpRequest, context: InvocationContext, 
     };
   } catch (error: any) {
     logger.error('Error retrieving form', error, { errorMessage: error?.message });
-
-    // Determine appropriate HTTP status code
-    let statusCode = 500;
-    let errorMessage = 'Internal server error';
-
-    if (error.message?.includes('Form not found')) {
-      statusCode = 404;
-      errorMessage = error.message;
-    } else if (error.message?.includes('Missing Salesforce credentials')) {
-      statusCode = 500;
-      errorMessage = 'Missing Salesforce credentials';
-    }
+    const { statusCode, errorMessage } = mapCommonHandlerError(error, {
+      includeFormNotFound: true,
+      includeMissingCredentials: true,
+    });
 
     return {
       status: statusCode,

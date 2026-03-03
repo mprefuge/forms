@@ -2,40 +2,56 @@ import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/fu
 import { Logger } from '../../services/logger';
 import { SalesforceService } from '../../services/salesforceService';
 import { EmailService, EmailTemplate } from '../../services/emailService';
+import {
+  resolveRequestObject,
+  resolveRequestId,
+  parseFlexibleJsonBody,
+  getRawBodyTextForDiagnostics,
+} from '../shared/requestUtils';
+import { buildSalesforceConfig } from '../shared/salesforceUtils';
 
-async function sendCodeHandler(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
-  let reqObj: any = request;
-  let ctxObj: any = context;
-
-  if (!reqObj || typeof reqObj.method === 'undefined') {
-    const ctxAny: any = context;
-    if (ctxAny && typeof ctxAny.method !== 'undefined') {
-      reqObj = ctxAny;
-      ctxObj = request;
-    } else {
-      reqObj = (ctxAny && (ctxAny.req || ctxAny.bindingData || ctxAny.raw?.req)) || reqObj;
-    }
-  }
-
-  const headersAny: any = reqObj?.headers || request.headers || {};
-  const requestId = (typeof headersAny.get === 'function' ? headersAny.get('X-Request-Id') : headersAny['x-request-id'] || headersAny['X-Request-Id']) || context.invocationId || '';
-  const logger = new Logger(requestId, context.invocationId);
-
-  logger.info('sendCode function triggered', { method: reqObj?.method });
-
-  // Debug shape of incoming request to handle different hosts
+function logRequestBodyShape(request: HttpRequest, reqObj: any, logger: Logger): void {
   try {
     if (process.env.NODE_ENV !== 'production') {
       logger.debug('Request body shapes', {
         hasRequestJsonFn: !!(request && typeof request.json === 'function'),
-        requestBodyType: typeof (request?.body),
-        reqObjBodyType: typeof (reqObj?.body),
-        reqObjRawBodyType: reqObj && reqObj.rawBody ? (reqObj.rawBody.constructor?.name || typeof reqObj.rawBody) : null,
+        requestBodyType: typeof request?.body,
+        reqObjBodyType: typeof reqObj?.body,
+        reqObjRawBodyType: reqObj && reqObj.rawBody ? reqObj.rawBody.constructor?.name || typeof reqObj.rawBody : null,
       });
     }
   } catch (e) {
-    // ignore logging errors
   }
+}
+
+function extractEmail(body: any, request: HttpRequest, reqObj: any): string {
+  const emailFromBody = body && body.email ? String(body.email).trim() : '';
+  const emailFromQuery =
+    typeof request.query?.get === 'function' ? request.query.get('email') || '' : reqObj?.query?.email || '';
+  return emailFromBody || String(emailFromQuery || '').trim();
+}
+
+function validateEmailTemplateFromBody(body: any): EmailTemplate | null {
+  const emailTemplate = (body && body.template) as EmailTemplate | undefined;
+  if (!emailTemplate || !emailTemplate.subject || !emailTemplate.text || !emailTemplate.html) {
+    return null;
+  }
+  return emailTemplate;
+}
+
+function generateErrorId(): string {
+  return typeof require('crypto')?.randomUUID === 'function'
+    ? require('crypto').randomUUID()
+    : `${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+}
+
+async function sendCodeHandler(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+  const reqObj: any = resolveRequestObject(request, context);
+  const requestId = resolveRequestId(request, context, reqObj);
+  const logger = new Logger(requestId, context.invocationId);
+
+  logger.info('sendCode function triggered', { method: reqObj?.method });
+  logRequestBodyShape(request, reqObj, logger);
 
   try {
     const method = request.method?.toUpperCase();
@@ -47,112 +63,19 @@ async function sendCodeHandler(request: HttpRequest, context: InvocationContext)
       };
     }
 
-    // Parse body (be tolerant of different runtime shapes)
     let body: any;
-    // Helper: read a Node readable stream to string
-    const streamToString = (stream: any) => new Promise<string>(async (resolve, reject) => {
-      if (!stream) return resolve('');
-      // Node.js ReadableStream with .on
-      if (typeof stream.on === 'function') {
-        let data = '';
-        stream.on('data', (chunk: any) => { try { data += chunk.toString(); } catch(e) { data += String(chunk); } });
-        stream.on('end', () => resolve(data));
-        stream.on('error', (err: any) => reject(err));
-        return;
-      }
-
-      // WHATWG ReadableStream with getReader()
-      if (typeof stream.getReader === 'function') {
-        try {
-          const reader = stream.getReader();
-          let result = '';
-          while (true) {
-            // eslint-disable-next-line no-await-in-loop
-            const { value, done } = await reader.read();
-            if (done) break;
-            try { result += (typeof value === 'string') ? value : Buffer.from(value).toString(); } catch (e) { result += String(value); }
-          }
-          resolve(result);
-          return;
-        } catch (e) {
-          reject(e);
-          return;
-        }
-      }
-
-      // Fallback - try to coerce to string
-      try { resolve(String(stream)); } catch (e) { resolve(''); }
-    });
-
     try {
-      if (request && typeof request.json === 'function') {
-        // Preferred: runtime provides a json() helper
-        body = await request.json();
-      } else if (request && typeof request.body !== 'undefined') {
-        body = request.body;
-      } else if (reqObj && typeof reqObj.body !== 'undefined') {
-        body = reqObj.body;
-      } else if (reqObj && typeof reqObj.rawBody !== 'undefined') {
-        // rawBody may be a string, buffer, or readable stream
-        if (typeof reqObj.rawBody === 'string') {
-          try {
-            body = JSON.parse(reqObj.rawBody);
-          } catch (err) {
-            body = {};
-          }
-        } else if (reqObj.rawBody && typeof reqObj.rawBody.getReader === 'function') {
-          // WHATWG ReadableStream
-          const txt = await streamToString(reqObj.rawBody);
-          try {
-            body = JSON.parse(txt);
-          } catch (err) {
-            body = {};
-          }
-        } else if (reqObj.rawBody && typeof reqObj.rawBody.on === 'function') {
-          // Node Readable stream
-          const txt = await streamToString(reqObj.rawBody);
-          try {
-            body = JSON.parse(txt);
-          } catch (err) {
-            body = {};
-          }
-        } else {
-          body = {};
-        }
-      } else if (request && (request as any).raw && (request as any).raw.req) {
-        // Under some runtimes, the raw Node IncomingMessage is under request.raw.req
-        try {
-          const txt = await streamToString((request as any).raw.req);
-          try { body = JSON.parse(txt); } catch (e) { body = {}; }
-        } catch (e) {
-          body = {};
-        }
-      } else {
-        body = {};
-      }
-
-      // If the body is a string (unparsed JSON), attempt to parse it
-      if (typeof body === 'string' && body.trim().length > 0) {
-        try {
-          body = JSON.parse(body);
-        } catch (err) {
-          // leave as-is and let validation handle missing fields
-        }
-      }
+      body = await parseFlexibleJsonBody(request, reqObj);
     } catch (e: any) {
       logger.error('Invalid JSON in request body', e);
-      // provide a helpful message but include any raw text in non-production
       const extra: any = { error: 'Invalid JSON in request body' };
       if (process.env.NODE_ENV !== 'production') {
-        extra.raw = String(reqObj?.body || reqObj?.rawBody || request?.body || '');
+        extra.raw = getRawBodyTextForDiagnostics(reqObj, request);
       }
       return { status: 400, body: JSON.stringify(extra), headers: { 'Content-Type': 'application/json' } };
     }
 
-    // Accept email in body or as a query parameter (helpful when body parsing is problematic)
-    const emailFromBody = (body && body.email) ? String(body.email).trim() : '';
-    const emailFromQuery = (typeof request.query?.get === 'function') ? (request.query.get('email') || '') : (reqObj?.query?.email || '');
-    const email = emailFromBody || String(emailFromQuery || '').trim();
+    const email = extractEmail(body, request, reqObj);
 
     if (!email) {
       logger.error('Missing email parameter', new Error('email is required'));
@@ -160,11 +83,7 @@ async function sendCodeHandler(request: HttpRequest, context: InvocationContext)
     }
 
     // Initialize services
-    const sfConfig = {
-      loginUrl: process.env.SF_LOGIN_URL || 'https://login.salesforce.com',
-      clientId: process.env.SF_CLIENT_ID || '',
-      clientSecret: process.env.SF_CLIENT_SECRET || '',
-    };
+    const sfConfig = buildSalesforceConfig();
     const salesforceService = new SalesforceService(sfConfig);
     await salesforceService.authenticate();
 
@@ -188,8 +107,8 @@ async function sendCodeHandler(request: HttpRequest, context: InvocationContext)
     try {
       const emailService = new EmailService();
 
-      const emailTemplate = (body && body.template) as EmailTemplate | undefined;
-      if (!emailTemplate || !emailTemplate.subject || !emailTemplate.text || !emailTemplate.html) {
+      const emailTemplate = validateEmailTemplateFromBody(body);
+      if (!emailTemplate) {
         return {
           status: 400,
           body: JSON.stringify({ error: 'Missing email template. Provide subject, text, and html fields.' }),
@@ -199,8 +118,7 @@ async function sendCodeHandler(request: HttpRequest, context: InvocationContext)
 
       await emailService.sendApplicationCode(email, code, emailTemplate);
     } catch (err: any) {
-      // Generate a short error correlation id to help trace logs
-      const errorId = (typeof require('crypto')?.randomUUID === 'function') ? require('crypto').randomUUID() : `${Date.now()}-${Math.floor(Math.random()*1000)}`;
+      const errorId = generateErrorId();
       logger.error('Failed to send email with application code', {
         errorId,
         errorMessage: err?.message || String(err),

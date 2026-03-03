@@ -2,30 +2,112 @@ import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/fu
 import { SalesforceService } from '../../services/salesforceService';
 import { Logger } from '../../services/logger';
 import { EmailTemplate } from '../../services/emailService';
+import { resolveRequestObject, resolveRequestId } from '../shared/requestUtils';
+import { buildSalesforceConfig } from '../shared/salesforceUtils';
+import { mapCommonHandlerError } from '../shared/errorUtils';
 
-async function updateFormHandler(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
-  // Resolve incoming request object (the runtime sometimes swaps params)
-  let reqObj: any = request;
-  let ctxObj: any = context;
-
-  // Case A: (request, context) => request.method exists
-  // Case B: (context, request) => context is actually the request object
-  if (!reqObj || typeof reqObj.method === 'undefined') {
-    const ctxAny: any = context;
-
-    // If the second param (context) looks like HttpRequest, swap
-    if (ctxAny && typeof ctxAny.method !== 'undefined') {
-      reqObj = ctxAny;
-      ctxObj = request;
+async function parseUpdateData(request: HttpRequest, logger: Logger): Promise<{ ok: true; data: any } | { ok: false; response: HttpResponseInit }> {
+  try {
+    let updateData: any;
+    if (request && typeof request.json === 'function') {
+      updateData = await request.json();
+    } else if (request && typeof request.body !== 'undefined') {
+      updateData = request.body;
     } else {
-      // fallback to context.req/raw shapes
-      reqObj = (ctxAny && (ctxAny.req || ctxAny.bindingData || ctxAny.raw?.req)) || reqObj;
+      updateData = {};
+    }
+    logger.debug('Request body parsed', { updateDataKeys: Object.keys(updateData || {}) });
+    return { ok: true, data: updateData };
+  } catch (error: any) {
+    logger.error('Invalid JSON in request body', error);
+    return {
+      ok: false,
+      response: {
+        status: 400,
+        body: JSON.stringify({ error: 'Invalid JSON in request body' }),
+        headers: { 'Content-Type': 'application/json' },
+      },
+    };
+  }
+}
+
+function extractEmailControls(updateData: any, logger: Logger): { sendEmail: boolean; emailTemplates: any } {
+  let sendEmail = false;
+  let emailTemplates: any = {};
+
+  if (updateData && updateData.__sendEmail === true) {
+    sendEmail = true;
+    delete updateData.__sendEmail;
+    logger.debug('Email flag detected - will send confirmation email');
+  }
+
+  if (updateData && updateData.__emailTemplates) {
+    emailTemplates = updateData.__emailTemplates;
+    delete updateData.__emailTemplates;
+  }
+
+  return { sendEmail, emailTemplates };
+}
+
+function validateEmailTemplates(sendEmail: boolean, emailTemplates: any): { ok: true; copyTemplateKey?: string } | { ok: false; response: HttpResponseInit } {
+  let copyTemplateKey: string | undefined;
+
+  if (sendEmail) {
+    copyTemplateKey = Object.keys(emailTemplates).find(
+      k => k.endsWith('Copy') || k === 'applicationCopy' || k === 'waiverCopy'
+    );
+    const hasCopyTemplate =
+      copyTemplateKey &&
+      emailTemplates[copyTemplateKey] &&
+      emailTemplates[copyTemplateKey].subject &&
+      emailTemplates[copyTemplateKey].text &&
+      emailTemplates[copyTemplateKey].html;
+    const hasEventTemplate = emailTemplates.eventRegistration
+      ? emailTemplates.eventRegistration.subject &&
+        emailTemplates.eventRegistration.text &&
+        emailTemplates.eventRegistration.html
+      : false;
+    if (!hasCopyTemplate && !hasEventTemplate) {
+      return {
+        ok: false,
+        response: {
+          status: 400,
+          body: JSON.stringify({ error: 'Missing email template for submission confirmation' }),
+          headers: { 'Content-Type': 'application/json' },
+        },
+      };
     }
   }
 
-  // Support both Azure Functions header objects and testing header.get() API
-  const headersAny: any = reqObj?.headers || request.headers || {};
-  const requestId = (typeof headersAny.get === 'function' ? headersAny.get('X-Request-Id') : headersAny['x-request-id'] || headersAny['X-Request-Id']) || context.invocationId || '';
+  return { ok: true, copyTemplateKey };
+}
+
+function getFormIdentifiers(request: HttpRequest, updateData: any): { formCode: any; formId: any } {
+  const routeId = request.params?.id;
+  const formCode = updateData.formCode || updateData.FormCode__c;
+  const formId = updateData.formId || updateData.Id || routeId;
+  return { formCode, formId };
+}
+
+function splitUpdatePayload(updateData: any): { formFields: any; attachments: any; notes: any } {
+  const formFields: any = { ...updateData };
+  delete formFields.formCode;
+  delete formFields.formId;
+  delete formFields.Id;
+  delete formFields.FormCode__c;
+  const attachments = formFields.Attachments || formFields.attachments;
+  const notes = formFields.Notes || formFields.notes;
+  delete formFields.Attachments;
+  delete formFields.attachments;
+  delete formFields.Notes;
+  delete formFields.notes;
+
+  return { formFields, attachments, notes };
+}
+
+async function updateFormHandler(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+  const reqObj: any = resolveRequestObject(request, context);
+  const requestId = resolveRequestId(request, context, reqObj);
   const logger = new Logger(requestId, context.invocationId);
 
   logger.info('updateForm function triggered', { method: reqObj?.method });
@@ -43,66 +125,21 @@ async function updateFormHandler(request: HttpRequest, context: InvocationContex
       };
     }
 
-    // Parse request body
-    let updateData: any;
-    try {
-      if (request && typeof request.json === 'function') {
-        updateData = await request.json();
-      } else if (request && typeof request.body !== 'undefined') {
-        updateData = request.body;
-      } else {
-        updateData = {};
-      }
-      logger.debug('Request body parsed', { updateDataKeys: Object.keys(updateData || {}) });
-    } catch (error: any) {
-      logger.error('Invalid JSON in request body', error);
-      return {
-        status: 400,
-        body: JSON.stringify({ error: 'Invalid JSON in request body' }),
-        headers: { 'Content-Type': 'application/json' },
-      };
+    const updateDataResult = await parseUpdateData(request, logger);
+    if (!updateDataResult.ok) {
+      return updateDataResult.response;
     }
+    const updateData = updateDataResult.data;
 
-    // Extract email controls
-    let sendEmail = false;
-    let emailTemplates: any = {};
+    const { sendEmail, emailTemplates } = extractEmailControls(updateData, logger);
 
-    if (updateData && updateData.__sendEmail === true) {
-      sendEmail = true;
-      delete updateData.__sendEmail;
-      logger.debug('Email flag detected - will send confirmation email');
+    const templateValidation = validateEmailTemplates(sendEmail, emailTemplates);
+    if (!templateValidation.ok) {
+      return templateValidation.response;
     }
+    const copyTemplateKey = templateValidation.copyTemplateKey;
 
-    if (updateData && updateData.__emailTemplates) {
-      emailTemplates = updateData.__emailTemplates;
-      delete updateData.__emailTemplates;
-    }
-
-    // Determine which copy template is provided (applicationCopy, waiverCopy, etc)
-    let copyTemplateKey: string | undefined;
-    if (sendEmail) {
-      // Allow form-specific templates (e.g., waiverCopy, applicationCopy)
-      copyTemplateKey = Object.keys(emailTemplates).find(k => 
-        k.endsWith('Copy') || k === 'applicationCopy' || k === 'waiverCopy'
-      );
-      const hasCopyTemplate = copyTemplateKey && emailTemplates[copyTemplateKey] && 
-        emailTemplates[copyTemplateKey].subject && 
-        emailTemplates[copyTemplateKey].text && 
-        emailTemplates[copyTemplateKey].html;
-      const hasEventTemplate = emailTemplates.eventRegistration ? (emailTemplates.eventRegistration.subject && emailTemplates.eventRegistration.text && emailTemplates.eventRegistration.html) : false;
-      if (!hasCopyTemplate && !hasEventTemplate) {
-        return {
-          status: 400,
-          body: JSON.stringify({ error: 'Missing email template for submission confirmation' }),
-          headers: { 'Content-Type': 'application/json' },
-        };
-      }
-    }
-
-    // Get form identifier from route parameter or request body
-    const routeId = request.params?.id;
-    const formCode = updateData.formCode || updateData.FormCode__c;
-    const formId = updateData.formId || updateData.Id || routeId;
+    const { formCode, formId } = getFormIdentifiers(request, updateData);
 
     if (!formCode && !formId) {
       logger.error('Missing form identifier', new Error('formCode or formId is required'));
@@ -113,14 +150,7 @@ async function updateFormHandler(request: HttpRequest, context: InvocationContex
       };
     }
 
-    // Initialize Salesforce Service (credential validation is centralized in the service)
-    const sfConfig = {
-      loginUrl: process.env.SF_LOGIN_URL || 'https://login.salesforce.com',
-      clientId: process.env.SF_CLIENT_ID || '',
-      clientSecret: process.env.SF_CLIENT_SECRET || '',
-    };
-
-    const salesforceService = new SalesforceService(sfConfig);
+    const salesforceService = new SalesforceService(buildSalesforceConfig());
 
     // Authenticate with Salesforce
     logger.info('Authenticating with Salesforce');
@@ -136,18 +166,7 @@ async function updateFormHandler(request: HttpRequest, context: InvocationContex
       logger.info('Form ID resolved', { formId: resolvedFormId });
     }
 
-    // Extract form field updates, attachments, and notes
-    let formFields: any = { ...updateData };
-    delete formFields.formCode;
-    delete formFields.formId;
-    delete formFields.Id;
-    delete formFields.FormCode__c;
-    const attachments = formFields.Attachments || formFields.attachments;
-    const notes = formFields.Notes || formFields.notes;
-    delete formFields.Attachments;
-    delete formFields.attachments;
-    delete formFields.Notes;
-    delete formFields.notes;
+    const { formFields, attachments, notes } = splitUpdatePayload(updateData);
 
     // Update form in Salesforce
     logger.info('Updating form in Salesforce', { formId: resolvedFormId, fieldCount: Object.keys(formFields).length });
@@ -249,24 +268,12 @@ async function updateFormHandler(request: HttpRequest, context: InvocationContex
     };
   } catch (error: any) {
     logger.error('Error in updateForm handler', error, { errorMessage: error?.message });
-
-    // Determine appropriate HTTP status code
-    let statusCode = 500;
-    let errorMessage = 'Internal server error';
-
-    if (error.message?.includes('Form not found')) {
-      statusCode = 404;
-      errorMessage = error.message;
-    } else if (error.message?.includes('Salesforce error')) {
-      statusCode = 400;
-      errorMessage = error.message;
-    } else if (error.message?.includes('Invalid field')) {
-      statusCode = 400;
-      errorMessage = error.message;
-    } else if (error.message?.includes('Missing Salesforce credentials')) {
-      statusCode = 500;
-      errorMessage = 'Missing Salesforce credentials';
-    }
+    const { statusCode, errorMessage } = mapCommonHandlerError(error, {
+      includeFormNotFound: true,
+      includeSalesforceError: true,
+      includeInvalidField: true,
+      includeMissingCredentials: true,
+    });
 
     return {
       status: statusCode,

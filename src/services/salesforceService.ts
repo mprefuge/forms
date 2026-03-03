@@ -4,7 +4,6 @@ import { FormConfig } from '../config/formConfigTypes';
 import { 
   buildSoqlQuery, 
   buildSoqlQueryByField, 
-  buildSoqlSelectClause,
   getUpdateableFields 
 } from '../config/FormConfigUtils';
 import { ContactMatchService, ContactMatchCriteria, ContactMatchResult } from './contactMatchService';
@@ -44,12 +43,12 @@ export class SalesforceService {
       params.append('client_id', this.config.clientId);
       params.append('client_secret', this.config.clientSecret);
 
-      const resp = await axios.post(tokenUrl, params.toString(), {
+        const resp = await axios.post<{access_token:string;instance_url:string;}>(tokenUrl, params.toString(), {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         timeout: 10000,
       });
 
-      const { access_token, instance_url } = resp.data;
+      const { access_token, instance_url } = resp.data as any; // axios typing is generic but still use any for flexibility
 
       if (!access_token || !instance_url) {
         throw new Error('Failed to obtain access token from Salesforce');
@@ -76,13 +75,14 @@ export class SalesforceService {
     if (typeof recordTypeNameOrFormConfig === 'string') {
       recordTypeName = recordTypeNameOrFormConfig;
     } else {
-      // FormConfig provided
       recordTypeName = recordTypeNameOrFormConfig.salesforce.recordTypeName;
       objectName = recordTypeNameOrFormConfig.salesforce.objectName;
     }
 
-    const query = `SELECT Id FROM RecordType WHERE SObjectType = '${objectName}' AND Name = '${recordTypeName}'`;
-    const result: any = await this.connection.query(query);
+    const query = `SELECT Id FROM RecordType WHERE SObjectType = '${this.escapeSoql(
+      objectName
+    )}' AND Name = '${this.escapeSoql(recordTypeName)}'`;
+    const result: any = await this.runQuery(query);
 
     if (result.records && result.records.length > 0) {
       return result.records[0].Id as string;
@@ -96,7 +96,7 @@ export class SalesforceService {
    */
   async getAnyRecordTypeName(): Promise<string | null> {
     const query = `SELECT Name FROM RecordType WHERE SObjectType = 'Form__c' LIMIT 1`;
-    const result: any = await this.connection.query(query);
+    const result: any = await this.runQuery(query);
 
     if (result.records && result.records.length > 0) {
       return result.records[0].Name as string;
@@ -148,15 +148,10 @@ export class SalesforceService {
     const lookupField = codeField || 'FormCode__c';
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const code = this.generateFormCodeGuid(length);
-      const q = `SELECT Id FROM Form__c WHERE ${lookupField} = '${code}'`;
-      try {
-        const res: any = await this.connection.query(q);
-        if (!res.records || res.records.length === 0) return code;
-        // found a collision; continue to next attempt
-      } catch (err) {
-        // If the query fails for some reason, rethrow; do not mask it
-        throw err;
-      }
+      const q = `SELECT Id FROM Form__c WHERE ${lookupField} = '${this.escapeSoql(code)}'`;
+      const res: any = await this.runQuery(q);
+      if (!res.records || res.records.length === 0) return code;
+      // found a collision; continue to next attempt
     }
 
     throw new Error(`Unable to generate unique FormCode__c after ${maxAttempts} attempts`);
@@ -180,7 +175,12 @@ export class SalesforceService {
     // Coerce allowedValues (which may be strings or objects from jsforce describe) into strings
     const allowed = (allowedValues || []).reduce((acc: string[], a: any) => {
       if (a === null || a === undefined) return acc;
-      const val = (typeof a === 'string' ? a : (a && (a as any).value !== undefined ? (a as any).value : a));
+      const val =
+        typeof a === 'string'
+          ? a
+          : a && (a as any).value !== undefined
+          ? (a as any).value
+          : a;
       if (val === null || val === undefined) return acc;
       acc.push(String(val));
       return acc;
@@ -202,7 +202,6 @@ export class SalesforceService {
     }
 
     // If exact/case-insensitive fails, try encoding the provided token (spaces/hyphens -> underscores)
-    // This supports cases where Salesforce canonical uses underscores but incoming data uses spaces or hyphens.
     const encodedToken = this.encodePicklistToken(t);
     for (const a of allowed) {
       if (a === encodedToken) return a;
@@ -235,6 +234,70 @@ export class SalesforceService {
 
     // Fallback: encode spaces to underscores (original behavior)
     return this.encodePicklistToken(t);
+  }
+
+  // Wraps jsforce query invocation and normalizes specific errors
+  private async runQuery<T = any>(soql: string): Promise<T> {
+    try {
+      return (await this.connection.query(soql)) as T;
+    } catch (err: any) {
+      if (err?.message && err.message.includes('INVALID_FIELD')) {
+        throw new Error(`Invalid field in query: ${err.message}`);
+      }
+      throw err;
+    }
+  }
+
+  // Escape a value so it is safe to interpolate in a SOQL string literal
+  private escapeSoql(val: any): string {
+    return String(val).replace(/'/g, "\\'");
+  }
+
+  // Format a field value according to its metadata (picklists, multipicklists, etc.)
+  private formatFieldValue(meta: any, value: any): any {
+    if (typeof value === 'undefined' || value === null) return value;
+
+    if (meta) {
+      const fieldType = (meta.type || '').toLowerCase();
+      // multipicklist
+      if (fieldType === 'multipicklist') {
+        if (Array.isArray(value)) {
+          return value
+            .map((s: string) => this.resolvePicklistToken(String(s), meta.picklistValues))
+            .join(';');
+        } else if (typeof value === 'string') {
+          if (value.includes('|')) {
+            return value
+              .split('|')
+              .map((s: string) => this.resolvePicklistToken(s.trim(), meta.picklistValues))
+              .join(';');
+          }
+          return String(value)
+            .split(';')
+            .map((s: string) => this.resolvePicklistToken(s.trim(), meta.picklistValues))
+            .filter(Boolean)
+            .join(';');
+        }
+      }
+
+      // single picklist
+      if (fieldType === 'picklist' || (meta.picklistValues || []).length > 0) {
+        if (typeof value === 'string') {
+          return this.resolvePicklistToken(value, meta.picklistValues);
+        }
+      }
+    }
+
+    return value;
+  }
+
+  // Determine base URL used when constructing links to download content
+  private getBaseApiUrl(): string {
+    const host =
+      process.env.PUBLIC_BASE_URL ||
+      process.env.API_BASE_URL ||
+      (process.env.WEBSITE_HOSTNAME ? `https://${process.env.WEBSITE_HOSTNAME}` : 'http://localhost:7071');
+    return host.replace(/\/$/, '') + '/api/form';
   }
 
   /**
@@ -272,24 +335,8 @@ export class SalesforceService {
       for (const field of allowedFields) {
         if (field === 'RecordTypeId' || field === 'Name' || field === codeFieldName) continue;
         if (formData[field] !== undefined) {
-          let val: any = formData[field];
           const meta: any = fieldMetaMap.get(field);
-          
-          // Handle picklist/multipicklist values
-          if (meta && (meta.type || '').toLowerCase() === 'multipicklist') {
-            if (Array.isArray(val)) {
-              val = val.map((s: string) => this.resolvePicklistToken(String(s), meta.picklistValues)).join(';');
-            } else if (typeof val === 'string') {
-              if (val.includes('|')) {
-                val = val.split('|').map((s: string) => this.resolvePicklistToken(s.trim(), meta.picklistValues)).join(';');
-              } else {
-                val = String(val).split(';').map((s: string) => this.resolvePicklistToken(s.trim(), meta.picklistValues)).filter(Boolean).join(';');
-              }
-            }
-          } else if (meta && (((meta.type || '').toLowerCase() === 'picklist') || (meta.picklistValues || []).length > 0) && typeof val === 'string') {
-            val = this.resolvePicklistToken(val, meta.picklistValues);
-          }
-          recordTypeRecord[field] = val;
+          recordTypeRecord[field] = this.formatFieldValue(meta, formData[field]);
         }
       }
     } else {
@@ -298,25 +345,8 @@ export class SalesforceService {
         if (key === 'RecordType' || key === 'RecordTypeId' || key === 'Name' || key === codeFieldName) continue;
         if (!fieldMetaMap.has(key)) continue;
 
-        let val: any = (formData as any)[key];
         const meta: any = fieldMetaMap.get(key);
-
-        // Handle picklist/multipicklist values (same logic as above)
-        if (meta && (meta.type || '').toLowerCase() === 'multipicklist') {
-          if (Array.isArray(val)) {
-            val = val.map((s: string) => this.resolvePicklistToken(String(s), meta.picklistValues)).join(';');
-          } else if (typeof val === 'string') {
-            if (val.includes('|')) {
-              val = val.split('|').map((s: string) => this.resolvePicklistToken(s.trim(), meta.picklistValues)).join(';');
-            } else {
-              val = String(val).split(';').map((s: string) => this.resolvePicklistToken(s.trim(), meta.picklistValues)).filter(Boolean).join(';');
-            }
-          }
-        } else if (meta && (((meta.type || '').toLowerCase() === 'picklist') || (meta.picklistValues || []).length > 0) && typeof val === 'string') {
-          val = this.resolvePicklistToken(val, meta.picklistValues);
-        }
-
-        recordTypeRecord[key] = val;
+        recordTypeRecord[key] = this.formatFieldValue(meta, (formData as any)[key]);
       }
     }
 
@@ -375,7 +405,7 @@ export class SalesforceService {
       const cvId = cvResult.id;
       // Query to get ContentDocumentId
       const q = `SELECT ContentDocumentId FROM ContentVersion WHERE Id = '${cvId}'`;
-      const qRes: any = await this.connection.query(q);
+      const qRes: any = await this.runQuery(q);
       const contentDocumentId = qRes.records && qRes.records[0] && qRes.records[0].ContentDocumentId;
 
       if (!contentDocumentId) {
@@ -473,28 +503,23 @@ export class SalesforceService {
         // Legacy behavior: use custom fields
         const defaultFields = ['Id', 'FormCode__c', 'Name', 'FirstName__c', 'LastName__c', 'Email__c', 'Phone__c', 'CreatedDate'];
         const fieldsToQuery = customFields && customFields.length > 0 ? [...customFields] : [...defaultFields];
-        
-        // Ensure Id is always included
+
         if (!fieldsToQuery.includes('Id')) {
           fieldsToQuery.unshift('Id');
         }
-        
+
         const selectClause = fieldsToQuery.join(', ');
-        const safeCode = String(formCode).replace(/'/g, "\\'");
-        query = `SELECT ${selectClause} FROM Form__c WHERE FormCode__c = '${safeCode}'`;
+        query = `SELECT ${selectClause} FROM Form__c WHERE FormCode__c = '${this.escapeSoql(formCode)}'`;
       }
 
-      const result: any = await this.connection.query(query);
-
+      const result: any = await this.runQuery(query);
       if (result.records && result.records.length > 0) {
         return result.records[0];
       }
 
       throw new Error(`Form not found with code: ${formCode}`);
     } catch (error: any) {
-      if (error.message && error.message.includes('INVALID_FIELD')) {
-        throw new Error(`Invalid field in query: ${error.message}`);
-      }
+      // runQuery already normalizes INVALID_FIELD errors so just rethrow
       throw error;
     }
   }
@@ -516,7 +541,6 @@ export class SalesforceService {
     if (desc && desc.fields) {
       const validFields = new Set(desc.fields.map((f: any) => f.name));
       fieldsToQuery = fieldsToQuery.filter(f => validFields.has(f));
-      // If filtering removed all requested fields, or the only remaining field is the Id, fall back to defaults
       if (fieldsToQuery.length === 0 || (fieldsToQuery.length === 1 && fieldsToQuery[0] === 'Id')) {
         fieldsToQuery = [...defaultFields];
       }
@@ -525,19 +549,15 @@ export class SalesforceService {
     if (!fieldsToQuery.includes('Id')) fieldsToQuery.unshift('Id');
 
     const selectClause = fieldsToQuery.join(', ');
-    const safeId = id.replace(/'/g, "\\'");
-    const query = `SELECT ${selectClause} FROM Form__c WHERE Id = '${safeId}' LIMIT 1`;
+    const query = `SELECT ${selectClause} FROM Form__c WHERE Id = '${this.escapeSoql(id)}' LIMIT 1`;
 
     try {
-      const result: any = await this.connection.query(query);
+      const result: any = await this.runQuery(query);
       if (result.records && result.records.length > 0) {
         return result.records[0];
       }
       throw new Error(`Form not found with id: ${id}`);
     } catch (error: any) {
-      if (error.message && error.message.includes('INVALID_FIELD')) {
-        throw new Error(`Invalid field in query: ${error.message}`);
-      }
       throw error;
     }
   }
@@ -555,26 +575,20 @@ export class SalesforceService {
       let query: string;
 
       if (formConfig) {
-        // Use email field from config
         const emailField = formConfig.salesforce.lookupEmailField || 'Email__c';
         query = buildSoqlQueryByField(formConfig, emailField, email);
       } else {
-        // Legacy behavior
         const defaultFields = ['Id', 'FormCode__c', 'Name', 'FirstName__c', 'LastName__c', 'Email__c', 'Phone__c', 'CreatedDate'];
         const selectClause = defaultFields.join(', ');
-        const safeEmail = String(email).replace(/'/g, "\\'");
-        query = `SELECT ${selectClause} FROM Form__c WHERE Email__c = '${safeEmail}' LIMIT 1`;
+        query = `SELECT ${selectClause} FROM Form__c WHERE Email__c = '${this.escapeSoql(email)}' LIMIT 1`;
       }
 
-      const result: any = await this.connection.query(query);
+      const result: any = await this.runQuery(query);
       if (result.records && result.records.length > 0) {
         return result.records[0];
       }
       throw new Error(`Form not found with email: ${email}`);
     } catch (error: any) {
-      if (error.message && error.message.includes('INVALID_FIELD')) {
-        throw new Error(`Invalid field in query: ${error.message}`);
-      }
       throw error;
     }
   }
@@ -631,24 +645,8 @@ export class SalesforceService {
     // Copy only updateable fields
     for (const field of updateableFieldsList) {
       if (formData[field] !== undefined) {
-        let val: any = formData[field];
         const meta: any = fieldMetaMap.get(field);
-        
-        // Handle picklist/multipicklist values
-        if (meta && (meta.type || '').toLowerCase() === 'multipicklist') {
-          if (Array.isArray(val)) {
-            val = val.map((s: string) => this.resolvePicklistToken(String(s), meta.picklistValues)).join(';');
-          } else if (typeof val === 'string') {
-            if (val.includes('|')) {
-              val = val.split('|').map((s: string) => this.resolvePicklistToken(s.trim(), meta.picklistValues)).join(';');
-            } else {
-              val = String(val).split(';').map((s: string) => this.resolvePicklistToken(s.trim(), meta.picklistValues)).filter(Boolean).join(';');
-            }
-          }
-        } else if (meta && (((meta.type || '').toLowerCase() === 'picklist') || (meta.picklistValues || []).length > 0) && typeof val === 'string') {
-          val = this.resolvePicklistToken(val, meta.picklistValues);
-        }
-        updateRecord[field] = val;
+        updateRecord[field] = this.formatFieldValue(meta, formData[field]);
       }
     }
 
@@ -681,8 +679,8 @@ export class SalesforceService {
         return null;
       }
 
-      const query = `SELECT Id, Name FROM Campaign WHERE Id = '${campaignId}' LIMIT 1`;
-      const result: any = await this.connection.query(query);
+      const query = `SELECT Id, Name FROM Campaign WHERE Id = '${this.escapeSoql(campaignId)}' LIMIT 1`;
+      const result: any = await this.runQuery(query);
 
       if (result.records && result.records.length > 0) {
         return {
@@ -712,8 +710,8 @@ export class SalesforceService {
       // Sanitize and build select clause
       const safeFields = (fields || []).filter(f => typeof f === 'string' && f.trim().length > 0);
       const select = safeFields.length > 0 ? safeFields.join(', ') : 'Id, Name';
-      const query = `SELECT ${select} FROM Campaign WHERE Id = '${campaignId}' LIMIT 1`;
-      const result: any = await this.connection.query(query);
+      const query = `SELECT ${select} FROM Campaign WHERE Id = '${this.escapeSoql(campaignId)}' LIMIT 1`;
+      const result: any = await this.runQuery(query);
 
       if (result.records && result.records.length > 0) {
         const record = result.records[0];
@@ -753,8 +751,8 @@ export class SalesforceService {
       console.log(`[downloadContentVersionBinary] Downloading ContentVersion: ${contentVersionId}`);
 
       // Query metadata for filename / file type
-      const q = `SELECT Id, Title, FileType FROM ContentVersion WHERE Id = '${contentVersionId}' LIMIT 1`;
-      const res: any = await this.connection.query(q);
+      const q = `SELECT Id, Title, FileType FROM ContentVersion WHERE Id = '${this.escapeSoql(contentVersionId)}' LIMIT 1`;
+      const res: any = await this.runQuery(q);
       const meta = (res.records && res.records[0]) ? res.records[0] : null;
       const fileName = meta ? (meta.Title || `${contentVersionId}`) : `${contentVersionId}`;
 
@@ -782,8 +780,8 @@ export class SalesforceService {
   async downloadAttachmentBinary(attachmentId: string): Promise<{ data: Buffer; contentType: string; fileName?: string } | null> {
     try {
       if (!attachmentId || typeof attachmentId !== 'string') return null;
-      const q = `SELECT Id, Name, ContentType FROM Attachment WHERE Id = '${attachmentId}' LIMIT 1`;
-      const res: any = await this.connection.query(q);
+      const q = `SELECT Id, Name, ContentType FROM Attachment WHERE Id = '${this.escapeSoql(attachmentId)}' LIMIT 1`;
+      const res: any = await this.runQuery(q);
       const meta = (res.records && res.records[0]) ? res.records[0] : null;
       const apiVersion = this.connection.version ? `v${this.connection.version}` : 'v57.0';
       const url = `${this.connection.instanceUrl}/services/data/${apiVersion}/sobjects/Attachment/${attachmentId}/Body`;
@@ -805,8 +803,8 @@ export class SalesforceService {
       console.log(`[getCampaignImages] Starting for campaign: ${campaignId}`);
 
       // 1) Query ContentDocumentLink to find related ContentDocumentIds
-      const qLinks = `SELECT ContentDocumentId FROM ContentDocumentLink WHERE LinkedEntityId = '${campaignId}'`;
-      const linksRes: any = await this.connection.query(qLinks);
+      const qLinks = `SELECT ContentDocumentId FROM ContentDocumentLink WHERE LinkedEntityId = '${this.escapeSoql(campaignId)}'`;
+      const linksRes: any = await this.runQuery(qLinks);
       const docIds = (linksRes.records || []).map((r: any) => r.ContentDocumentId).filter(Boolean);
       console.log(`[getCampaignImages] Found ${docIds.length} ContentDocumentLink(s):`, docIds);
 
@@ -816,16 +814,12 @@ export class SalesforceService {
         // Query all ContentVersions, then filter by filename extension on our end (more robust)
         const qCv = `SELECT Id, Title, FileType, PathOnClient, ContentDocumentId FROM ContentVersion WHERE ContentDocumentId IN (${docList}) AND IsLatest = true ORDER BY CreatedDate DESC`;
         console.log(`[getCampaignImages] Querying ContentVersions...`);
-        const cvRes: any = await this.connection.query(qCv);
+        const cvRes: any = await this.runQuery(qCv);
         console.log(`[getCampaignImages] Found ${(cvRes.records || []).length} ContentVersion record(s)`);
         
         // Filter for image files by extension (handle cases where FileType is empty or unusual)
         const imageExtRegex = /\.(jpg|jpeg|png|gif|bmp|webp|svg)$/i;
-        const baseUrl = (
-          process.env.PUBLIC_BASE_URL
-          || process.env.API_BASE_URL
-          || (process.env.WEBSITE_HOSTNAME ? `https://${process.env.WEBSITE_HOSTNAME}` : 'http://localhost:7071')
-        ).replace(/\/$/, '') + '/api/form';
+        const baseUrl = this.getBaseApiUrl();
         const images = (cvRes.records || [])
           .filter((v: any) => {
             const title = v.Title || '';
@@ -851,15 +845,11 @@ export class SalesforceService {
 
       // 3) Fallback to Attachment (legacy attachments) if no ContentVersion images found
       console.log(`[getCampaignImages] No ContentVersion images found; checking Attachments...`);
-      const qAtt = `SELECT Id, Name, ContentType FROM Attachment WHERE ParentId = '${campaignId}'`;
-      const attRes: any = await this.connection.query(qAtt);
+      const qAtt = `SELECT Id, Name, ContentType FROM Attachment WHERE ParentId = '${this.escapeSoql(campaignId)}'`;
+      const attRes: any = await this.runQuery(qAtt);
       console.log(`[getCampaignImages] Found ${(attRes.records || []).length} Attachment(s)`);
       const imageExtRegexAtt = /\.(jpg|jpeg|png|gif|bmp|webp|svg)$/i;
-      const baseUrlAtt = (
-        process.env.PUBLIC_BASE_URL
-        || process.env.API_BASE_URL
-        || (process.env.WEBSITE_HOSTNAME ? `https://${process.env.WEBSITE_HOSTNAME}` : 'http://localhost:7071')
-      ).replace(/\/$/, '') + '/api/form';
+      const baseUrlAtt = this.getBaseApiUrl();
       const attImages = (attRes.records || [])
         .filter((a: any) => {
           const name = a.Name || '';
@@ -895,7 +885,7 @@ export class SalesforceService {
       const safeFields = (fields || []).filter(f => typeof f === 'string' && f.trim().length > 0);
       const select = safeFields.length > 0 ? safeFields.join(', ') : 'Id, Name';
       const query = `SELECT ${select} FROM Campaign WHERE RecordType.Name = 'Event' AND IsActive = true ORDER BY StartDate DESC NULLS LAST, Name ASC`;
-      const result: any = await this.connection.query(query);
+      const result: any = await this.runQuery(query);
       const records: Array<Record<string, any>> = (result.records || []);
 
       // Enrich campaigns with image metadata where available (best-effort)
@@ -943,7 +933,7 @@ export class SalesforceService {
       console.log('Contact search query:', query);
 
       // Execute query
-      const result: any = await this.connection.query(query);
+      const result: any = await this.runQuery(query);
       const contacts = result.records || [];
       
       console.log(`Contact search results: Found ${contacts.length} contacts`);
