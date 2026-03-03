@@ -1116,7 +1116,7 @@ async function getFormHandler(request: HttpRequest, context: InvocationContext, 
 
       const fields = (formConfig && formConfig.salesforce && Array.isArray(formConfig.salesforce.eventQueryFields))
         ? formConfig.salesforce.eventQueryFields
-        : ['Id','Name','StartDate','EndDate','Description'];
+        : ['Id','Name','StartDate','EndDate','Description','Additional_Information__c'];
 
       const campaign = await salesforceService.getCampaignByIdWithFields(eventId, fields);
       if (campaign) {

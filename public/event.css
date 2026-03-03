@@ -145,6 +145,7 @@ body {
 .ri-event-hero { margin: 8px 0 16px; }
 .ri-event-title { font-size: 34px; font-weight: 900; color: var(--accent-600); margin-bottom: 6px; }
 .ri-event-hero-desc { color: var(--muted); font-size: 15px; margin: 6px 0 12px 0; }
+.ri-event-hero-addinfo { color: var(--muted); font-size: 15px; margin: 6px 0 12px 0; }
 .ri-event-meta-line { display: flex; align-items: flex-start; gap: 12px; margin-top: 6px; }
 .ri-event-badge { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 12px; background: rgba(189,33,53,0.08); color: var(--accent-600); font-weight: 900; }
 .ri-event-meta-text { display: block; }

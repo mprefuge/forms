@@ -46,6 +46,7 @@ export const testFormConfig = {
     lookupCodeField: 'FormCode__c',
     codeGenerationEnabled: true,
     codeLength: 5,
+    eventQueryFields: ['Id','Name','StartDate','EndDate','Description','Additional_Information__c'],
   },
   salesforceMapping: {
     FirstName: 'FirstName__c',

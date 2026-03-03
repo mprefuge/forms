@@ -15,7 +15,7 @@ A production-ready TypeScript Azure Functions application for managing Salesforc
 
 - **Volunteer Application** ([public/application.js](public/application.js)) - Multi-phase volunteer recruitment with pastoral references
 - **Parental Waiver** ([public/waiver.js](public/waiver.js)) - Youth program consent and liability waiver
-- **Event Registration** ([public/event.js](public/event.js)) - Event registration with optional Salesforce campaign linking
+- **Event Registration** ([public/event.js](public/event.js)) - Event registration with optional Salesforce campaign linking. Supports a rich‑text Salesforce field (`Additional_Information__c`) that is shown below the description.
 
 ## Prerequisites
 

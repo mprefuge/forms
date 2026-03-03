@@ -251,7 +251,7 @@ describe('createForm HTTP Function', () => {
 
     it('should send event registration confirmation when campaign exists (event registration)', async () => {
       // Mock campaign lookup to return an event/campaign
-      mockSalesforceService.getCampaignByIdWithFields = jest.fn().mockResolvedValue({ Id: 'camp-1', Name: 'Community Meetup', StartDate: '2026-02-14', StartTime: '18:00', Location__c: 'Community Hall', Description: 'Join us' });
+      mockSalesforceService.getCampaignByIdWithFields = jest.fn().mockResolvedValue({ Id: 'camp-1', Name: 'Community Meetup', StartDate: '2026-02-14', StartTime: '18:00', Location__c: 'Community Hall', Description: 'Join us', Additional_Information__c: '<p>More details</p>' });
 
       mockRequest = {
         method: 'POST',
@@ -289,6 +289,7 @@ describe('createForm HTTP Function', () => {
       const body = JSON.parse(response.body);
       expect(body.campaignInfo).toBeDefined();
       expect(body.campaignInfo.name).toBe('Community Meetup');
+      expect(body.campaignInfo.Additional_Information__c).toBe('<p>More details</p>');
     });
 
     it('should generate X-Request-Id if not provided', async () => {
@@ -582,6 +583,41 @@ describe('createForm HTTP Function', () => {
 
       expect(mockSalesforceService.authenticate).toHaveBeenCalled();
       expect(mockSalesforceService.getFormByEmail).toHaveBeenCalledWith('john@example.com', undefined);
+    });
+
+    // Verify that querying with eventId returns campaign metadata including rich text field
+    it('should fetch event campaign metadata when eventId query provided', async () => {
+      mockRequest = {
+        method: 'GET',
+        headers: {
+          get: (header: string) => {
+            if (header === 'X-Request-Id') return 'get-request-id-event';
+            return null;
+          },
+        },
+        query: new Map([['eventId', 'camp-5']]),
+      };
+
+      process.env.SF_CLIENT_ID = 'test-client-id';
+      process.env.SF_CLIENT_SECRET = 'test-client-secret';
+
+      mockSalesforceService.getCampaignByIdWithFields.mockResolvedValueOnce({
+        Id: 'camp-5',
+        Name: 'Test Event',
+        Additional_Information__c: '<p><strong>Rich</strong> info</p>',
+      });
+
+      const response = await createForm(mockRequest, mockContext);
+
+      expect(response.status).toBe(200);
+
+      const body = JSON.parse(response.body);
+      expect(body.campaign).toBeDefined();
+      expect(body.campaign.Id).toBe('camp-5');
+      expect(body.campaign.Additional_Information__c).toBe('<p><strong>Rich</strong> info</p>');
+
+      expect(mockSalesforceService.getCampaignByIdWithFields).toHaveBeenCalledWith('camp-5',
+        expect.arrayContaining(['Additional_Information__c']));
     });
 
     it('should request emailing the code rather than auto-load (send-code endpoint)', async () => {

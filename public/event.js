@@ -252,7 +252,7 @@
       lookupEmailField: 'Email__c',
       campaignField: 'Campaign__c',  // Field to associate with campaign
       // Event metadata fields to query when eventId is provided
-      eventQueryFields: ['Id','Name','StartDate','EndDate','Description', 'Location__c','StartTime__c','EndTime__c','RequiresPayment__c','PaymentAmount__c']
+      eventQueryFields: ['Id','Name','StartDate','EndDate','Description','Additional_Information__c', 'Location__c','StartTime__c','EndTime__c','RequiresPayment__c','PaymentAmount__c']
     }
   };
 
@@ -450,6 +450,9 @@
             el.addEventListener(eventName, v, options);
           } else if (k === 'style' && typeof v === 'object') {
             Object.assign(el.style, v);
+          } else if (k === 'html') {
+            // special attribute to set innerHTML directly (for rich text)
+            el.innerHTML = v;
           } else if (k === 'value') {
             // skip here; set after children appended to ensure proper selection for <select>
           } else if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
@@ -1580,6 +1583,8 @@
         ) : null),
         // Description
         (loc ? h('div', { className: 'ri-event-hero-desc', style: { marginBottom: '10px', color: 'var(--muted)' } }, state.campaignInfo && state.campaignInfo.description ? state.campaignInfo.description : null) : null),
+        // Additional rich-text information (Salesforce rich text field) - rendered as HTML
+        (loc && state.campaignInfo && state.campaignInfo.additionalInformation ? h('div', { className: 'ri-event-hero-addinfo', style: { marginBottom: '10px', color: 'var(--muted)' }, html: state.campaignInfo.additionalInformation }) : null),
         // Map container (rendered only when a location exists AND maps are enabled for this device)
         (loc && !shouldDisableMap ? h('div', { 
           id: 'ri-event-map', 
@@ -2187,6 +2192,8 @@
           startDate: c.StartDate || c.startDate || null,
           endDate: c.EndDate || c.endDate || null,
           description: c.Description || c.description || null,
+          // rich text field from Salesforce; may contain HTML
+          additionalInformation: c.Additional_Information__c || c.additionalInformation || null,
           location: c.Location__c || c.Location || c.Venue__c || c.City__c || c.City || null,
           startTime: c.StartTime__c || c.startTime || null,
           endTime: c.EndTime__c || c.endTime || null,
