@@ -672,6 +672,7 @@ describe('createForm HTTP Function', () => {
         Availability__c: 'Full-time',
         Birthdate__c: '1990-01-01',
         Church__c: 'Church Name',
+        Comments__c: 'Some comments',
         Email__c: 'test@example.com',
         FirstName__c: 'John',
         LastName__c: 'Doe',

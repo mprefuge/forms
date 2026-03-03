@@ -25,6 +25,7 @@ export const testFormConfig = {
       'AffirmStatementOfFaith__c',
       'Availability__c',
       'Birthdate__c',
+      'Comments__c',
     ],
     queryFields: [
       'Id',
@@ -54,5 +55,6 @@ export const testFormConfig = {
     Country: 'Country__c',
     Skills: 'Skills__c',
     Church: 'Church__c',
+    Comments: 'Comments__c',
   },
 };

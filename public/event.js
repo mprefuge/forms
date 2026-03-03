@@ -232,6 +232,7 @@
       allowedFields: [
         'FirstName__c', 'LastName__c', 'Email__c', 'Phone__c', 
         'Street__c', 'City__c', 'State__c', 'Zip__c', 'Country__c',
+        'Comments__c',
         'Campaign__c',
         'DietaryRestrictions__c', 'AccessibilityNeeds__c', 
         'AccommodationNeeded__c', 'EmergencyContactName__c', 
@@ -240,12 +241,12 @@
       ],
       queryFields: [
         'Id', 'FormCode__c', 'FirstName__c', 'LastName__c', 'Email__c',
-        'Phone__c', 'Campaign__c',
+        'Phone__c', 'Comments__c', 'Campaign__c',
         'CreatedDate'
       ],
       updateFields: [
         'DietaryRestrictions__c', 'AccessibilityNeeds__c',
-        'AccommodationNeeded__c', 'TShirtSize__c', 'AdditionalNotes__c'
+        'AccommodationNeeded__c', 'TShirtSize__c', 'AdditionalNotes__c', 'Comments__c'
       ],
       searchField: 'FormCode__c',
       lookupEmailField: 'Email__c',
@@ -267,7 +268,7 @@
         {
           title: "Contact Information",
           description: "",
-          fields: ["FirstName", "LastName", "Email", "ReceiveUpdates", "Phone", "Street", "City", "State", "Zip", "Country"]
+          fields: ["FirstName", "LastName", "Email", "ReceiveUpdates", "Phone", "Street", "City", "State", "Zip", "Country", "Comments"]
         }
       ]
     }
@@ -287,6 +288,12 @@
     State: { label: "State/Province", type: "select", options: [], required: false },
     Zip: { label: "Postal Code", type: "text", required: false },
     Country: { label: "Country/Region", type: "select", options: [], required: false },
+    Comments: {
+      label: "Comments",
+      type: "textarea",
+      required: false,
+      placeholder: "Comments"
+    },
     EventName: { label: "Event Name", type: "text", required: true, placeholder: "Which event are you attending?" },
     EventDate: { label: "Event Date", type: "date", required: false },
     DietaryRestrictions: { 
@@ -350,6 +357,7 @@
     TShirtSize: 'TShirtSize__c',
     HowHeard: 'HowHeard__c',
     AdditionalNotes: 'AdditionalNotes__c',
+    Comments: 'Comments__c',
   };
 
   const sfToField = Object.entries(fieldToSf).reduce((acc, [k, v]) => {
