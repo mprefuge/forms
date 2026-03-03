@@ -1910,6 +1910,10 @@
                     h('div', { style: { flex: '1 1 160px' } }, renderField('State')),
                     h('div', { style: { flex: '1 1 120px' } }, renderField('Zip')),
                     h('div', { style: { flex: '1 1 160px' } }, renderField('Country'))
+                  ),
+                  // Row 5 - Comments (full width below address fields)
+                  h('div', { style: { display: 'flex', gap: '12px', flexWrap: 'wrap' } },
+                    h('div', { style: { flex: '1 1 100%' } }, renderField('Comments'))
                   )
                 ) ]
               : currentStep.fields.map(f => renderField(f))
