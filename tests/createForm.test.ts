@@ -620,6 +620,31 @@ describe('createForm HTTP Function', () => {
         expect.arrayContaining(['Additional_Information__c']));
     });
 
+    it('should list active events including rich text field when requested', async () => {
+      mockRequest = {
+        method: 'GET',
+        headers: { get: () => 'list-request-id' },
+        query: new Map([['listActiveEvents', 'true']]),
+      };
+
+      process.env.SF_CLIENT_ID = 'test-client-id';
+      process.env.SF_CLIENT_SECRET = 'test-client-secret';
+
+      mockSalesforceService.getActiveEventCampaigns.mockResolvedValueOnce([
+        { Id: 'camp-9', Name: 'Sample', Additional_Information__c: '<p>foo</p>' }
+      ]);
+
+      const response = await createForm(mockRequest, mockContext);
+
+      expect(response.status).toBe(200);
+      const body = JSON.parse(response.body);
+      expect(Array.isArray(body.campaigns)).toBe(true);
+      expect(body.campaigns[0].Additional_Information__c).toBe('<p>foo</p>');
+      expect(mockSalesforceService.getActiveEventCampaigns).toHaveBeenCalledWith(
+        expect.arrayContaining(['Additional_Information__c'])
+      );
+    });
+
     it('should request emailing the code rather than auto-load (send-code endpoint)', async () => {
       // This just ensures the client flow uses POST /send-code; we test handler separately in sendCode.test
       // Here we assert that the sendCode function exists and is wired up by invoking it in the test suite (sanity check)

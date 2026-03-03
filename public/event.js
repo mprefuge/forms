@@ -1581,10 +1581,10 @@
               : `Price: $${state.paymentAmount.toFixed(2)} (payment processing not available for amounts under $0.50)`
           )
         ) : null),
-        // Description
-        (loc ? h('div', { className: 'ri-event-hero-desc', style: { marginBottom: '10px', color: 'var(--muted)' } }, state.campaignInfo && state.campaignInfo.description ? state.campaignInfo.description : null) : null),
+        // Description (render even when no location is provided)
+        (state.campaignInfo && state.campaignInfo.description ? h('div', { className: 'ri-event-hero-desc', style: { marginBottom: '10px', color: 'var(--muted)' } }, state.campaignInfo.description) : null),
         // Additional rich-text information (Salesforce rich text field) - rendered as HTML
-        (loc && state.campaignInfo && state.campaignInfo.additionalInformation ? h('div', { className: 'ri-event-hero-addinfo', style: { marginBottom: '10px', color: 'var(--muted)' }, html: state.campaignInfo.additionalInformation }) : null),
+        (state.campaignInfo && state.campaignInfo.additionalInformation ? h('div', { className: 'ri-event-hero-addinfo', style: { marginBottom: '10px', color: 'var(--muted)' }, html: state.campaignInfo.additionalInformation }) : null),
         // Map container (rendered only when a location exists AND maps are enabled for this device)
         (loc && !shouldDisableMap ? h('div', { 
           id: 'ri-event-map', 
@@ -1695,6 +1695,8 @@
             startDate: startRaw || null,
             endDate: endRaw || null,
             description: rec.Description || rec.description || null,
+            // propagate rich text field from rec so it survives selection
+            additionalInformation: rec.Additional_Information__c || rec.additionalInformation || null,
             // expose both a short venue and a full address string suitable for map links
             location: mainLocation,
             mapLocation: locationAddress || location,
@@ -1792,6 +1794,8 @@
           h('div', { className: 'ri-event-card-location-content' }, mainLocation)
         ) : null),
         (rec.Description || rec.description ? h('div', { className: 'ri-event-card-desc' }, (rec.Description || rec.description)) : null),
+        // NOTE: additionalInformation is intentionally not shown on the card; it appears
+        // on the registration page after the user chooses the event.
         (paymentAmount > 0 ? h('div', { className: 'ri-event-card-optional ri-event-card-price' },
           '💳 ', requiresPayment ? `Price: $${paymentAmount.toFixed(2)}` : `Price: $${paymentAmount.toFixed(2)} (payment processing not available for amounts under $0.50)`
         ) : null),
