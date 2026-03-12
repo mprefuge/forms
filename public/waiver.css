@@ -122,6 +122,12 @@
   .ri-stepper.waiver-stepper { grid-template-columns: 1fr; }
 }
 
+/* z-index for modal overlay can be tweaked here if needed; the bulk of modal
+   styles (including layout/scrolling) come from application.css which is
+   injected by the script.  This rule merely ensures the overlay floats
+   above any waiver-specific elements. */
+.ri-modal { z-index: 10000 !important; }
+
 /* Waiver header spacing */
 .ri-card .ri-header { padding-bottom: 20px; }
 .ri-card .ri-title { margin-bottom: 12px; }
