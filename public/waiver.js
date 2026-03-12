@@ -1011,14 +1011,16 @@
     const shell = document.createElement('div');
     shell.className = 'ri-modal-content';
     Object.assign(shell.style, {
+      display: 'inline-block',
       maxHeight: '90vh',
+      maxWidth: '96vw',
       overflow: 'auto'
     });
 
     // close button in top corner
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
-    closeBtn.className = 'ri-btn ri-btn-ghost ri-btn-sm ri-modal-close';
+    closeBtn.className = 'ri-modal-close';
     closeBtn.textContent = '×';
     closeBtn.onclick = close;
     shell.appendChild(closeBtn);
@@ -1026,6 +1028,7 @@
     // render target inside shell (this is what app render replaces)
     const container = document.createElement('div');
     container.id = containerId;
+    container.className = 'ri-modal-host';
     shell.appendChild(container);
 
     modal.appendChild(shell);
@@ -1033,7 +1036,9 @@
 
     // clicking outside the modal content should dismiss
     overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) close();
+      const path = (typeof e.composedPath === 'function') ? e.composedPath() : [];
+      const clickedInsideShell = path.length ? path.includes(shell) : shell.contains(e.target);
+      if (!clickedInsideShell) close();
     });
 
     function close() {

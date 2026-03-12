@@ -733,11 +733,12 @@ form.ri-form {
 
 .ri-modal-content {
   position: relative;
+  display: inline-block;
   /* make the wrapper transparent and minimal – the form itself renders a card */
   background: transparent;
   border-radius: 0;
   padding: 0;
-  max-width: 90%;
+  max-width: 96vw;
   width: auto;
   box-shadow: none;
   z-index: 1;
@@ -769,21 +770,35 @@ body.ri-modal-open {
   scrollbar-color: var(--accent) transparent;
 }
 
+/* modal host should not keep default outer app spacing, otherwise the close
+   icon appears outside the white card due to the app margin/padding */
+.ri-modal-content .ri-modal-host .ri-app {
+  margin: 0;
+  padding: 0;
+}
+
 /* close button positioned inside modal container */
 .ri-modal-close {
   position: absolute;
-  top: 12px;
-  right: 12px;
-  background: transparent;
-  border: none;
-  font-size: 24px;
+  top: 14px;
+  right: 14px;
+  background: none;
+  border: 0;
+  padding: 0;
+  width: auto;
+  height: auto;
+  font-size: 34px;
+  font-weight: 300;
   line-height: 1;
   cursor: pointer;
-  color: var(--muted);
+  color: #2f2f2f;
   z-index: 3;
+  box-shadow: none;
+  border-radius: 0;
+  appearance: none;
 }
 .ri-modal-close:hover {
-  color: var(--accent);
+  color: #111;
 }
 
 .ri-modal-title {
