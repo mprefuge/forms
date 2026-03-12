@@ -126,7 +126,7 @@
    styles (including layout/scrolling) come from application.css which is
    injected by the script.  This rule merely ensures the overlay floats
    above any waiver-specific elements. */
-.ri-modal { z-index: 10000 !important; }
+.ri-modal { z-index: 2147483000 !important; }
 
 /* Waiver header spacing */
 .ri-card .ri-header { padding-bottom: 20px; }
