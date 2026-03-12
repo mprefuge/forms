@@ -780,6 +780,7 @@ body.ri-modal-open {
   line-height: 1;
   cursor: pointer;
   color: var(--muted);
+  z-index: 3;
 }
 .ri-modal-close:hover {
   color: var(--accent);

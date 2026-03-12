@@ -1007,11 +1007,10 @@
       zIndex: '2147483647'
     });
 
-    // container is also the styled content element
-    const container = document.createElement('div');
-    container.id = containerId;
-    container.className = 'ri-modal-content';
-    Object.assign(container.style, {
+    // modal content shell (persistent chrome)
+    const shell = document.createElement('div');
+    shell.className = 'ri-modal-content';
+    Object.assign(shell.style, {
       maxHeight: '90vh',
       overflow: 'auto'
     });
@@ -1022,9 +1021,14 @@
     closeBtn.className = 'ri-btn ri-btn-ghost ri-btn-sm ri-modal-close';
     closeBtn.textContent = '×';
     closeBtn.onclick = close;
-    container.appendChild(closeBtn);
+    shell.appendChild(closeBtn);
 
-    modal.appendChild(container);
+    // render target inside shell (this is what app render replaces)
+    const container = document.createElement('div');
+    container.id = containerId;
+    shell.appendChild(container);
+
+    modal.appendChild(shell);
     overlay.appendChild(modal);
 
     // clicking outside the modal content should dismiss
