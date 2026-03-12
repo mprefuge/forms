@@ -189,8 +189,8 @@
     try {
       const scriptEl = document.currentScript;
       if (!scriptEl) return;
-      const cssHref = new URL("./application.css", scriptEl.src).toString();
-      const exists = Array.from(document.styleSheets).some(ss => ss.href && ss.href.includes("application.css"));
+      const cssHref = new URL("./waiver.css", scriptEl.src).toString();
+      const exists = Array.from(document.styleSheets).some(ss => ss.href && ss.href.includes("waiver.css"));
       if (exists) return;
       const link = document.createElement("link");
       link.rel = "stylesheet";
