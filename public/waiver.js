@@ -1017,16 +1017,18 @@
     function close() {
       if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
       if (hostOverride === container) hostOverride = null;
-      // restore body scroll
+      // restore scrolling
       if (typeof document !== 'undefined') {
-        document.body.style.overflow = '';
+        document.documentElement.classList.remove('ri-modal-open');
+        document.body.classList.remove('ri-modal-open');
       }
     }
 
     document.body.appendChild(overlay);
-    // prevent background from scrolling while modal is open
+    // prevent background from scrolling by adding a class to html/body
     if (typeof document !== 'undefined') {
-      document.body.style.overflow = 'hidden';
+      document.documentElement.classList.add('ri-modal-open');
+      document.body.classList.add('ri-modal-open');
     }
     if (typeof onOpen === 'function') onOpen(container);
 
