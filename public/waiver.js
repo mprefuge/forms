@@ -989,14 +989,32 @@
   function openModal({ containerId = HOST_ID, onOpen } = {}) {
     const overlay = document.createElement('div');
     overlay.className = 'ri-modal-overlay';
+    Object.assign(overlay.style, {
+      position: 'fixed',
+      inset: '0',
+      zIndex: '2147483647',
+      background: 'rgba(0, 0, 0, 0.5)',
+      backdropFilter: 'blur(4px)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center'
+    });
 
     const modal = document.createElement('div');
     modal.className = 'ri-modal';
+    Object.assign(modal.style, {
+      position: 'relative',
+      zIndex: '2147483647'
+    });
 
     // container is also the styled content element
     const container = document.createElement('div');
     container.id = containerId;
     container.className = 'ri-modal-content';
+    Object.assign(container.style, {
+      maxHeight: '90vh',
+      overflow: 'auto'
+    });
 
     // close button in top corner
     const closeBtn = document.createElement('button');
