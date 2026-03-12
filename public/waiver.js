@@ -222,6 +222,7 @@
   // optional override when running inside a modal so we can target a specific
   // container element instead of always using the element identified by HOST_ID
   let hostOverride = null;
+  let activeModalClose = null;
 
   function getContainer() {
     return hostOverride || document.getElementById(HOST_ID);
@@ -530,8 +531,6 @@
         formCode: result.formCode,
         status: 'success'
       });
-
-      showSuccessModal(result.formCode);
     } catch (error) {
       setError(error.message || 'An error occurred while submitting the form');
     }
@@ -582,27 +581,35 @@
   // ============================================================================
   // UI COMPONENTS
   // ============================================================================
-  function showSuccessModal(formCode) {
-    const modal = document.createElement('div');
-    modal.className = 'ri-modal';
-    modal.innerHTML = `
-      <div class="ri-modal-overlay"></div>
-      <div class="ri-modal-content">
+  function closeSuccessView() {
+    if (typeof activeModalClose === 'function') {
+      const closeFn = activeModalClose;
+      activeModalClose = null;
+      closeFn();
+      return;
+    }
+
+    resetState();
+    render();
+  }
+
+  function renderSuccessView() {
+    return `
+      <div class="ri-success-modal" style="position: static; transform: none; box-shadow: none; max-width: 100%; width: 100%; margin: 0;">
         <div class="ri-success-icon">✓</div>
         <h2 class="ri-modal-title">Waiver and Release Form of Liability Submitted Successfully!</h2>
         <p class="ri-modal-subtitle">Your waiver and release form of liability has been submitted. Please save your confirmation code for your records.</p>
         <div class="ri-code-display">
-          <code>${formCode}</code>
+          <code>${state.formCode || ''}</code>
         </div>
         <p style="font-size: 14px; color: #6b7280; margin: 16px 0;">
           A confirmation email has been sent to ${state.formData.Email__c || 'your email address'}.
         </p>
         <div class="ri-modal-actions">
-          <button class="ri-btn ri-btn-primary" onclick="location.reload()">Close</button>
+          <button class="ri-btn ri-btn-primary" type="button" onclick="window.closeWaiverSuccess()">Close</button>
         </div>
       </div>
     `;
-    document.body.appendChild(modal);
   }
 
   function renderField(field) {
@@ -924,6 +931,17 @@
     const container = getContainer();
     if (!container) return;
 
+    if (state.status === 'success') {
+      container.innerHTML = `
+        <div class="ri-app">
+          <div class="ri-card">
+            ${renderSuccessView()}
+          </div>
+        </div>
+      `;
+      return;
+    }
+
     container.innerHTML = `
       <div class="ri-app">
         <div class="ri-card">
@@ -934,7 +952,7 @@
           <div class="ri-title">${FORM_CONFIG.name}</div>
           ${FORM_CONFIG && FORM_CONFIG.id === 'waiver' ? '' : `<div class="ri-subtitle">Complete all sections to submit your parental waiver</div>`}
 
-          ${state.status === 'success' ? '' : renderStep()}
+          ${renderStep()}
         </div>
       </div>
     `;
@@ -1046,6 +1064,7 @@
     function close() {
       if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
       if (hostOverride === container) hostOverride = null;
+      if (activeModalClose === close) activeModalClose = null;
       // restore scrolling
       if (typeof document !== 'undefined') {
         document.documentElement.classList.remove('ri-modal-open');
@@ -1059,6 +1078,7 @@
       document.documentElement.classList.add('ri-modal-open');
       document.body.classList.add('ri-modal-open');
     }
+    activeModalClose = close;
     if (typeof onOpen === 'function') onOpen(container);
 
     return { overlay, close };
@@ -1068,6 +1088,7 @@
   // expose globally for callers
   if (typeof window !== 'undefined') {
     window.openModal = openModal;
+    window.closeWaiverSuccess = closeSuccessView;
     // also export helpers so host pages can drive the waiver rendering
     window.__ri_waiver = {
       render,
