@@ -128,7 +128,7 @@
       Country: "Country",
     },
     phaseNames: {
-      initial: "Volunteer Waiver",
+      initial: "Waiver and Release Form of Liability",
     }
   };
 
@@ -138,9 +138,9 @@
 
   const EMAIL_TEMPLATES = {
     waiverCopy: {
-      subject: 'Volunteer Waiver Form Submission - The Nations Next Door',
-      text: 'Hello {{ParentFirstName__c}},\n\nYour volunteer waiver for {{FirstName__c}} has been successfully submitted for The Nations Next Door program. Your confirmation code is {{codeText}}.\n\nThank you,\nRefuge International',
-      html: '<p>Hello {{ParentFirstName__c}},</p><p>Your volunteer waiver for <strong>{{FirstName__c}}</strong> has been successfully submitted for The Nations Next Door program. Your confirmation code is <strong>{{codeHtml}}</strong>.</p><p>Thank you,<br/>Refuge International</p>'
+      subject: 'Waiver and Release Form of Liability Submission - The Nations Next Door',
+      text: 'Hello {{ParentFirstName__c}},\n\nYour waiver and release form of liability for {{FirstName__c}} has been successfully submitted for The Nations Next Door program. Your confirmation code is {{codeText}}.\n\nThank you,\nRefuge International',
+      html: '<p>Hello {{ParentFirstName__c}},</p><p>Your waiver and release form of liability for <strong>{{FirstName__c}}</strong> has been successfully submitted for The Nations Next Door program. Your confirmation code is <strong>{{codeHtml}}</strong>.</p><p>Thank you,<br/>Refuge International</p>'
     },
     applicationCode: {
       subject: 'Your Waiver Code - The Nations Next Door',
@@ -151,11 +151,11 @@
 
   const FORM_CONFIG = {
     id: 'waiver',
-    name: 'Volunteer Waiver and Release Form',
+    name: 'Waiver and Release Form of Liability',
     subtitle: 'The Nations Next Door',
     salesforce: {
       objectName: 'Form__c',
-      recordTypeName: 'Volunteer Waiver',
+      recordTypeName: 'TNND Waiver',
       skipContactCreation: true, // Waiver form doesn't need contact records
       allowedFields: [
         // Volunteer Information
@@ -572,8 +572,8 @@
       <div class="ri-modal-overlay"></div>
       <div class="ri-modal-content">
         <div class="ri-success-icon">✓</div>
-        <h2 class="ri-modal-title">Volunteer Waiver Submitted Successfully!</h2>
-        <p class="ri-modal-subtitle">Your volunteer waiver has been submitted. Please save your confirmation code for your records.</p>
+        <h2 class="ri-modal-title">Waiver and Release Form of Liability Submitted Successfully!</h2>
+        <p class="ri-modal-subtitle">Your waiver and release form of liability has been submitted. Please save your confirmation code for your records.</p>
         <div class="ri-code-display">
           <code>${formCode}</code>
         </div>
