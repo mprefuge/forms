@@ -207,7 +207,7 @@
   // ============================================================================
   // STATE MANAGEMENT
   // ============================================================================
-  let state = {
+  const initialState = {
     phase: 'initial',
     step: 0,
     // Default preference: agree to receive periodic updates
@@ -217,6 +217,23 @@
     error: null,
     loading: false,
   };
+  let state = { ...initialState };
+
+  // optional override when running inside a modal so we can target a specific
+  // container element instead of always using the element identified by HOST_ID
+  let hostOverride = null;
+
+  function getContainer() {
+    return hostOverride || document.getElementById(HOST_ID);
+  }
+
+  function resetState() {
+    state = { ...initialState };
+    // keep signature dates in sync when resetting
+    const today = new Date().toISOString().split('T')[0];
+    state.formData.ParentSignatureDate__c = today;
+    state.formData.TransportationConsentDate__c = today;
+  }
 
   // ============================================================================
   // FORM STRUCTURE
@@ -853,15 +870,15 @@
   // Flag to prevent duplicate listener attachment
   let formListenersAttached = false;
 
-  function attachFormListeners() {
-    if (formListenersAttached) return;
-    formListenersAttached = true;
-    const container = document.getElementById(HOST_ID);
+  function attachFormListeners(containerOverride) {
+    const container = containerOverride || getContainer();
     if (!container) return;
+    if (container._formListenersAttached) return;
+    container._formListenersAttached = true;
     const form = container.querySelector('.ri-form');
     if (!form) return;
 
-    // Use event delegation on the form element (attach ONCE, not per render)
+    // Use event delegation on the form element (attach once per container)
     form.addEventListener('input', (e) => {
       if (e.target.type === 'checkbox') {
         state.formData[e.target.name] = e.target.checked;
@@ -879,8 +896,8 @@
     });
   }
 
-  function attachAddressLookupListener() {
-    const container = document.getElementById(HOST_ID);
+  function attachAddressLookupListener(containerOverride) {
+    const container = containerOverride || getContainer();
     if (!container || config.disableAddressLookup) return;
     const streetInput = container.querySelector('#Street__c');
     if (!streetInput || streetInput._waiverHandlerAttached) return;
@@ -902,7 +919,7 @@
   }
 
   function render() {
-    const container = document.getElementById(HOST_ID);
+    const container = getContainer();
     if (!container) return;
 
     container.innerHTML = `
@@ -920,10 +937,9 @@
       </div>
     `;
 
-    // Attach listeners ONCE, not every render
-    formListenersAttached = false;
-    attachFormListeners();
-    attachAddressLookupListener();
+    // Attach listeners for whichever container we're rendering into
+    attachFormListeners(container);
+    attachAddressLookupListener(container);
   }
 
   // ============================================================================
@@ -933,10 +949,8 @@
   window.prevStep = prevStep;
   window.goToStep = goToStep;
 
-  // Auto-fill today's date for signature dates
-  const today = new Date().toISOString().split('T')[0];
-  state.formData.ParentSignatureDate__c = today;
-  state.formData.TransportationConsentDate__c = today;
+  // initialize state (also populates sig dates)
+  resetState();
 
   // Initial render
   if (document.readyState === 'loading') {
@@ -958,5 +972,78 @@
 
   // Load lookup data to populate selects (countries, states, relationship, etc.)
   loadLookup().then(applyLookupOptions).catch(() => {});
+
+  // ---------------------------------------------------------------------------
+  // Modal helpers (generic)
+  // ---------------------------------------------------------------------------
+  /**
+   * Opens a modal overlay with a container element and optional initialization
+   * callback. The container is assigned the given `containerId` (defaults to
+   * `HOST_ID`). Returns an object with a `close()` method.
+   *
+   * @param {object} opts
+   * @param {string} [opts.containerId] id to use for the inner container
+   * @param {(container:HTMLElement)=>void} [opts.onOpen] called after modal is
+   *        appended; receives the container element.
+   */
+  function openModal({ containerId = HOST_ID, onOpen } = {}) {
+    const overlay = document.createElement('div');
+    overlay.className = 'ri-modal-overlay';
+
+    const modal = document.createElement('div');
+    modal.className = 'ri-modal';
+
+    // container is also the styled content element
+    const container = document.createElement('div');
+    container.id = containerId;
+    container.className = 'ri-modal-content';
+
+    // close button in top corner
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'ri-btn ri-btn-ghost ri-btn-sm ri-modal-close';
+    closeBtn.textContent = '×';
+    closeBtn.onclick = close;
+    container.appendChild(closeBtn);
+
+    modal.appendChild(container);
+    overlay.appendChild(modal);
+
+    // clicking outside the modal content should dismiss
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) close();
+    });
+
+    function close() {
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+      if (hostOverride === container) hostOverride = null;
+      // restore body scroll
+      if (typeof document !== 'undefined') {
+        document.body.style.overflow = '';
+      }
+    }
+
+    document.body.appendChild(overlay);
+    // prevent background from scrolling while modal is open
+    if (typeof document !== 'undefined') {
+      document.body.style.overflow = 'hidden';
+    }
+    if (typeof onOpen === 'function') onOpen(container);
+
+    return { overlay, close };
+  }
+
+
+  // expose globally for callers
+  if (typeof window !== 'undefined') {
+    window.openModal = openModal;
+    // also export helpers so host pages can drive the waiver rendering
+    window.__ri_waiver = {
+      render,
+      resetState,
+      get hostOverride() { return hostOverride; },
+      set hostOverride(v) { hostOverride = v; }
+    };
+  }
 
 })();

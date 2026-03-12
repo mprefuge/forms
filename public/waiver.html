@@ -20,7 +20,39 @@
   </style>
 </head>
 <body>
+  <h1>Parental Waiver &amp; Consent Form</h1>
+  <p>This demo page shows both rendering options provided by the waiver script.</p>
+  <p>
+    <button id="open-modal" class="ri-btn ri-btn-primary">
+      Click here to open the waiver in a modal popup
+    </button>
+  </p>
+  <p>The form will also render inline in the container below (default behavior):</p>
   <div id="waiver-app"></div>
+  
   <script src="./waiver.js"></script>
+  <script>
+    // attach listener after script loads
+    document.getElementById('open-modal').addEventListener('click', () => {
+      if (typeof openModal === 'function') {
+        openModal({
+          onOpen(container) {
+            // when using modal, render the waiver form inside the new container
+            if (window.__ri_waiver) {
+              window.__ri_waiver.hostOverride = container;
+              if (typeof window.__ri_waiver.resetState === 'function') {
+                window.__ri_waiver.resetState();
+              }
+              if (typeof window.__ri_waiver.render === 'function') {
+                window.__ri_waiver.render();
+              }
+            }
+          }
+        });
+      } else {
+        alert('modal helper not available');
+      }
+    });
+  </script>
 </body>
 </html>

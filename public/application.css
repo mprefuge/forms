@@ -732,13 +732,34 @@ form.ri-form {
 
 .ri-modal-content {
   position: relative;
-  background: #fff;
-  border-radius: 16px;
-  padding: 32px;
-  max-width: 500px;
-  width: 90%;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  /* make the wrapper transparent and minimal – the form itself renders a card */
+  background: transparent;
+  border-radius: 0;
+  padding: 0;
+  max-width: 90%;
+  width: auto;
+  box-shadow: none;
   z-index: 1;
+
+  /* ensure content can scroll if too tall for viewport */
+  max-height: 90vh;
+  overflow: auto;
+}
+
+/* close button positioned inside modal container */
+.ri-modal-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: transparent;
+  border: none;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--muted);
+}
+.ri-modal-close:hover {
+  color: var(--accent);
 }
 
 .ri-modal-title {

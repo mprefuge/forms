@@ -14,7 +14,7 @@ A production-ready TypeScript Azure Functions application for managing Salesforc
 ## Available Forms
 
 - **Volunteer Application** ([public/application.js](public/application.js)) - Multi-phase volunteer recruitment with pastoral references
-- **Parental Waiver** ([public/waiver.js](public/waiver.js)) - Youth program consent and liability waiver
+- **Parental Waiver** ([public/waiver.js](public/waiver.js)) - Youth program consent and liability waiver. Can be displayed full‑page or embedded as a modal popup by calling the generic `window.openModal()` helper.
 - **Event Registration** ([public/event.js](public/event.js)) - Event registration with optional Salesforce campaign linking. Supports a rich‑text Salesforce field (`Additional_Information__c`) that is shown below the description. Description and additional information are displayed even if no location is provided.
 
 ## Prerequisites
@@ -191,6 +191,19 @@ func azure functionapp publish <your-function-app-name>
 4. Configure application settings in Azure Portal after deployment
 
 ## Frontend Configuration
+
+### Waiver Modal Example
+
+Any form script may expose its own rendering logic; the available modal helper is generic. For the waiver form you can do:
+
+```html
+<button onclick="openModal({ onOpen: container => { hostOverride = container; /* render form */ }})">
+  Click here to complete the waiver
+</button>
+```
+
+The form will render inside a modal overlay rather than navigating away.
+
 
 ### Default Configuration
 
