@@ -875,24 +875,26 @@
     if (!container) return;
     if (container._formListenersAttached) return;
     container._formListenersAttached = true;
-    const form = container.querySelector('.ri-form');
-    if (!form) return;
 
-    // Use event delegation on the form element (attach once per container)
-    form.addEventListener('input', (e) => {
-      if (e.target.type === 'checkbox') {
-        state.formData[e.target.name] = e.target.checked;
+    // Use event delegation on the stable container so listeners survive re-renders
+    const handleFieldUpdate = (target) => {
+      if (!target || !target.name) return;
+      const tag = (target.tagName || '').toLowerCase();
+      if (tag !== 'input' && tag !== 'select' && tag !== 'textarea') return;
+
+      if (target.type === 'checkbox') {
+        state.formData[target.name] = !!target.checked;
       } else {
-        state.formData[e.target.name] = e.target.value;
+        state.formData[target.name] = target.value;
       }
+    };
+
+    container.addEventListener('input', (e) => {
+      handleFieldUpdate(e.target);
     });
 
-    form.addEventListener('change', (e) => {
-      if (e.target.type === 'checkbox') {
-        state.formData[e.target.name] = e.target.checked;
-      } else {
-        state.formData[e.target.name] = e.target.value;
-      }
+    container.addEventListener('change', (e) => {
+      handleFieldUpdate(e.target);
     });
   }
 
