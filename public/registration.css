@@ -35,6 +35,32 @@ body {
   padding: 28px;
 }
 
+.ri-form-media,
+.ri-form-media-grid {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 22px;
+}
+
+.ri-form-media-item {
+  margin: 0;
+}
+
+.ri-form-media-item img {
+  width: 100%;
+  display: block;
+  border-radius: 16px;
+  object-fit: cover;
+  box-shadow: var(--shadow-sm);
+}
+
+.ri-form-media-caption {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .ri-header-copy {
   margin-bottom: 24px;
 }

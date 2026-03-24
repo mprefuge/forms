@@ -20,32 +20,43 @@
     return scriptValue || urlParams.get(name) || '';
   };
 
+  const injectCSS = () => {
+    try {
+      const activeScript = findScriptElement();
+      if (!activeScript) return;
+      const cssHref = new URL("./registration.css", activeScript.src).toString();
+      const exists = Array.from(document.styleSheets).some((sheet) => sheet.href && sheet.href.includes("registration.css"));
+      if (exists) return;
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = cssHref;
+      document.head.appendChild(link);
+    } catch (e) {
+      console.warn("CSS injection skipped", e);
+    }
+  };
+  injectCSS();
+
   const LANGUAGE_ALIASES = {
     en: 'en',
     english: 'en',
     es: 'es',
     spanish: 'es',
     espanol: 'es',
-    español: 'es',
-    fr: 'fr',
-    french: 'fr',
-    francais: 'fr',
-    français: 'fr',
-    pt: 'pt',
-    portuguese: 'pt',
-    portugues: 'pt',
-    português: 'pt',
-    ar: 'ar',
-    arabic: 'ar',
+    'español': 'es',
   };
 
   const TRANSLATIONS = {
     en: {
       documentTitle: 'Registration Form - Refuge International',
-      formTitle: 'Registration Form',
-      formSubtitle: 'Complete the form below to register.',
-      contactSection: 'Contact Information',
-      detailsSection: 'Registration Details',
+      genericFormTitle: 'Contact Form',
+      genericFormSubtitle: 'Share your contact information and comments below.',
+      eventRegistrationTitle: 'Event Registration',
+      eventRegistrationSubtitle: 'Complete the form below to register for this event.',
+      studentRegistrationTitle: 'Student Registration',
+      studentRegistrationSubtitle: 'Complete the student registration details below.',
+      volunteerRegistrationTitle: 'Volunteer Registration',
+      volunteerRegistrationSubtitle: 'Complete the volunteer registration form below.',
       firstName: 'First Name',
       lastName: 'Last Name',
       email: 'Email',
@@ -58,7 +69,6 @@
       zip: 'Postal Code',
       country: 'Country/Region',
       location: 'Location',
-      type: 'Type',
       howHeard: 'How did you hear about this ESL program?',
       howHeardPlaceholder: 'Tell us how you heard about this ESL program',
       interest: 'What are you interested in?',
@@ -79,14 +89,19 @@
       successBody: 'Please save your confirmation code for your records.',
       confirmationCode: 'Confirmation Code',
       requiredPrefix: 'Please fill in required fields:',
+      loadingForm: 'Loading form...',
       submitError: 'Failed to submit. Please try again.',
     },
     es: {
       documentTitle: 'Formulario de registro - Refuge International',
-      formTitle: 'Formulario de registro',
-      formSubtitle: 'Complete el siguiente formulario para registrarse.',
-      contactSection: 'Información de contacto',
-      detailsSection: 'Detalles del registro',
+      genericFormTitle: 'Formulario de contacto',
+      genericFormSubtitle: 'Comparta su información de contacto y comentarios a continuación.',
+      eventRegistrationTitle: 'Registro de evento',
+      eventRegistrationSubtitle: 'Complete el siguiente formulario para registrarse en este evento.',
+      studentRegistrationTitle: 'Registro de estudiante',
+      studentRegistrationSubtitle: 'Complete a continuación los datos de registro del estudiante.',
+      volunteerRegistrationTitle: 'Registro de voluntario',
+      volunteerRegistrationSubtitle: 'Complete el siguiente formulario de registro para voluntarios.',
       firstName: 'Nombre',
       lastName: 'Apellido',
       email: 'Correo electrónico',
@@ -99,7 +114,6 @@
       zip: 'Código postal',
       country: 'País/Región',
       location: 'Ubicación',
-      type: 'Tipo',
       howHeard: '¿Cómo se enteró de este programa de ESL?',
       howHeardPlaceholder: 'Cuéntenos cómo se enteró de este programa de ESL',
       interest: '¿Qué le interesa?',
@@ -120,130 +134,8 @@
       successBody: 'Guarde su código de confirmación para sus registros.',
       confirmationCode: 'Código de confirmación',
       requiredPrefix: 'Complete los campos obligatorios:',
+      loadingForm: 'Cargando formulario...',
       submitError: 'No se pudo enviar el formulario. Inténtelo de nuevo.',
-    },
-    fr: {
-      documentTitle: 'Formulaire d’inscription - Refuge International',
-      formTitle: 'Formulaire d’inscription',
-      formSubtitle: 'Remplissez le formulaire ci-dessous pour vous inscrire.',
-      contactSection: 'Coordonnées',
-      detailsSection: 'Détails de l’inscription',
-      firstName: 'Prénom',
-      lastName: 'Nom',
-      email: 'E-mail',
-      phone: 'Téléphone',
-      birthdate: 'Date de naissance',
-      nativeCountry: 'Pays d’origine',
-      street: 'Adresse',
-      city: 'Ville',
-      state: 'État/Province',
-      zip: 'Code postal',
-      country: 'Pays/Région',
-      location: 'Lieu',
-      type: 'Type',
-      howHeard: 'Comment avez-vous entendu parler de ce programme d’anglais langue seconde ?',
-      howHeardPlaceholder: 'Dites-nous comment vous avez entendu parler de ce programme ESL',
-      interest: 'Qu’est-ce qui vous intéresse ?',
-      ktap: 'Participez-vous au programme KTAP ou avez-vous besoin de documents pour ce programme ?',
-      snap: 'Participez-vous au programme SNAP ou avez-vous besoin de documents pour ce programme ?',
-      selectOption: 'Sélectionnez une option',
-      optionRegisterChildren: 'Inscrire vos enfants à l’école',
-      optionBibleStudy: 'Étude biblique en espagnol',
-      optionCitizenship: 'Cours de citoyenneté',
-      yes: 'Oui',
-      no: 'Non',
-      comments: 'Commentaires',
-      commentsPlaceholder: 'Y a-t-il autre chose que nous devrions savoir ?',
-      receiveUpdates: 'J’accepte de recevoir des mises à jour périodiques de Refuge International',
-      submit: 'Envoyer l’inscription',
-      submitting: 'Envoi en cours...',
-      successTitle: 'Inscription envoyée avec succès',
-      successBody: 'Veuillez conserver votre code de confirmation.',
-      confirmationCode: 'Code de confirmation',
-      requiredPrefix: 'Veuillez renseigner les champs obligatoires :',
-      submitError: 'Échec de l’envoi. Veuillez réessayer.',
-    },
-    pt: {
-      documentTitle: 'Formulário de inscrição - Refuge International',
-      formTitle: 'Formulário de inscrição',
-      formSubtitle: 'Preencha o formulário abaixo para se inscrever.',
-      contactSection: 'Informações de contato',
-      detailsSection: 'Detalhes da inscrição',
-      firstName: 'Nome',
-      lastName: 'Sobrenome',
-      email: 'E-mail',
-      phone: 'Telefone',
-      birthdate: 'Data de nascimento',
-      nativeCountry: 'País de origem',
-      street: 'Endereço',
-      city: 'Cidade',
-      state: 'Estado/Província',
-      zip: 'Código postal',
-      country: 'País/Região',
-      location: 'Local',
-      type: 'Tipo',
-      howHeard: 'Como você soube deste programa de ESL?',
-      howHeardPlaceholder: 'Conte-nos como você soube deste programa de ESL',
-      interest: 'No que você tem interesse?',
-      ktap: 'Você participa do programa KTAP ou precisa de documentação para esse programa?',
-      snap: 'Você participa do programa SNAP ou precisa de documentação para esse programa?',
-      selectOption: 'Selecione uma opção',
-      optionRegisterChildren: 'Matricular seus filhos na escola',
-      optionBibleStudy: 'Estudo bíblico em espanhol',
-      optionCitizenship: 'Aulas de cidadania',
-      yes: 'Sim',
-      no: 'Não',
-      comments: 'Comentários',
-      commentsPlaceholder: 'Há mais alguma coisa que devemos saber?',
-      receiveUpdates: 'Concordo em receber atualizações periódicas da Refuge International',
-      submit: 'Enviar inscrição',
-      submitting: 'Enviando...',
-      successTitle: 'Inscrição enviada com sucesso',
-      successBody: 'Guarde seu código de confirmação.',
-      confirmationCode: 'Código de confirmação',
-      requiredPrefix: 'Preencha os campos obrigatórios:',
-      submitError: 'Não foi possível enviar. Tente novamente.',
-    },
-    ar: {
-      documentTitle: 'نموذج التسجيل - Refuge International',
-      formTitle: 'نموذج التسجيل',
-      formSubtitle: 'أكمل النموذج أدناه لإتمام التسجيل.',
-      contactSection: 'معلومات الاتصال',
-      detailsSection: 'تفاصيل التسجيل',
-      firstName: 'الاسم الأول',
-      lastName: 'اسم العائلة',
-      email: 'البريد الإلكتروني',
-      phone: 'الهاتف',
-      birthdate: 'تاريخ الميلاد',
-      nativeCountry: 'البلد الأصلي',
-      street: 'العنوان',
-      city: 'المدينة',
-      state: 'الولاية/المقاطعة',
-      zip: 'الرمز البريدي',
-      country: 'الدولة/المنطقة',
-      location: 'الموقع',
-      type: 'النوع',
-      howHeard: 'كيف سمعت عن برنامج ESL هذا؟',
-      howHeardPlaceholder: 'أخبرنا كيف سمعت عن برنامج ESL هذا',
-      interest: 'بماذا تهتم؟',
-      ktap: 'هل تشارك في برنامج KTAP أو تحتاج إلى مستندات لهذا البرنامج؟',
-      snap: 'هل تشارك في برنامج SNAP أو تحتاج إلى مستندات لهذا البرنامج؟',
-      selectOption: 'اختر خيارًا',
-      optionRegisterChildren: 'تسجيل أطفالك في المدرسة',
-      optionBibleStudy: 'دراسة الكتاب المقدس بالإسبانية',
-      optionCitizenship: 'دروس المواطنة',
-      yes: 'نعم',
-      no: 'لا',
-      comments: 'ملاحظات',
-      commentsPlaceholder: 'هل هناك أي شيء آخر يجب أن نعرفه؟',
-      receiveUpdates: 'أوافق على تلقي تحديثات دورية من Refuge International',
-      submit: 'إرسال التسجيل',
-      submitting: 'جارٍ الإرسال...',
-      successTitle: 'تم إرسال التسجيل بنجاح',
-      successBody: 'يرجى حفظ رمز التأكيد لسجلاتك.',
-      confirmationCode: 'رمز التأكيد',
-      requiredPrefix: 'يرجى إكمال الحقول المطلوبة:',
-      submitError: 'تعذر إرسال النموذج. حاول مرة أخرى.',
     },
   };
 
@@ -261,13 +153,83 @@
     if (translations[cleaned]) return cleaned;
     if (LANGUAGE_ALIASES[cleaned]) return LANGUAGE_ALIASES[cleaned];
     const base = cleaned.split(/[-_]/)[0];
-    if (translations[base]) return base;
     return LANGUAGE_ALIASES[base] || 'en';
   };
 
   const language = normalizeLanguage(getParam('language'));
   const copy = translations[language] || TRANSLATIONS.en;
-  const isRtl = language === 'ar';
+
+  const fieldsList = Array.isArray(window.REGISTRATION_FIELDS) ? window.REGISTRATION_FIELDS : [];
+  const fieldDefinitions = fieldsList.reduce((acc, field) => {
+    if (field && field.Name) acc[field.Name] = field;
+    return acc;
+  }, {});
+  const formsRegistry = window.REGISTRATION_FORMS || { defaultForm: 'Generic Contact', aliases: {}, forms: {} };
+  const formConfigCache = window.REGISTRATION_FORM_CONFIGS = window.REGISTRATION_FORM_CONFIGS || {};
+  const loadedConfigFiles = new Set();
+
+  const normalizeFormName = (raw) => {
+    const cleaned = (raw || '').toString().trim();
+    if (!cleaned) return formsRegistry.defaultForm || 'Generic Contact';
+    const lowered = cleaned.toLowerCase();
+    if (formsRegistry.aliases && formsRegistry.aliases[lowered]) return formsRegistry.aliases[lowered];
+    const direct = Object.keys(formsRegistry.forms || {}).find((name) => name.toLowerCase() === lowered);
+    return direct || formsRegistry.defaultForm || 'Generic Contact';
+  };
+
+  const activeFormName = normalizeFormName(getParam('type'));
+
+  const loadScript = (relativePath) => new Promise((resolve, reject) => {
+    if (!relativePath) {
+      reject(new Error('Missing form configuration path'));
+      return;
+    }
+    if (loadedConfigFiles.has(relativePath)) {
+      resolve();
+      return;
+    }
+    const base = scriptEl && scriptEl.src ? scriptEl.src : window.location.href;
+    const script = document.createElement('script');
+    script.src = new URL(relativePath, base).toString();
+    script.onload = () => {
+      loadedConfigFiles.add(relativePath);
+      resolve();
+    };
+    script.onerror = () => reject(new Error(`Failed to load ${relativePath}`));
+    document.head.appendChild(script);
+  });
+
+  const ensureFormConfigLoaded = async (formName) => {
+    if (formConfigCache[formName]) return formConfigCache[formName];
+    const fileName = formsRegistry.forms && formsRegistry.forms[formName];
+    if (!fileName) throw new Error(`No form configuration registered for ${formName}`);
+    await loadScript(fileName);
+    if (!formConfigCache[formName]) throw new Error(`Form configuration ${formName} did not register itself`);
+    return formConfigCache[formName];
+  };
+
+  const collectSalesforceFields = () => {
+    const allowed = [];
+    Object.values(fieldDefinitions).forEach((field) => {
+      if (field && field.SalesforceID && !allowed.includes(field.SalesforceID)) allowed.push(field.SalesforceID);
+    });
+    return allowed;
+  };
+
+  const SALESFORCE_FIELDS = collectSalesforceFields();
+  const FORM_CONFIG = {
+    id: 'registration',
+    name: activeFormName,
+    salesforce: {
+      objectName: 'Form__c',
+      recordTypeName: 'Registration',
+      allowedFields: SALESFORCE_FIELDS,
+      queryFields: ['Id', 'FormCode__c', ...SALESFORCE_FIELDS.filter((field) => field !== 'FormCode__c')],
+      updateFields: [],
+      searchField: 'FormCode__c',
+      lookupEmailField: 'Email__c',
+    }
+  };
 
   const EMAIL_TEMPLATES = {
     applicationCopy: {
@@ -277,124 +239,7 @@
     }
   };
 
-  const FORM_CONFIG = {
-    id: 'registration',
-    name: 'Registration Form',
-    salesforce: {
-      objectName: 'Form__c',
-      recordTypeName: 'Registration',
-      allowedFields: [
-        'FirstName__c', 'LastName__c', 'Email__c', 'Phone__c',
-        'Birthdate__c', 'CountryOfOrigin__c',
-        'Street__c', 'City__c', 'State__c', 'Zip__c', 'Country__c',
-        'Location__c', 'Type__c', 'HowHeard__c', 'Interest__c',
-        'KTAPProgram__c', 'SNAPProgram__c', 'Comments__c'
-      ],
-      queryFields: [
-        'Id', 'FormCode__c', 'FirstName__c', 'LastName__c', 'Email__c',
-        'Phone__c', 'Birthdate__c', 'CountryOfOrigin__c', 'Location__c', 'Type__c',
-        'HowHeard__c', 'Interest__c', 'KTAPProgram__c', 'SNAPProgram__c', 'CreatedDate'
-      ],
-      updateFields: [],
-      searchField: 'FormCode__c',
-      lookupEmailField: 'Email__c'
-    }
-  };
-
-  const fieldOrder = [
-    'FirstName',
-    'LastName',
-    'Email',
-    'Phone',
-    'Birthdate',
-    'NativeCountry',
-    'Street',
-    'City',
-    'State',
-    'Zip',
-    'Country',
-    'Location',
-    'Type',
-    'HowHeard',
-    'Interest',
-    'KTAPProgram',
-    'SNAPProgram',
-    'Comments',
-    'ReceiveUpdates',
-  ];
-
-  const fieldMeta = {
-    FirstName: { label: copy.firstName, type: 'text', required: true },
-    LastName: { label: copy.lastName, type: 'text', required: true },
-    Email: { label: copy.email, type: 'email', required: true },
-    Phone: { label: copy.phone, type: 'tel', required: true },
-    Birthdate: { label: copy.birthdate, type: 'date', required: false },
-    NativeCountry: { label: copy.nativeCountry, type: 'text', required: false },
-    Street: { label: copy.street, type: 'text', required: false },
-    City: { label: copy.city, type: 'text', required: false },
-    State: { label: copy.state, type: 'text', required: false },
-    Zip: { label: copy.zip, type: 'text', required: false },
-    Country: { label: copy.country, type: 'text', required: false },
-    Location: { label: copy.location, type: 'text', required: true },
-    Type: { label: copy.type, type: 'text', required: true },
-    HowHeard: { label: copy.howHeard, type: 'text', required: false, placeholder: copy.howHeardPlaceholder },
-    Interest: {
-      label: copy.interest,
-      type: 'select',
-      required: false,
-      options: [
-        { value: '', label: copy.selectOption },
-        { value: copy.optionRegisterChildren, label: copy.optionRegisterChildren },
-        { value: copy.optionBibleStudy, label: copy.optionBibleStudy },
-        { value: copy.optionCitizenship, label: copy.optionCitizenship },
-      ],
-    },
-    KTAPProgram: {
-      label: copy.ktap,
-      type: 'select',
-      required: false,
-      options: [
-        { value: '', label: copy.selectOption },
-        { value: copy.yes, label: copy.yes },
-        { value: copy.no, label: copy.no },
-      ],
-    },
-    SNAPProgram: {
-      label: copy.snap,
-      type: 'select',
-      required: false,
-      options: [
-        { value: '', label: copy.selectOption },
-        { value: copy.yes, label: copy.yes },
-        { value: copy.no, label: copy.no },
-      ],
-    },
-    Comments: { label: copy.comments, type: 'textarea', required: false, placeholder: copy.commentsPlaceholder },
-    ReceiveUpdates: { label: copy.receiveUpdates, type: 'checkbox', required: false },
-  };
-
-  const fieldToSf = {
-    FirstName: 'FirstName__c',
-    LastName: 'LastName__c',
-    Email: 'Email__c',
-    Phone: 'Phone__c',
-    Birthdate: 'Birthdate__c',
-    NativeCountry: 'CountryOfOrigin__c',
-    Street: 'Street__c',
-    City: 'City__c',
-    State: 'State__c',
-    Zip: 'Zip__c',
-    Country: 'Country__c',
-    Location: 'Location__c',
-    Type: 'Type__c',
-    HowHeard: 'HowHeard__c',
-    Interest: 'Interest__c',
-    KTAPProgram: 'KTAPProgram__c',
-    SNAPProgram: 'SNAPProgram__c',
-    Comments: 'Comments__c',
-  };
-
-  const initialFormData = {
+  const buildInitialFormData = () => ({
     FirstName: '',
     LastName: '',
     Email: '',
@@ -407,39 +252,25 @@
     Zip: '',
     Country: '',
     Location: getParam('location'),
-    Type: getParam('type'),
+    Type: activeFormName,
     HowHeard: '',
     Interest: '',
     KTAPProgram: '',
     SNAPProgram: '',
     Comments: '',
     ReceiveUpdates: true,
-  };
+    CustomData: '',
+  });
 
+  let activeFormConfig = null;
   let state = {
-    formData: { ...initialFormData },
+    formData: buildInitialFormData(),
     loading: false,
+    initializing: true,
     error: null,
     status: null,
     formCode: null,
   };
-
-  const injectCSS = () => {
-    try {
-      const activeScript = findScriptElement();
-      if (!activeScript) return;
-      const cssHref = new URL("./registration.css", activeScript.src).toString();
-      const exists = Array.from(document.styleSheets).some((sheet) => sheet.href && sheet.href.includes("registration.css"));
-      if (exists) return;
-      const link = document.createElement("link");
-      link.rel = "stylesheet";
-      link.href = cssHref;
-      document.head.appendChild(link);
-    } catch (e) {
-      console.warn("CSS injection skipped", e);
-    }
-  };
-  injectCSS();
 
   const getContainer = () => document.getElementById(HOST_ID);
 
@@ -470,59 +301,116 @@
     state.formData = { ...state.formData, [key]: value };
   };
 
-  const buildField = (key) => {
-    const meta = fieldMeta[key];
-    const id = `registration-${key}`;
+  const getFieldLabel = (field) => copy[field.LabelKey] || field.Label || field.Name;
+  const getFieldPlaceholder = (field) => field.PlaceholderKey ? (copy[field.PlaceholderKey] || field.Placeholder || '') : (field.Placeholder || '');
 
-    if (meta.type === 'checkbox') {
+  const buildOptions = (field) => {
+    const raw = Array.isArray(field.Values) ? field.Values : [];
+    return raw.map((option) => {
+      if (typeof option === 'string') return { value: option, label: option };
+      const value = Object.prototype.hasOwnProperty.call(option, 'Value') ? option.Value : '';
+      const label = option.LabelKey ? (copy[option.LabelKey] || option.Label || value) : (option.Label || value);
+      return { value, label };
+    });
+  };
+
+  const getCanonicalDropdownValue = (field, rawValue) => {
+    const options = buildOptions(field);
+    const match = options.find((option) => option.value === rawValue || option.label === rawValue);
+    return match ? match.value : rawValue;
+  };
+
+  const buildField = (fieldName) => {
+    const field = fieldDefinitions[fieldName];
+    if (!field || field.Hidden) return null;
+    const id = `registration-${field.Name}`;
+    const name = field.SalesforceID || field.Name;
+
+    if (field.Type === 'Boolean') {
       const checkbox = h('input', {
         id,
         type: 'checkbox',
-        checked: !!state.formData[key],
-        onchange: (event) => updateField(key, !!event.target.checked),
+        checked: !!state.formData[field.Name],
+        onchange: (event) => updateField(field.Name, !!event.target.checked),
       });
       return h('div', { className: 'ri-field ri-field-checkbox' },
         h('div', { className: 'ri-checkbox' },
           checkbox,
-          h('label', { for: id, text: meta.label })
+          h('label', { for: id, text: getFieldLabel(field) })
         )
       );
     }
 
     const shared = {
       id,
-      name: fieldToSf[key] || key,
-      placeholder: meta.placeholder || '',
-      value: state.formData[key] || '',
-      dir: isRtl ? 'rtl' : 'ltr',
-      oninput: (event) => updateField(key, event.target.value),
+      name,
+      placeholder: getFieldPlaceholder(field),
+      value: state.formData[field.Name] || '',
+      oninput: (event) => updateField(field.Name, event.target.value),
     };
 
     let input;
-    if (meta.type === 'textarea') {
+    if (field.Type === 'TextArea') {
       input = h('textarea', shared);
-    } else if (meta.type === 'select') {
+    } else if (field.Type === 'Dropdown') {
       input = h('select', {
         ...shared,
-        onchange: (event) => updateField(key, event.target.value),
-      }, (meta.options || []).map((option) => h('option', {
+        onchange: (event) => updateField(field.Name, getCanonicalDropdownValue(field, event.target.value)),
+      }, buildOptions(field).map((option) => h('option', {
         value: option.value,
-        selected: option.value === (state.formData[key] || '') ? 'selected' : null,
+        selected: option.value === (state.formData[field.Name] || '') ? 'selected' : null,
       }, option.label)));
     } else {
-      input = h('input', { ...shared, type: meta.type });
+      const type = field.Type === 'Email' ? 'email' : field.Type === 'Phone' ? 'tel' : field.Type === 'Date' ? 'date' : 'text';
+      input = h('input', { ...shared, type });
     }
 
     return h('div', { className: 'ri-field' },
-      h('label', { for: id, text: meta.label }),
+      h('label', { for: id, text: getFieldLabel(field) }),
       input
     );
   };
 
+  const getVisibleFieldNames = () => {
+    if (!activeFormConfig || !Array.isArray(activeFormConfig.Fields)) return [];
+    return activeFormConfig.Fields.filter((fieldName) => fieldDefinitions[fieldName] && !fieldDefinitions[fieldName].Hidden);
+  };
+
+  const getRequiredFieldNames = () => {
+    const explicit = Array.isArray(activeFormConfig && activeFormConfig.RequiredFields) ? activeFormConfig.RequiredFields : [];
+    return getVisibleFieldNames().filter((fieldName) => explicit.includes(fieldName) || !!fieldDefinitions[fieldName].Required);
+  };
+
   const validate = () => {
-    const missing = fieldOrder.filter((key) => fieldMeta[key].required && !String(state.formData[key] || '').trim());
+    const missing = getRequiredFieldNames().filter((fieldName) => !String(state.formData[fieldName] || '').trim());
     if (!missing.length) return null;
-    return `${copy.requiredPrefix} ${missing.map((key) => fieldMeta[key].label).join(', ')}`;
+    return `${copy.requiredPrefix} ${missing.map((fieldName) => getFieldLabel(fieldDefinitions[fieldName])).join(', ')}`;
+  };
+
+  const buildPayload = () => {
+    const payload = {};
+    const customData = {};
+
+    Object.values(fieldDefinitions).forEach((field) => {
+      const value = state.formData[field.Name];
+      const isBoolean = typeof value === 'boolean';
+      const hasValue = isBoolean || !(value === '' || value === null || value === undefined);
+      if (!hasValue) return;
+
+      if (field.UseCustomData) {
+        customData[field.CustomDataKey || field.Name] = value;
+        if (!field.PersistSeparately) return;
+      }
+
+      if (field.SalesforceID) payload[field.SalesforceID] = value;
+      else if (!field.Hidden) payload[field.Name] = value;
+    });
+
+    if (Object.keys(customData).length > 0 && fieldDefinitions.CustomData && fieldDefinitions.CustomData.SalesforceID) {
+      payload[fieldDefinitions.CustomData.SalesforceID] = JSON.stringify(customData);
+    }
+
+    return payload;
   };
 
   const submitForm = async () => {
@@ -535,22 +423,11 @@
     setState({ loading: true, error: null });
 
     try {
-      const payload = {};
-      Object.entries(state.formData).forEach(([clientKey, value]) => {
-        if (value === '' || value === null || value === undefined) return;
-        const sfKey = fieldToSf[clientKey];
-        if (sfKey) payload[sfKey] = value;
-        else payload[clientKey] = value;
-      });
-
-      payload.__formConfig = FORM_CONFIG;
+      const payload = buildPayload();
+      payload.__formConfig = { ...FORM_CONFIG, name: activeFormName };
       payload.__sendEmail = true;
       payload.__emailTemplates = EMAIL_TEMPLATES;
-      payload.__language = language;
-      try {
-        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        if (tz) payload.__clientTimeZone = tz;
-      } catch (e) {}
+      payload.__formName = activeFormName;
 
       const response = await fetch(ENDPOINT, {
         method: 'POST',
@@ -582,49 +459,51 @@
     )
   );
 
-  const renderForm = () => h('div', { className: 'ri-card' },
-    h('div', { className: 'ri-header-copy' },
-      h('h1', { className: 'ri-title', text: copy.formTitle }),
-      h('p', { className: 'ri-subtitle', text: copy.formSubtitle })
-    ),
-    state.error ? h('div', { className: 'ri-alert ri-alert-error', text: state.error }) : null,
-    h('div', { className: 'ri-section' },
-      h('h2', { className: 'ri-section-title', text: copy.contactSection }),
-      h('div', { className: 'ri-grid ri-grid-two' },
-        buildField('FirstName'),
-        buildField('LastName'),
-        buildField('Email'),
-        buildField('Phone'),
-        buildField('Birthdate'),
-        buildField('NativeCountry'),
-        buildField('Street'),
-        buildField('City'),
-        buildField('State'),
-        buildField('Zip'),
-        buildField('Country')
-      )
-    ),
-    h('div', { className: 'ri-section' },
-      h('h2', { className: 'ri-section-title', text: copy.detailsSection }),
-      h('div', { className: 'ri-grid ri-grid-two' },
-        buildField('Location'),
-        buildField('Type'),
-        buildField('Interest'),
-        buildField('KTAPProgram'),
-        buildField('SNAPProgram')
+  const renderForm = () => {
+    const title = copy[activeFormConfig.TitleKey] || activeFormConfig.Title || activeFormName;
+    const subtitle = copy[activeFormConfig.SubtitleKey] || activeFormConfig.Subtitle || '';
+    const fields = getVisibleFieldNames().map((fieldName) => buildField(fieldName)).filter(Boolean);
+    const images = Array.isArray(activeFormConfig.Images) ? activeFormConfig.Images : [];
+    return h('div', { className: 'ri-card' },
+      images.length ? h('div', { className: images.length > 1 ? 'ri-form-media-grid' : 'ri-form-media' },
+        images.map((image, index) => h('figure', { className: 'ri-form-media-item' },
+          h('img', {
+            src: image.src,
+            alt: image.alt || title || `Form image ${index + 1}`,
+            loading: 'lazy',
+            decoding: 'async'
+          }),
+          image.caption ? h('figcaption', { className: 'ri-form-media-caption', text: image.caption }) : null
+        ))
+      ) : null,
+      h('div', { className: 'ri-header-copy' },
+        h('h1', { className: 'ri-title', text: title }),
+        subtitle ? h('p', { className: 'ri-subtitle', text: subtitle }) : null
       ),
-      buildField('HowHeard'),
-      buildField('Comments'),
-      buildField('ReceiveUpdates')
-    ),
-    h('div', { className: 'ri-actions' },
-      h('button', {
-        type: 'button',
-        className: 'ri-btn ri-btn-primary',
-        onclick: submitForm,
-        disabled: state.loading ? 'disabled' : null,
-        text: state.loading ? copy.submitting : copy.submit,
-      })
+      state.error ? h('div', { className: 'ri-alert ri-alert-error', text: state.error }) : null,
+      h('div', { className: 'ri-grid ri-grid-two' }, fields),
+      h('div', { className: 'ri-actions' },
+        h('button', {
+          type: 'button',
+          className: 'ri-btn ri-btn-primary',
+          onclick: submitForm,
+          disabled: state.loading ? 'disabled' : null,
+          text: state.loading ? copy.submitting : copy.submit,
+        })
+      )
+    );
+  };
+
+  const renderLoading = () => h('div', { className: 'ri-card' },
+    h('div', { className: 'ri-header-copy' },
+      h('h1', { className: 'ri-title', text: copy.loadingForm })
+    )
+  );
+
+  const renderInitError = () => h('div', { className: 'ri-card' },
+    h('div', { className: 'ri-header-copy' },
+      h('h1', { className: 'ri-title', text: copy.submitError }),
+      state.error ? h('p', { className: 'ri-subtitle', text: state.error }) : null
     )
   );
 
@@ -632,19 +511,39 @@
     const root = getContainer();
     if (!root) return;
     document.documentElement.lang = language;
-    document.documentElement.dir = isRtl ? 'rtl' : 'ltr';
-    if (document.title) document.title = copy.documentTitle;
+    document.title = copy.documentTitle;
     root.innerHTML = '';
     root.className = 'ri-app';
-    root.appendChild(state.status === 'success' ? renderSuccess() : renderForm());
+
+    if (state.status === 'success') {
+      root.appendChild(renderSuccess());
+      return;
+    }
+    if (!state.initializing && !activeFormConfig) {
+      root.appendChild(renderInitError());
+      return;
+    }
+    if (state.initializing || !activeFormConfig) {
+      root.appendChild(renderLoading());
+      return;
+    }
+    root.appendChild(renderForm());
   };
 
-  const initializeApp = () => {
+  const initializeApp = async () => {
     if (!document.getElementById(HOST_ID)) {
       setTimeout(initializeApp, 50);
       return;
     }
-    render();
+
+    try {
+      activeFormConfig = await ensureFormConfigLoaded(activeFormName);
+      state = { ...state, formData: buildInitialFormData(), initializing: false };
+      render();
+    } catch (error) {
+      state = { ...state, initializing: false, error: error.message || copy.submitError };
+      render();
+    }
   };
 
   if (typeof window !== 'undefined') {
@@ -652,8 +551,9 @@
       render,
       resetState: () => {
         state = {
-          formData: { ...initialFormData },
+          formData: buildInitialFormData(),
           loading: false,
+          initializing: false,
           error: null,
           status: null,
           formCode: null,
@@ -662,8 +562,10 @@
       },
       getState: () => state,
       getLanguage: () => language,
+      getActiveFormType: () => activeFormName,
     };
   }
 
+  render();
   initializeApp();
 })();
