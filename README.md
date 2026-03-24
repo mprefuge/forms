@@ -4,7 +4,7 @@ A production-ready TypeScript Azure Functions application for managing Salesforc
 
 ## Features
 
-- **Multi-Form Support**: Volunteer applications, parental waivers, and event registration
+- **Multi-Form Support**: Volunteer applications, parental waivers, event registration, and standalone registration
 - **Email Verification**: Azure Communication Services integration for secure code verification
 - **Salesforce Integration**: Direct integration with Salesforce Form__c custom object
 - **Multi-Phase Workflows**: Support for multi-step application processes
@@ -16,6 +16,7 @@ A production-ready TypeScript Azure Functions application for managing Salesforc
 - **Volunteer Application** ([public/application.js](public/application.js)) - Multi-phase volunteer recruitment with pastoral references
 - **Parental Waiver** ([public/waiver.js](public/waiver.js)) - Youth program consent and liability waiver. Can be displayed full‑page or embedded as a modal popup by calling the generic `window.openModal()` helper.
 - **Event Registration** ([public/event.js](public/event.js)) - Event registration with optional Salesforce campaign linking. Supports a rich‑text Salesforce field (`Additional_Information__c`) that is shown below the description. Description and additional information are displayed even if no location is provided.
+- **Registration Form** ([public/registration.js](public/registration.js)) - Standalone registration form with `location`, `type`, and `language` parameters. If `language` is omitted or unsupported, the form defaults to English.
 
 ## Prerequisites
 
@@ -84,6 +85,7 @@ Open the test pages in your browser:
 - Volunteer Application: `index.html`
 - Parental Waiver: `public/waiver.html`
 - Event Registration: `public/event.html`
+- Registration Form: `public/registration.html`
 
 ## Environment Variables Reference
 
@@ -235,6 +237,7 @@ That's it! The configuration applies to all forms. Just use the appropriate scri
 - `application.js` - Volunteer Application
 - `waiver.js` - Parental Waiver
 - `event.js` - Event Registration
+- `registration.js` - Standalone Registration Form
 
 ### Example: Complete HTML Setup
 

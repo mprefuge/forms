@@ -1,0 +1,237 @@
+:root {
+  --accent: #bd2135;
+  --accent-600: #9a1a2b;
+  --text: #0b1720;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --surface-muted: #f9fafb;
+  --radius: 18px;
+  --shadow-lg: 0 18px 44px rgba(10, 20, 30, 0.08);
+  --shadow-sm: 0 10px 24px rgba(10, 20, 30, 0.06);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  padding: 24px;
+  background: linear-gradient(135deg, #f8fafc 0%, #ffffff 100%);
+  color: var(--text);
+  font-family: inherit;
+}
+
+.ri-app {
+  max-width: 920px;
+  margin: 24px auto;
+}
+
+.ri-card {
+  background: linear-gradient(180deg, #fff 0%, #fcfcfd 100%);
+  border: 1px solid rgba(11, 23, 32, 0.05);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  padding: 28px;
+}
+
+.ri-header-copy {
+  margin-bottom: 24px;
+}
+
+.ri-title {
+  margin: 0;
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.ri-subtitle {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.ri-section + .ri-section {
+  margin-top: 28px;
+}
+
+.ri-section-title {
+  margin: 0 0 14px;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.ri-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.ri-grid-two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ri-field {
+  margin-bottom: 14px;
+}
+
+.ri-field label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #374151;
+}
+
+.ri-field input,
+.ri-field select,
+.ri-field textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+  font: inherit;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.ri-field textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+.ri-field input:focus,
+.ri-field select:focus,
+.ri-field textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px rgba(189, 33, 53, 0.12);
+}
+
+.ri-field-checkbox {
+  margin-bottom: 0;
+}
+
+.ri-checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 0 0;
+}
+
+.ri-checkbox input {
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  accent-color: var(--accent);
+}
+
+.ri-checkbox label {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.ri-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 24px;
+}
+
+.ri-btn {
+  border: 0;
+  border-radius: 999px;
+  padding: 13px 20px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, opacity 0.16s ease;
+}
+
+.ri-btn-primary {
+  color: #fff;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-600) 100%);
+  box-shadow: 0 12px 28px rgba(189, 33, 53, 0.2);
+}
+
+.ri-btn-primary:hover {
+  transform: translateY(-1px);
+}
+
+.ri-btn-primary:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.ri-alert {
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.ri-alert-error {
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+  color: #9f1239;
+}
+
+.ri-success-card {
+  text-align: center;
+}
+
+.ri-confirmation-block {
+  margin-top: 22px;
+  padding: 18px;
+  border-radius: 16px;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+}
+
+.ri-confirmation-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.ri-confirmation-code {
+  margin-top: 8px;
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--accent-600);
+}
+
+@media (max-width: 720px) {
+  body {
+    padding: 14px;
+  }
+
+  .ri-card {
+    padding: 20px;
+  }
+
+  .ri-grid-two {
+    grid-template-columns: 1fr;
+  }
+
+  .ri-actions {
+    justify-content: stretch;
+  }
+
+  .ri-btn {
+    width: 100%;
+  }
+}
