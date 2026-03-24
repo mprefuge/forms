@@ -27,6 +27,16 @@ describe('registration.js frontend logic', () => {
     require('../public/registration-forms.js');
   };
 
+  it('boots with built-in defaults when the modular registry files are missing', async () => {
+    require('../public/registration.js');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(document.querySelector('.ri-title')?.textContent).toBe('Contact Form');
+    expect(document.querySelector('textarea[name="Comments__c"]')).toBeTruthy();
+    expect(window.__ri_registration.getActiveFormType()).toBe('Generic Contact');
+  });
+
   it('defaults to the generic contact form when no type is supplied', async () => {
     loadCore();
     require('../public/registration-configs/generic-contact.js');
@@ -66,8 +76,9 @@ describe('registration.js frontend logic', () => {
 
     const image = document.querySelector('.ri-form-media img') as HTMLImageElement;
     expect(image).toBeTruthy();
-    expect(image.src).toContain('No+MS+1.jpg');
-    expect(document.querySelector('.ri-form-media-caption')?.textContent).toBe('Community volunteers serving together.');
+    expect(image.src).toContain('coffee%20logo');
+    expect(image.alt).toBe('COFFEE Farmdale Baptist Church');
+    expect(document.querySelector('.ri-title')?.textContent).toBe('COFFEE Farmdale Baptist Church');
   });
 
   it('translates supported content when language is supplied', async () => {

@@ -159,13 +159,137 @@
   const language = normalizeLanguage(getParam('language'));
   const copy = translations[language] || TRANSLATIONS.en;
 
-  const fieldsList = Array.isArray(window.REGISTRATION_FIELDS) ? window.REGISTRATION_FIELDS : [];
+  const DEFAULT_REGISTRATION_FIELDS = [
+    { Name: 'FirstName', Type: 'String', LabelKey: 'firstName', SalesforceID: 'FirstName__c', Required: true },
+    { Name: 'LastName', Type: 'String', LabelKey: 'lastName', SalesforceID: 'LastName__c', Required: true },
+    { Name: 'Email', Type: 'Email', LabelKey: 'email', SalesforceID: 'Email__c', Required: true },
+    { Name: 'Phone', Type: 'Phone', LabelKey: 'phone', SalesforceID: 'Phone__c', Required: true },
+    { Name: 'Birthdate', Type: 'Date', LabelKey: 'birthdate', SalesforceID: 'Birthdate__c' },
+    { Name: 'NativeCountry', Type: 'String', LabelKey: 'nativeCountry', UseCustomData: true },
+    { Name: 'Street', Type: 'String', LabelKey: 'street', SalesforceID: 'Street__c' },
+    { Name: 'City', Type: 'String', LabelKey: 'city', SalesforceID: 'City__c' },
+    { Name: 'State', Type: 'String', LabelKey: 'state', SalesforceID: 'State__c' },
+    { Name: 'Zip', Type: 'String', LabelKey: 'zip', SalesforceID: 'Zip__c' },
+    { Name: 'Country', Type: 'String', LabelKey: 'country', SalesforceID: 'Country__c' },
+    { Name: 'Location', Type: 'String', LabelKey: 'location', UseCustomData: true },
+    { Name: 'Type', Type: 'Hidden', UseCustomData: true, Hidden: true },
+    { Name: 'HowHeard', Type: 'String', LabelKey: 'howHeard', PlaceholderKey: 'howHeardPlaceholder', UseCustomData: true },
+    {
+      Name: 'Interest',
+      Type: 'Dropdown',
+      LabelKey: 'interest',
+      UseCustomData: true,
+      Values: [
+        { Value: '', LabelKey: 'selectOption' },
+        { Value: 'Registering your children for school', LabelKey: 'optionRegisterChildren' },
+        { Value: 'Bible study in Spanish', LabelKey: 'optionBibleStudy' },
+        { Value: 'Citizenship classes', LabelKey: 'optionCitizenship' }
+      ]
+    },
+    {
+      Name: 'KTAPProgram',
+      Type: 'Dropdown',
+      LabelKey: 'ktap',
+      UseCustomData: true,
+      Values: [
+        { Value: '', LabelKey: 'selectOption' },
+        { Value: 'Yes', LabelKey: 'yes' },
+        { Value: 'No', LabelKey: 'no' }
+      ]
+    },
+    {
+      Name: 'SNAPProgram',
+      Type: 'Dropdown',
+      LabelKey: 'snap',
+      UseCustomData: true,
+      Values: [
+        { Value: '', LabelKey: 'selectOption' },
+        { Value: 'Yes', LabelKey: 'yes' },
+        { Value: 'No', LabelKey: 'no' }
+      ]
+    },
+    { Name: 'Comments', Type: 'TextArea', LabelKey: 'comments', PlaceholderKey: 'commentsPlaceholder', SalesforceID: 'Comments__c' },
+    { Name: 'ReceiveUpdates', Type: 'Boolean', LabelKey: 'receiveUpdates' },
+    { Name: 'CustomData', Type: 'JSON', SalesforceID: 'Custom__c', Hidden: true }
+  ];
+
+  const DEFAULT_REGISTRATION_FORMS = {
+    defaultForm: 'Generic Contact',
+    aliases: {
+      generic: 'Generic Contact',
+      contact: 'Generic Contact',
+      'generic-contact': 'Generic Contact',
+      event: 'Event Registration',
+      'event-registration': 'Event Registration',
+      esl: 'ESL Network Registration',
+      'esl-network-registration': 'ESL Network Registration',
+      'farmdale-esl': 'Farmdale ESL Network Registration',
+      'farmdale-esl-network-registration': 'Farmdale ESL Network Registration',
+      student: 'Student Registration',
+      'student-registration': 'Student Registration',
+      volunteer: 'Volunteer Registration',
+      'volunteer-registration': 'Volunteer Registration'
+    },
+    forms: {
+      'Generic Contact': 'registration-configs/generic-contact.js',
+      'Event Registration': 'registration-configs/event-registration.js',
+      'ESL Network Registration': 'registration-configs/esl-network-registration.js',
+      'Farmdale ESL Network Registration': 'registration-configs/esl-network-registration-farmdale.js',
+      'Student Registration': 'registration-configs/student-registration.js',
+      'Volunteer Registration': 'registration-configs/volunteer-registration.js'
+    }
+  };
+
+  const DEFAULT_FORM_CONFIGS = {
+    'Generic Contact': {
+      TitleKey: 'genericFormTitle',
+      SubtitleKey: 'genericFormSubtitle',
+      Fields: ['FirstName', 'LastName', 'Email', 'Phone', 'Comments', 'ReceiveUpdates']
+    },
+    'Event Registration': {
+      TitleKey: 'eventRegistrationTitle',
+      SubtitleKey: 'eventRegistrationSubtitle',
+      Fields: ['FirstName', 'LastName', 'Email', 'Phone', 'Location', 'Comments', 'ReceiveUpdates'],
+      RequiredFields: ['Location']
+    },
+    'ESL Network Registration': {
+      Title: 'ESL Network Registration',
+      Subtitle: 'Complete the ESL Network registration details below.',
+      Fields: ['FirstName', 'LastName', 'Email', 'Phone', 'NativeCountry', 'Location', 'HowHeard', 'Interest', 'KTAPProgram', 'SNAPProgram', 'Comments', 'ReceiveUpdates'],
+      RequiredFields: ['Location']
+    },
+    'Farmdale ESL Network Registration': {
+      Title: 'COFFEE Farmdale Baptist Church',
+      Subtitle: 'Spring Semester 2026 Registration open --- limited spaces April 12 - June 7',
+      Images: [
+        {
+          src: 'https://www.jotform.com/uploads/Foushee_Kathy/form_files/coffee%20logo.641d2680802767.02034693.PNG',
+          alt: 'COFFEE Farmdale Baptist Church'
+        }
+      ],
+      Fields: ['FirstName', 'LastName', 'Email', 'Phone', 'Street', 'City', 'State', 'Zip', 'Country', 'NativeCountry', 'HowHeard', 'Interest', 'KTAPProgram', 'SNAPProgram', 'Comments']
+    },
+    'Student Registration': {
+      TitleKey: 'studentRegistrationTitle',
+      SubtitleKey: 'studentRegistrationSubtitle',
+      Fields: ['FirstName', 'LastName', 'Email', 'Phone', 'Birthdate', 'NativeCountry', 'Location', 'HowHeard', 'Interest', 'KTAPProgram', 'SNAPProgram', 'Comments', 'ReceiveUpdates'],
+      RequiredFields: ['Location']
+    },
+    'Volunteer Registration': {
+      TitleKey: 'volunteerRegistrationTitle',
+      SubtitleKey: 'volunteerRegistrationSubtitle',
+      Fields: ['FirstName', 'LastName', 'Email', 'Phone', 'Street', 'City', 'State', 'Zip', 'Country', 'Location', 'Comments', 'ReceiveUpdates'],
+      RequiredFields: ['Location']
+    }
+  };
+
+  const fieldsList = Array.isArray(window.REGISTRATION_FIELDS) ? window.REGISTRATION_FIELDS : DEFAULT_REGISTRATION_FIELDS;
   const fieldDefinitions = fieldsList.reduce((acc, field) => {
     if (field && field.Name) acc[field.Name] = field;
     return acc;
   }, {});
-  const formsRegistry = window.REGISTRATION_FORMS || { defaultForm: 'Generic Contact', aliases: {}, forms: {} };
-  const formConfigCache = window.REGISTRATION_FORM_CONFIGS = window.REGISTRATION_FORM_CONFIGS || {};
+  const formsRegistry = window.REGISTRATION_FORMS || DEFAULT_REGISTRATION_FORMS;
+  const formConfigCache = window.REGISTRATION_FORM_CONFIGS = { ...DEFAULT_FORM_CONFIGS, ...(window.REGISTRATION_FORM_CONFIGS || {}) };
   const loadedConfigFiles = new Set();
 
   const normalizeFormName = (raw) => {
