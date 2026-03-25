@@ -12,6 +12,6 @@ window.REGISTRATION_FORM_CONFIGS['Event Registration'] = {
       eventRegistrationSubtitle: 'Complete el siguiente formulario para registrarse en este evento.',
     },
   },
-  Fields: ['FirstName', 'LastName', 'Email', 'Phone', 'Location', 'Comments', 'ReceiveUpdates'],
+  Fields: ['FirstName', 'LastName', 'Email', 'Phone', 'Birthdate', 'Location', 'Comments', 'ReceiveUpdates'],
   RequiredFields: ['Location']
 };

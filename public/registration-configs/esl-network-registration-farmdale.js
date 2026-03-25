@@ -18,5 +18,5 @@ window.REGISTRATION_FORM_CONFIGS['Farmdale ESL Network Registration'] = {
       alt: 'COFFEE Farmdale Baptist Church',
     }
   ],
-  Fields: ['FirstName', 'LastName', 'Email', 'Phone', 'Street','City','State','Zip','Country','NativeCountry', 'HowHeard', 'Interest', 'KTAPProgram', 'SNAPProgram', 'Comments'],
+  Fields: ['FirstName', 'LastName', 'Email', 'Phone', 'Birthdate', 'Street','City','State','Zip','Country','NativeCountry', 'HowHeard', 'Interest', 'KTAPProgram', 'SNAPProgram', 'Comments'],
 };

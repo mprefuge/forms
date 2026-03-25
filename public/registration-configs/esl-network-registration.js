@@ -12,6 +12,6 @@ window.REGISTRATION_FORM_CONFIGS['ESL Network Registration'] = {
       eslNetworkRegistrationSubtitle: 'Complete a continuación los detalles de registro de ESL Network.',
     },
   },
-  Fields: ['FirstName', 'LastName', 'Email', 'Phone', 'NativeCountry', 'Location', 'HowHeard', 'Interest', 'KTAPProgram', 'SNAPProgram', 'Comments', 'ReceiveUpdates'],
+  Fields: ['FirstName', 'LastName', 'Email', 'Phone', 'Birthdate', 'NativeCountry', 'Location', 'HowHeard', 'Interest', 'KTAPProgram', 'SNAPProgram', 'Comments', 'ReceiveUpdates'],
   RequiredFields: ['Location']
 };

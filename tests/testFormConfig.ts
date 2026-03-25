@@ -25,6 +25,7 @@ export const testFormConfig = {
       'AffirmStatementOfFaith__c',
       'Availability__c',
       'Birthdate__c',
+      'Campaign__c',
       'Comments__c',
     ],
     queryFields: [
@@ -44,6 +45,8 @@ export const testFormConfig = {
     searchField: 'FormCode__c',
     lookupEmailField: 'Email__c',
     lookupCodeField: 'FormCode__c',
+    campaignField: 'Campaign__c',
+    campaignRecordTypeName: 'Registration',
     codeGenerationEnabled: true,
     codeLength: 5,
     eventQueryFields: ['Id','Name','StartDate','EndDate','Description','Additional_Information__c'],

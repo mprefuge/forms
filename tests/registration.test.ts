@@ -63,7 +63,7 @@ describe('registration.js frontend logic', () => {
 
     expect(document.querySelector('.ri-title')?.textContent).toBe('Event Registration');
     expect((document.querySelector('input[name="Location"]') as HTMLInputElement)?.value).toBe('Lexington');
-    expect(document.querySelector('input[name="Birthdate__c"]')).toBeNull();
+    expect(document.querySelector('input[name="Birthdate__c"]')).toBeTruthy();
     expect(window.__ri_registration.getActiveFormType()).toBe('Event Registration');
   });
 
@@ -80,6 +80,38 @@ describe('registration.js frontend logic', () => {
     expect(image.src).toContain('coffee%20logo');
     expect(image.alt).toBe('COFFEE Farmdale Baptist Church');
     expect(document.querySelector('.ri-title')?.textContent).toBe('COFFEE Farmdale Baptist Church');
+  });
+
+  it('uses the configured form title as the campaign name when submitting', async () => {
+    loadCore();
+    require('../public/registration-configs/volunteer-registration.js');
+    window.history.replaceState({}, '', 'http://localhost/public/registration.html?type=volunteer&location=Lexington');
+    require('../public/registration.js');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const setField = (selector: string, value: string, eventName = 'input') => {
+      const el = document.querySelector(selector) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+      el.value = value;
+      el.dispatchEvent(new Event(eventName, { bubbles: true }));
+    };
+
+    setField('input[name="FirstName__c"]', 'Jane');
+    setField('input[name="LastName__c"]', 'Doe');
+    setField('input[name="Email__c"]', 'jane@example.com');
+    setField('input[name="Phone__c"]', '555-111-2222');
+    setField('input[name="Birthdate__c"]', '1990-01-01');
+    setField('input[name="Location"]', 'Lexington');
+
+    (document.querySelector('button.ri-btn-primary') as HTMLButtonElement).click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const [, options] = (global.fetch as jest.Mock).mock.calls[0];
+    const payload = JSON.parse(options.body);
+    expect(payload.__campaignName).toBe('Volunteer Registration');
+    expect(payload.__eventId).toBeUndefined();
+    expect(payload.Campaign__c).toBeUndefined();
   });
 
   it('translates supported content when language is supplied', async () => {
@@ -208,5 +240,79 @@ describe('registration.js frontend logic', () => {
       KTAPProgram: 'Yes',
       SNAPProgram: 'No',
     });
+  });
+
+  it('passes a configured campaign id through the existing campaign association path and marks the registration as submitted', async () => {
+    window.history.replaceState({}, '', 'http://localhost/public/registration.html?type=event&campaignId=camp-123');
+    loadCore();
+    require('../public/registration-configs/event-registration.js');
+    require('../public/registration.js');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const setField = (selector: string, value: string, eventName = 'input') => {
+      const el = document.querySelector(selector) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+      el.value = value;
+      el.dispatchEvent(new Event(eventName, { bubbles: true }));
+    };
+
+    setField('input[name="FirstName__c"]', 'Jane');
+    setField('input[name="LastName__c"]', 'Doe');
+    setField('input[name="Email__c"]', 'jane@example.com');
+    setField('input[name="Phone__c"]', '555-111-2222');
+    setField('input[name="Birthdate__c"]', '1990-01-01');
+    setField('input[name="Location"]', 'Lexington');
+
+    (document.querySelector('button.ri-btn-primary') as HTMLButtonElement).click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const [, options] = (global.fetch as jest.Mock).mock.calls[0];
+    const payload = JSON.parse(options.body);
+    expect(payload.Name).toBeUndefined();
+    expect(payload.__campaignName).toBeUndefined();
+    expect(payload.__eventId).toBe('camp-123');
+    expect(payload.Campaign__c).toBe('camp-123');
+    expect(payload.Birthdate__c).toBe('1990-01-01');
+    expect(payload.CurrentStatus__c).toBe('Submitted');
+    expect(payload.__formConfig.salesforce.allowedFields).toEqual(
+      expect.arrayContaining(['Campaign__c', 'CurrentStatus__c'])
+    );
+    expect(payload.__formConfig.salesforce.campaignField).toBe('Campaign__c');
+    expect(JSON.parse(payload.Custom__c)).toEqual(expect.objectContaining({
+      Type: 'Event Registration',
+    }));
+  });
+
+  it('uses the English title for campaign lookup even when the UI language is Spanish', async () => {
+    window.history.replaceState({}, '', 'http://localhost/public/registration.html?language=es&type=student-registration&location=Lexington');
+    loadCore();
+    require('../public/registration-configs/student-registration.js');
+    require('../public/registration.js');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(document.querySelector('.ri-title')?.textContent).toBe('Registro de estudiante');
+
+    const setField = (selector: string, value: string, eventName = 'input') => {
+      const el = document.querySelector(selector) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+      el.value = value;
+      el.dispatchEvent(new Event(eventName, { bubbles: true }));
+    };
+
+    setField('input[name="FirstName__c"]', 'Ana');
+    setField('input[name="LastName__c"]', 'Lopez');
+    setField('input[name="Email__c"]', 'ana@example.com');
+    setField('input[name="Phone__c"]', '555-111-2222');
+    setField('input[name="Birthdate__c"]', '1990-01-01');
+    setField('input[name="Location"]', 'Lexington');
+
+    (document.querySelector('button.ri-btn-primary') as HTMLButtonElement).click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const [, options] = (global.fetch as jest.Mock).mock.calls[0];
+    const payload = JSON.parse(options.body);
+    expect(payload.__campaignName).toBe('Student Registration');
   });
 });

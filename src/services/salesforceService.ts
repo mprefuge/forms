@@ -68,9 +68,9 @@ export class SalesforceService {
   /**
    * Get RecordType ID, supporting both legacy string lookup and FormConfig
    */
-  async getRecordTypeId(recordTypeNameOrFormConfig: string | FormConfig): Promise<string> {
+  async getRecordTypeId(recordTypeNameOrFormConfig: string | FormConfig, objectNameOverride?: string): Promise<string> {
     let recordTypeName: string;
-    let objectName = 'Form__c';
+    let objectName = objectNameOverride || 'Form__c';
 
     if (typeof recordTypeNameOrFormConfig === 'string') {
       recordTypeName = recordTypeNameOrFormConfig;
@@ -734,6 +734,86 @@ export class SalesforceService {
     } catch (error: any) {
       console.error(`Campaign lookup (fields) failed for ID ${campaignId}:`, error.message);
       return null;
+    }
+  }
+
+  /**
+   * Look up a Campaign by name and optional record type and return specified fields.
+   * Returns null if not found or on error (graceful degradation)
+   */
+  async getCampaignByNameWithFields(
+    campaignName: string,
+    fields: string[] = ['Id', 'Name', 'StartDate', 'EndDate', 'Description'],
+    recordTypeName?: string
+  ): Promise<Record<string, any> | null> {
+    try {
+      if (!campaignName || typeof campaignName !== 'string') {
+        return null;
+      }
+
+      const safeFields = (fields || []).filter(f => typeof f === 'string' && f.trim().length > 0);
+      const select = safeFields.length > 0 ? safeFields.join(', ') : 'Id, Name';
+      const clauses = [`Name = '${this.escapeSoql(campaignName)}'`];
+      if (recordTypeName) {
+        clauses.push(`RecordType.Name = '${this.escapeSoql(recordTypeName)}'`);
+      }
+
+      const query = `SELECT ${select} FROM Campaign WHERE ${clauses.join(' AND ')} ORDER BY CreatedDate DESC LIMIT 1`;
+      const result: any = await this.runQuery(query);
+
+      if (result.records && result.records.length > 0) {
+        const record = result.records[0];
+
+        try {
+          const images = await this.getCampaignImages(record.Id || record.id);
+          if (Array.isArray(images) && images.length > 0) {
+            (record as any).images = images;
+          }
+        } catch (imgErr: any) {
+          console.warn(`Failed to fetch campaign images for ${campaignName}:`, imgErr?.message || imgErr);
+        }
+
+        return record;
+      }
+
+      return null;
+    } catch (error: any) {
+      console.error(`Campaign lookup (fields) failed for name ${campaignName}:`, error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Create a Campaign record with the provided name and optional record type.
+   */
+  async createCampaign(options: {
+    name: string;
+    recordTypeName?: string;
+    isActive?: boolean;
+  }): Promise<{ id: string; name: string }> {
+    const campaignRecord: any = {
+      attributes: { type: 'Campaign' },
+      Name: options.name,
+      IsActive: options.isActive !== false,
+    };
+
+    if (options.recordTypeName) {
+      campaignRecord.RecordTypeId = await this.getRecordTypeId(options.recordTypeName, 'Campaign');
+    }
+
+    try {
+      const result = await this.connection.sobject('Campaign').create(campaignRecord);
+
+      if (result.success) {
+        return {
+          id: result.id,
+          name: options.name,
+        };
+      }
+
+      throw new Error(`Failed to create campaign: ${result.errors?.join(', ') || 'Unknown error'}`);
+    } catch (error: any) {
+      throw new Error(`Salesforce error creating campaign: ${error.message || 'Unknown error'}`);
     }
   }
 

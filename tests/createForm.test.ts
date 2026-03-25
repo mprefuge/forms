@@ -46,6 +46,11 @@ describe('createForm HTTP Function', () => {
       createNotes: jest.fn().mockResolvedValue([]),
       // Support update operations in the createForm update branch
       updateForm: jest.fn().mockResolvedValue(undefined),
+      getCampaignByIdWithFields: jest.fn().mockResolvedValue(null),
+      getCampaignByNameWithFields: jest.fn().mockResolvedValue(null),
+      getActiveEventCampaigns: jest.fn().mockResolvedValue([]),
+      createCampaign: jest.fn().mockResolvedValue({ id: 'campaign-123', name: 'Test Form' }),
+      createCampaignMember: jest.fn().mockResolvedValue('campaign-member-123'),
       // Contact matching for form linking
       findContact: jest.fn().mockResolvedValue(null),
       // Contact creation & update
@@ -128,6 +133,7 @@ describe('createForm HTTP Function', () => {
       expect(responseBody.id).toBe('form-id-12345');
       expect(responseBody.formCode).toBe('abc12');
     });
+
 
     it('should create a Contact and set HasOptedOutOfEmail when ReceiveUpdates is false', async () => {
       // Simulate no contact match and creation path
@@ -290,6 +296,99 @@ describe('createForm HTTP Function', () => {
       expect(body.campaignInfo).toBeDefined();
       expect(body.campaignInfo.name).toBe('Community Meetup');
       expect(body.campaignInfo.Additional_Information__c).toBe('<p>More details</p>');
+    });
+
+    it('should associate a matched registration campaign by submitted title', async () => {
+      mockSalesforceService.getCampaignByNameWithFields = jest.fn().mockResolvedValue({
+        Id: 'camp-registration-1',
+        Name: 'Volunteer Registration',
+      });
+
+      mockRequest = {
+        method: 'POST',
+        headers: {
+          get: jest.fn().mockReturnValue('registration-campaign-request-id'),
+        },
+        json: jest.fn().mockResolvedValue({
+          FirstName__c: 'Jane',
+          LastName__c: 'Doe',
+          Email: 'jane@example.com',
+          __campaignName: 'Volunteer Registration',
+          __formConfig: testFormConfig,
+        }),
+      };
+
+      process.env.SF_CLIENT_ID = 'test-client-id';
+      process.env.SF_CLIENT_SECRET = 'test-client-secret';
+
+      const response = await createForm(mockRequest, mockContext);
+
+      expect(response.status).toBe(201);
+      expect(mockSalesforceService.getCampaignByNameWithFields).toHaveBeenCalledWith(
+        'Volunteer Registration',
+        expect.any(Array),
+        'Registration'
+      );
+      expect(mockSalesforceService.createCampaign).not.toHaveBeenCalled();
+      expect(mockSalesforceService.createForm).toHaveBeenCalledWith(
+        expect.objectContaining({
+          Campaign__c: 'camp-registration-1',
+        }),
+        'registration-campaign-request-id',
+        testFormConfig
+      );
+    });
+
+    it('should create and associate a registration campaign when no title match exists', async () => {
+      mockSalesforceService.getCampaignByNameWithFields = jest.fn().mockResolvedValue(null);
+      mockSalesforceService.getCampaignByIdWithFields = jest.fn().mockResolvedValue({
+        Id: 'camp-registration-2',
+        Name: 'Student Registration',
+      });
+      mockSalesforceService.createCampaign = jest.fn().mockResolvedValue({
+        id: 'camp-registration-2',
+        name: 'Student Registration',
+      });
+
+      mockRequest = {
+        method: 'POST',
+        headers: {
+          get: jest.fn().mockReturnValue('registration-create-request-id'),
+        },
+        json: jest.fn().mockResolvedValue({
+          FirstName__c: 'Ana',
+          LastName__c: 'Lopez',
+          Email: 'ana@example.com',
+          __campaignName: 'Student Registration',
+          __formConfig: testFormConfig,
+        }),
+      };
+
+      process.env.SF_CLIENT_ID = 'test-client-id';
+      process.env.SF_CLIENT_SECRET = 'test-client-secret';
+
+      const response = await createForm(mockRequest, mockContext);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(response.status).toBe(201);
+      expect(mockSalesforceService.createCampaign).toHaveBeenCalledWith({
+        name: 'Student Registration',
+        recordTypeName: 'Registration',
+        isActive: true,
+      });
+      expect(mockSalesforceService.createForm).toHaveBeenCalledWith(
+        expect.objectContaining({
+          Campaign__c: 'camp-registration-2',
+        }),
+        'registration-create-request-id',
+        testFormConfig
+      );
+      expect(mockSalesforceService.createCampaignMember).toHaveBeenCalledWith(
+        'camp-registration-2',
+        'contact-123',
+        'Registered'
+      );
     });
 
     it('should generate X-Request-Id if not provided', async () => {

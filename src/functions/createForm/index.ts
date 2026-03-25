@@ -451,15 +451,17 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
     
     // Check if eventId was provided for campaign association
     let campaignInfo: any | null = null;
-    const eventId = formData.__eventId;
+    const eventId = typeof formData.__eventId === 'string' ? formData.__eventId.trim() : '';
+    const campaignName = typeof formData.__campaignName === 'string' ? formData.__campaignName.trim() : '';
+    const campaignRecordTypeName = formConfig?.salesforce?.campaignRecordTypeName;
+    const campaignFields = (formConfig && formConfig.salesforce && Array.isArray(formConfig.salesforce.eventQueryFields))
+      ? formConfig.salesforce.eventQueryFields
+      : ['Id','Name','StartDate','EndDate','Description','Location__c','StartTime__c','EndTime__c'];
 
     if (eventId) {
       logger.info('Event ID provided, attempting campaign lookup', { eventId });
       try {
-        const fields = (formConfig && formConfig.salesforce && Array.isArray(formConfig.salesforce.eventQueryFields))
-          ? formConfig.salesforce.eventQueryFields
-          : ['Id','Name','StartDate','EndDate','Description','Location__c','StartTime__c','EndTime__c'];
-        const rawCampaign: any = await salesforceService.getCampaignByIdWithFields(eventId, fields);
+        const rawCampaign: any = await salesforceService.getCampaignByIdWithFields(eventId, campaignFields);
         if (rawCampaign) {
           campaignInfo = { ...rawCampaign, id: rawCampaign.Id || rawCampaign.id, name: rawCampaign.Name || rawCampaign.name };
           logger.info('Campaign found for event', { campaignId: campaignInfo.id, campaignName: campaignInfo.name });
@@ -475,9 +477,43 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
         // Log error but continue with form creation
         logger.error('Campaign lookup failed, proceeding without campaign association', error, { eventId });
       }
-      // Remove __eventId from payload before processing
-      delete formData.__eventId;
+    } else if (campaignName) {
+      logger.info('Campaign name provided, attempting campaign lookup/create', { campaignName, campaignRecordTypeName });
+      try {
+        let rawCampaign: any = await salesforceService.getCampaignByNameWithFields(
+          campaignName,
+          campaignFields,
+          campaignRecordTypeName
+        );
+
+        if (!rawCampaign) {
+          logger.info('Campaign not found by name, creating new campaign', { campaignName, campaignRecordTypeName });
+          const createdCampaign = await salesforceService.createCampaign({
+            name: campaignName,
+            recordTypeName: campaignRecordTypeName,
+            isActive: true,
+          });
+          rawCampaign = await salesforceService.getCampaignByIdWithFields(createdCampaign.id, campaignFields);
+          if (!rawCampaign) {
+            rawCampaign = { Id: createdCampaign.id, Name: createdCampaign.name };
+          }
+        }
+
+        campaignInfo = { ...rawCampaign, id: rawCampaign.Id || rawCampaign.id, name: rawCampaign.Name || rawCampaign.name };
+        logger.info('Campaign resolved for submission', { campaignId: campaignInfo.id, campaignName: campaignInfo.name });
+
+        if (formConfig.salesforce.campaignField) {
+          formData[formConfig.salesforce.campaignField] = campaignInfo.id;
+          logger.debug('Added campaign association to form data', { field: formConfig.salesforce.campaignField });
+        }
+      } catch (error: any) {
+        logger.error('Campaign lookup/create failed, proceeding without campaign association', error, { campaignName, campaignRecordTypeName });
+      }
     }
+
+    // Remove internal campaign helper fields from payload before processing
+    delete formData.__eventId;
+    delete formData.__campaignName;
 
     // Merge client-provided selected event metadata, if any, to enrich campaignInfo for emails
     if (formData.__selectedEvent && typeof formData.__selectedEvent === 'object') {
@@ -679,10 +715,10 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
               });
             }
             
-            // Create Campaign Member if this is an event registration
+            // Create Campaign Member when a campaign was resolved for the submission
             if (contactId && campaignInfo && campaignInfo.id) {
               try {
-                logger.info('Creating Campaign Member for event registration', { 
+                logger.info('Creating Campaign Member for campaign-associated registration', { 
                   campaignId: campaignInfo.id, 
                   contactId: contactId,
                   campaignName: campaignInfo.name || campaignInfo.Name
@@ -950,6 +986,7 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
               delete sanitized.__sendEmail;
               delete sanitized.__emailTemplates;
               delete sanitized.__eventId;
+              delete sanitized.__campaignName;
               delete sanitized.__selectedEvent;
               delete sanitized.__clientTimeZone;
               

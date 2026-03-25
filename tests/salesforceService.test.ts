@@ -429,4 +429,48 @@ describe('SalesforceService - default RecordType behavior', () => {
     expect(result.id).toBe('form-mp-enc');
   });
 
+  it('looks up a campaign by name and campaign record type', async () => {
+    const sf = new SalesforceService({ loginUrl: 'https://login.salesforce.com', clientId: 'id', clientSecret: 'secret' });
+    jest.spyOn(sf as any, 'getCampaignImages').mockResolvedValue([]);
+
+    (sf as any).connection = {
+      query: jest.fn().mockResolvedValue({ records: [{ Id: 'camp-lookup-1', Name: 'Volunteer Registration' }] }),
+    } as any;
+
+    const record = await (sf as any).getCampaignByNameWithFields(
+      'Volunteer Registration',
+      ['Id', 'Name'],
+      'Registration'
+    );
+
+    expect(record).toEqual({ Id: 'camp-lookup-1', Name: 'Volunteer Registration' });
+    expect((sf as any).connection.query).toHaveBeenCalledWith(
+      "SELECT Id, Name FROM Campaign WHERE Name = 'Volunteer Registration' AND RecordType.Name = 'Registration' ORDER BY CreatedDate DESC LIMIT 1"
+    );
+  });
+
+  it('creates an active campaign using the Campaign record type when provided', async () => {
+    const sf = new SalesforceService({ loginUrl: 'https://login.salesforce.com', clientId: 'id', clientSecret: 'secret' });
+    jest.spyOn(sf as any, 'getRecordTypeId').mockResolvedValue('rt-campaign-registration');
+
+    const createMock = jest.fn().mockResolvedValue({ success: true, id: 'camp-new-1' });
+    (sf as any).connection = {
+      sobject: jest.fn().mockReturnValue({ create: createMock }),
+    } as any;
+
+    const result = await (sf as any).createCampaign({
+      name: 'Student Registration',
+      recordTypeName: 'Registration',
+    });
+
+    expect((sf as any).getRecordTypeId).toHaveBeenCalledWith('Registration', 'Campaign');
+    expect(createMock).toHaveBeenCalledWith(expect.objectContaining({
+      attributes: { type: 'Campaign' },
+      Name: 'Student Registration',
+      IsActive: true,
+      RecordTypeId: 'rt-campaign-registration',
+    }));
+    expect(result).toEqual({ id: 'camp-new-1', name: 'Student Registration' });
+  });
+
 });

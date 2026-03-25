@@ -40,6 +40,7 @@ export interface SalesforceConfig {
   
   // Campaign association
   campaignField?: string; // Field to use for campaign association (e.g., Campaign__c)
+  campaignRecordTypeName?: string; // Campaign RecordType to use when looking up/creating campaigns by name
 
   // Event (Campaign) metadata retrieval
   eventQueryFields?: string[]; // Fields to retrieve from Campaign when eventId is provided (e.g., ['Id','Name','StartDate','EndDate','Description'])

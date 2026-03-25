@@ -130,7 +130,11 @@
     return allowed;
   };
 
-  const SALESFORCE_FIELDS = collectSalesforceFields();
+  const SALESFORCE_FIELDS = Array.from(new Set([
+    ...collectSalesforceFields(),
+    'CurrentStatus__c',
+    'Campaign__c',
+  ]));
   const FORM_CONFIG = {
     id: 'registration',
     name: activeFormName,
@@ -142,6 +146,8 @@
       updateFields: [],
       searchField: 'FormCode__c',
       lookupEmailField: 'Email__c',
+      campaignField: 'Campaign__c',
+      campaignRecordTypeName: 'Registration',
     }
   };
 
@@ -198,6 +204,20 @@
 
   const syncCopyWithFormConfig = () => {
     copy = { ...baseCopy, ...resolveFormTranslations(activeFormConfig) };
+  };
+
+  const getFormTitle = () => {
+    if (!activeFormConfig) return activeFormName;
+    return copy[activeFormConfig.TitleKey] || activeFormConfig.Title || activeFormName;
+  };
+
+  const getCampaignName = () => {
+    if (!activeFormConfig) return activeFormName;
+    const englishTitle = activeFormConfig.TitleKey
+      && activeFormConfig.Translations
+      && activeFormConfig.Translations.en
+      && activeFormConfig.Translations.en[activeFormConfig.TitleKey];
+    return englishTitle || activeFormConfig.Title || getFormTitle();
   };
 
   const h = (tag, attrs = {}, ...children) => {
@@ -350,6 +370,19 @@
 
     try {
       const payload = buildPayload();
+      payload.CurrentStatus__c = 'Submitted';
+      const campaignId = getParam('campaignId') || getParam('eventId') || '';
+      if (campaignId) {
+        payload.__eventId = campaignId;
+        if (FORM_CONFIG.salesforce && FORM_CONFIG.salesforce.campaignField) {
+          payload[FORM_CONFIG.salesforce.campaignField] = campaignId;
+        }
+      } else {
+        const campaignName = getCampaignName();
+        if (campaignName) {
+          payload.__campaignName = campaignName;
+        }
+      }
       payload.__formConfig = { ...FORM_CONFIG, name: activeFormName };
       payload.__sendEmail = true;
       payload.__emailTemplates = EMAIL_TEMPLATES;
@@ -386,7 +419,7 @@
   );
 
   const renderForm = () => {
-    const title = copy[activeFormConfig.TitleKey] || activeFormConfig.Title || activeFormName;
+    const title = getFormTitle();
     const subtitle = copy[activeFormConfig.SubtitleKey] || activeFormConfig.Subtitle || '';
     const fields = getVisibleFieldNames().map((fieldName) => buildField(fieldName)).filter(Boolean);
     const images = Array.isArray(activeFormConfig.Images) ? activeFormConfig.Images : [];
