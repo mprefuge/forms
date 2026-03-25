@@ -25,16 +25,17 @@ describe('registration.js frontend logic', () => {
   const loadCore = () => {
     require('../public/registration-fields.js');
     require('../public/registration-forms.js');
+    require('../public/registration-translations.js');
   };
 
-  it('boots with built-in defaults when the modular registry files are missing', async () => {
+  it('shows an initialization error when the registry files are missing', async () => {
+    require('../public/registration-translations.js');
     require('../public/registration.js');
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(document.querySelector('.ri-title')?.textContent).toBe('Contact Form');
-    expect(document.querySelector('textarea[name="Comments__c"]')).toBeTruthy();
-    expect(window.__ri_registration.getActiveFormType()).toBe('Generic Contact');
+    expect(document.querySelector('.ri-title')?.textContent).toBe('Failed to submit. Please try again.');
+    expect(document.querySelector('textarea[name="Comments__c"]')).toBeNull();
   });
 
   it('defaults to the generic contact form when no type is supplied', async () => {

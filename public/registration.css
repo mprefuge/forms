@@ -167,7 +167,6 @@ body {
 
 .ri-actions {
   display: flex;
-  justify-content: flex-end;
   margin-top: 24px;
 }
 
@@ -175,6 +174,7 @@ body {
   border: 0;
   border-radius: 999px;
   padding: 13px 20px;
+  width: 100%;
   font: inherit;
   font-weight: 700;
   cursor: pointer;
@@ -253,11 +253,4 @@ body {
     grid-template-columns: 1fr;
   }
 
-  .ri-actions {
-    justify-content: stretch;
-  }
-
-  .ri-btn {
-    width: 100%;
-  }
 }
