@@ -82,7 +82,39 @@ describe('registration.js frontend logic', () => {
     expect(document.querySelector('.ri-title')?.textContent).toBe('COFFEE Farmdale Baptist Church');
   });
 
-  it('uses the configured form title as the campaign name when submitting', async () => {
+  it('uses the registration Type rather than the display title for campaign lookup', async () => {
+    window.history.replaceState({}, '', 'http://localhost/public/registration.html?type=farmdale-esl');
+    loadCore();
+    require('../public/registration-configs/esl-network-registration-farmdale.js');
+    require('../public/registration.js');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const setField = (selector: string, value: string, eventName = 'input') => {
+      const el = document.querySelector(selector) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+      el.value = value;
+      el.dispatchEvent(new Event(eventName, { bubbles: true }));
+    };
+
+    setField('input[name="FirstName__c"]', 'Jane');
+    setField('input[name="LastName__c"]', 'Doe');
+    setField('input[name="Email__c"]', 'jane@example.com');
+    setField('input[name="Phone__c"]', '555-111-2222');
+    setField('input[name="Birthdate__c"]', '1990-01-01');
+
+    (document.querySelector('button.ri-btn-primary') as HTMLButtonElement).click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const [, options] = (global.fetch as jest.Mock).mock.calls[0];
+    const payload = JSON.parse(options.body);
+    expect(payload.__campaignName).toBe('Farmdale ESL Network Registration');
+    expect(payload.__campaignName).not.toBe('COFFEE Farmdale Baptist Church');
+    expect(payload.Name).toBeUndefined();
+    expect(payload.__formName).toBeUndefined();
+  });
+
+  it('uses the registration Type as the campaign lookup value when submitting', async () => {
     loadCore();
     require('../public/registration-configs/volunteer-registration.js');
     window.history.replaceState({}, '', 'http://localhost/public/registration.html?type=volunteer&location=Lexington');
@@ -112,6 +144,8 @@ describe('registration.js frontend logic', () => {
     expect(payload.__campaignName).toBe('Volunteer Registration');
     expect(payload.__eventId).toBeUndefined();
     expect(payload.Campaign__c).toBeUndefined();
+    expect(payload.Name).toBeUndefined();
+    expect(payload.__formName).toBeUndefined();
   });
 
   it('translates supported content when language is supplied', async () => {

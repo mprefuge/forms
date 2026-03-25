@@ -391,6 +391,35 @@ describe('createForm HTTP Function', () => {
       );
     });
 
+    it('should fail the submission when campaign resolution fails for a registration campaign', async () => {
+      mockSalesforceService.getCampaignByNameWithFields = jest.fn().mockResolvedValue(null);
+      mockSalesforceService.createCampaign = jest.fn().mockRejectedValue(new Error('Campaign validation failed'));
+
+      mockRequest = {
+        method: 'POST',
+        headers: {
+          get: jest.fn().mockReturnValue('registration-failure-request-id'),
+        },
+        json: jest.fn().mockResolvedValue({
+          FirstName__c: 'Ana',
+          LastName__c: 'Lopez',
+          Email: 'ana@example.com',
+          __campaignName: 'Farmdale ESL Network Registration',
+          __formConfig: testFormConfig,
+        }),
+      };
+
+      process.env.SF_CLIENT_ID = 'test-client-id';
+      process.env.SF_CLIENT_SECRET = 'test-client-secret';
+
+      const response = await createForm(mockRequest, mockContext);
+      const body = JSON.parse(response.body);
+
+      expect(response.status).toBe(500);
+      expect(body.error).toContain('Unable to resolve Campaign for "Farmdale ESL Network Registration"');
+      expect(mockSalesforceService.createForm).not.toHaveBeenCalled();
+    });
+
     it('should generate X-Request-Id if not provided', async () => {
       mockRequest = {
         method: 'POST',

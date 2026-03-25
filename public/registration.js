@@ -212,12 +212,7 @@
   };
 
   const getCampaignName = () => {
-    if (!activeFormConfig) return activeFormName;
-    const englishTitle = activeFormConfig.TitleKey
-      && activeFormConfig.Translations
-      && activeFormConfig.Translations.en
-      && activeFormConfig.Translations.en[activeFormConfig.TitleKey];
-    return englishTitle || activeFormConfig.Title || getFormTitle();
+    return state.formData.Type || activeFormName;
   };
 
   const h = (tag, attrs = {}, ...children) => {
@@ -386,7 +381,6 @@
       payload.__formConfig = { ...FORM_CONFIG, name: activeFormName };
       payload.__sendEmail = true;
       payload.__emailTemplates = EMAIL_TEMPLATES;
-      payload.__formName = activeFormName;
 
       const response = await fetch(ENDPOINT, {
         method: 'POST',

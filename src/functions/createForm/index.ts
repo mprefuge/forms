@@ -61,6 +61,7 @@ async function createFormHandler(request: HttpRequest, context: InvocationContex
       includeSalesforceError: true,
       includeFormNotFound: true,
       includeMissingCredentials: true,
+      includeCampaignResolutionFailed: true,
     });
 
     return {
@@ -507,7 +508,8 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
           logger.debug('Added campaign association to form data', { field: formConfig.salesforce.campaignField });
         }
       } catch (error: any) {
-        logger.error('Campaign lookup/create failed, proceeding without campaign association', error, { campaignName, campaignRecordTypeName });
+        logger.error('Campaign lookup/create failed', error, { campaignName, campaignRecordTypeName });
+        throw new Error(`Unable to resolve Campaign for "${campaignName}": ${error?.message || error}`);
       }
     }
 
@@ -1086,6 +1088,7 @@ Stack Trace:
       includeRecordTypeNotFound: true,
       includeSalesforceError: true,
       includeMissingCredentials: true,
+      includeCampaignResolutionFailed: true,
     });
 
     return {

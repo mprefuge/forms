@@ -449,6 +449,33 @@ describe('SalesforceService - default RecordType behavior', () => {
     );
   });
 
+  it('falls back to a name-only campaign lookup when the record type-specific lookup does not match', async () => {
+    const sf = new SalesforceService({ loginUrl: 'https://login.salesforce.com', clientId: 'id', clientSecret: 'secret' });
+    jest.spyOn(sf as any, 'getCampaignImages').mockResolvedValue([]);
+
+    (sf as any).connection = {
+      query: jest.fn()
+        .mockResolvedValueOnce({ records: [] })
+        .mockResolvedValueOnce({ records: [{ Id: 'camp-lookup-2', Name: 'Farmdale ESL Network Registration' }] }),
+    } as any;
+
+    const record = await (sf as any).getCampaignByNameWithFields(
+      'Farmdale ESL Network Registration',
+      ['Id', 'Name'],
+      'Registration'
+    );
+
+    expect(record).toEqual({ Id: 'camp-lookup-2', Name: 'Farmdale ESL Network Registration' });
+    expect((sf as any).connection.query).toHaveBeenNthCalledWith(
+      1,
+      "SELECT Id, Name FROM Campaign WHERE Name = 'Farmdale ESL Network Registration' AND RecordType.Name = 'Registration' ORDER BY CreatedDate DESC LIMIT 1"
+    );
+    expect((sf as any).connection.query).toHaveBeenNthCalledWith(
+      2,
+      "SELECT Id, Name FROM Campaign WHERE Name = 'Farmdale ESL Network Registration' ORDER BY CreatedDate DESC LIMIT 1"
+    );
+  });
+
   it('creates an active campaign using the Campaign record type when provided', async () => {
     const sf = new SalesforceService({ loginUrl: 'https://login.salesforce.com', clientId: 'id', clientSecret: 'secret' });
     jest.spyOn(sf as any, 'getRecordTypeId').mockResolvedValue('rt-campaign-registration');
@@ -471,6 +498,29 @@ describe('SalesforceService - default RecordType behavior', () => {
       RecordTypeId: 'rt-campaign-registration',
     }));
     expect(result).toEqual({ id: 'camp-new-1', name: 'Student Registration' });
+  });
+
+  it('retries campaign creation without RecordTypeId when Campaign record type lookup fails', async () => {
+    const sf = new SalesforceService({ loginUrl: 'https://login.salesforce.com', clientId: 'id', clientSecret: 'secret' });
+    jest.spyOn(sf as any, 'getRecordTypeId').mockRejectedValue(new Error('RecordType not found: Registration'));
+
+    const createMock = jest.fn().mockResolvedValue({ success: true, id: 'camp-new-2' });
+    (sf as any).connection = {
+      sobject: jest.fn().mockReturnValue({ create: createMock }),
+    } as any;
+
+    const result = await (sf as any).createCampaign({
+      name: 'Farmdale ESL Network Registration',
+      recordTypeName: 'Registration',
+    });
+
+    expect(createMock).toHaveBeenCalledWith(expect.objectContaining({
+      attributes: { type: 'Campaign' },
+      Name: 'Farmdale ESL Network Registration',
+      IsActive: true,
+    }));
+    expect(createMock.mock.calls[0][0].RecordTypeId).toBeUndefined();
+    expect(result).toEqual({ id: 'camp-new-2', name: 'Farmdale ESL Network Registration' });
   });
 
 });

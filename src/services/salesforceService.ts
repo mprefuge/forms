@@ -753,16 +753,26 @@ export class SalesforceService {
 
       const safeFields = (fields || []).filter(f => typeof f === 'string' && f.trim().length > 0);
       const select = safeFields.length > 0 ? safeFields.join(', ') : 'Id, Name';
-      const clauses = [`Name = '${this.escapeSoql(campaignName)}'`];
-      if (recordTypeName) {
-        clauses.push(`RecordType.Name = '${this.escapeSoql(recordTypeName)}'`);
+      const runLookup = async (recordType?: string): Promise<Record<string, any> | null> => {
+        const clauses = [`Name = '${this.escapeSoql(campaignName)}'`];
+        if (recordType) {
+          clauses.push(`RecordType.Name = '${this.escapeSoql(recordType)}'`);
+        }
+
+        const query = `SELECT ${select} FROM Campaign WHERE ${clauses.join(' AND ')} ORDER BY CreatedDate DESC LIMIT 1`;
+        const result: any = await this.runQuery(query);
+        if (result.records && result.records.length > 0) {
+          return result.records[0];
+        }
+        return null;
+      };
+
+      let record = await runLookup(recordTypeName);
+      if (!record && recordTypeName) {
+        record = await runLookup(undefined);
       }
 
-      const query = `SELECT ${select} FROM Campaign WHERE ${clauses.join(' AND ')} ORDER BY CreatedDate DESC LIMIT 1`;
-      const result: any = await this.runQuery(query);
-
-      if (result.records && result.records.length > 0) {
-        const record = result.records[0];
+      if (record) {
 
         try {
           const images = await this.getCampaignImages(record.Id || record.id);
@@ -797,12 +807,27 @@ export class SalesforceService {
       IsActive: options.isActive !== false,
     };
 
+    let recordTypeId: string | undefined;
     if (options.recordTypeName) {
-      campaignRecord.RecordTypeId = await this.getRecordTypeId(options.recordTypeName, 'Campaign');
+      try {
+        recordTypeId = await this.getRecordTypeId(options.recordTypeName, 'Campaign');
+      } catch (error: any) {
+        console.warn(`Campaign RecordType lookup failed for ${options.recordTypeName}; retrying without RecordTypeId`, error?.message || error);
+      }
+    }
+
+    if (recordTypeId) {
+      campaignRecord.RecordTypeId = recordTypeId;
     }
 
     try {
-      const result = await this.connection.sobject('Campaign').create(campaignRecord);
+      let result = await this.connection.sobject('Campaign').create(campaignRecord);
+
+      if (!result.success && campaignRecord.RecordTypeId) {
+        const fallbackRecord = { ...campaignRecord };
+        delete fallbackRecord.RecordTypeId;
+        result = await this.connection.sobject('Campaign').create(fallbackRecord);
+      }
 
       if (result.success) {
         return {

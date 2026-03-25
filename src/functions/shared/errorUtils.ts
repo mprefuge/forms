@@ -4,6 +4,7 @@ export interface ErrorMappingOptions {
   includeFormNotFound?: boolean;
   includeInvalidField?: boolean;
   includeMissingCredentials?: boolean;
+  includeCampaignResolutionFailed?: boolean;
 }
 
 export function mapCommonHandlerError(
@@ -28,6 +29,9 @@ export function mapCommonHandlerError(
   } else if (options.includeMissingCredentials && error.message?.includes('Missing Salesforce credentials')) {
     statusCode = 500;
     errorMessage = 'Missing Salesforce credentials';
+  } else if (options.includeCampaignResolutionFailed && error.message?.includes('Unable to resolve Campaign')) {
+    statusCode = 500;
+    errorMessage = error.message;
   }
 
   return { statusCode, errorMessage };
