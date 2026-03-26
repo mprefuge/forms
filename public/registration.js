@@ -2,6 +2,7 @@
   const config = window.FORMS_CONFIG || {};
   const ENDPOINT = config.apiEndpoint || "https://rif-hhh8e6e7cbc2hvdw.eastus-01.azurewebsites.net/api/form";
   const HOST_ID = "registration-app";
+  const LOOKUP_URL = 'https://mprefuge.github.io/site-assets/scripts/lookup.js';
 
   const findScriptElement = () => {
     try {
@@ -81,6 +82,7 @@
     : { defaultForm: 'Generic Contact', aliases: {}, forms: {} };
   const formConfigCache = window.REGISTRATION_FORM_CONFIGS = window.REGISTRATION_FORM_CONFIGS || {};
   const loadedConfigFiles = new Set();
+  let lookupPromise = null;
 
   const normalizeFormName = (raw) => {
     const cleaned = (raw || '').toString().trim();
@@ -120,6 +122,53 @@
     await loadScript(fileName);
     if (!formConfigCache[formName]) throw new Error(`Form configuration ${formName} did not register itself`);
     return formConfigCache[formName];
+  };
+
+  const loadLookup = () => {
+    if (lookupPromise) return lookupPromise;
+    lookupPromise = new Promise((resolve) => {
+      if (window.lookup) {
+        resolve(window.lookup);
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = LOOKUP_URL;
+      script.onload = () => resolve(window.lookup || {});
+      script.onerror = () => resolve({});
+      document.head.appendChild(script);
+    });
+    return lookupPromise;
+  };
+
+  const normalizeLookupOptions = (rawOptions) => {
+    if (!Array.isArray(rawOptions)) return [];
+    return rawOptions.map((option) => {
+      if (option === null || option === undefined) return null;
+      if (typeof option === 'string') return { Value: option, Label: option };
+      const value = option.value ?? option.code ?? option.id ?? option.name ?? option.label ?? String(option);
+      const label = option.label ?? option.name ?? option.value ?? option.code ?? String(option);
+      if (!String(value).trim()) return null;
+      return { Value: String(value), Label: String(label) };
+    }).filter(Boolean);
+  };
+
+  const applyLookupOptions = (lookup) => {
+    if (!lookup) return;
+    const lookupMap = {
+      Country: 'countries',
+      NativeCountry: 'countries',
+    };
+
+    Object.entries(lookupMap).forEach(([fieldName, lookupKey]) => {
+      const field = fieldDefinitions[fieldName];
+      const options = normalizeLookupOptions(lookup[lookupKey]);
+      if (!field || options.length === 0) return;
+      field.Type = 'Dropdown';
+      field.Values = [
+        { Value: '', LabelKey: 'selectOption' },
+        ...options,
+      ];
+    });
   };
 
   const collectSalesforceFields = () => {
@@ -490,7 +539,12 @@
     }
 
     try {
-      activeFormConfig = await ensureFormConfigLoaded(activeFormName);
+      const [formConfig, lookup] = await Promise.all([
+        ensureFormConfigLoaded(activeFormName),
+        loadLookup(),
+      ]);
+      activeFormConfig = formConfig;
+      applyLookupOptions(lookup);
       syncCopyWithFormConfig();
       state = { ...state, formData: buildInitialFormData(), initializing: false };
       render();
