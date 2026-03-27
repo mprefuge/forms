@@ -27,6 +27,7 @@ export const testFormConfig = {
       'Birthdate__c',
       'Campaign__c',
       'Comments__c',
+      'Custom__c',
     ],
     queryFields: [
       'Id',

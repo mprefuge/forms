@@ -150,9 +150,11 @@ describe('createForm HTTP Function', () => {
           Email__c: 'jane@example.com',
           Comments__c: 'Needs childcare',
           CurrentStatus__c: 'Submitted',
+          Custom__c: JSON.stringify({
+            NotificationEmail: 'registrations@example.com',
+          }),
           __formConfig: {
             ...testFormConfig,
-            notificationEmails: 'registrations@example.com',
           },
         }),
       };

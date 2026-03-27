@@ -177,7 +177,10 @@ describe('registration.js frontend logic', () => {
 
     const [, options] = (global.fetch as jest.Mock).mock.calls[0];
     const payload = JSON.parse(options.body);
-    expect(payload.__formConfig.notificationEmails).toBe('volunteer@example.com');
+    expect(payload.__formConfig.notificationEmails).toBeUndefined();
+    expect(JSON.parse(payload.Custom__c)).toEqual(expect.objectContaining({
+      NotificationEmail: 'volunteer@example.com',
+    }));
   });
 
   it('translates supported content when language is supplied', async () => {

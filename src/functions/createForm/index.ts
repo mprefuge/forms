@@ -305,7 +305,39 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
           .filter(Boolean);
       };
 
-      const getNotificationRecipients = (resolvedFormConfig: any): string[] => {
+      const getNotificationRecipients = (submissionData: any, resolvedFormConfig: any): string[] => {
+        const customFieldSources = [
+          submissionData?.NotificationEmails,
+          submissionData?.NotificationEmail,
+          submissionData?.CustomData,
+          submissionData?.Custom__c,
+        ];
+
+        for (const source of customFieldSources) {
+          if (!source) continue;
+          if (typeof source === 'object') {
+            const nestedRecipients = parseEmailRecipients(
+              (source as any).NotificationEmails ?? (source as any).NotificationEmail
+            );
+            if (nestedRecipients.length > 0) return nestedRecipients;
+            continue;
+          }
+          if (typeof source === 'string' && (source.trim().startsWith('{') || source.trim().startsWith('['))) {
+            try {
+              const parsed = JSON.parse(source);
+              const nestedRecipients = parseEmailRecipients(
+                parsed?.NotificationEmails ?? parsed?.NotificationEmail
+              );
+              if (nestedRecipients.length > 0) return nestedRecipients;
+              continue;
+            } catch {
+              // Fall through and treat the value as a plain recipient string.
+            }
+          }
+          const directRecipients = parseEmailRecipients(source);
+          if (directRecipients.length > 0) return directRecipients;
+        }
+
         const configuredRecipients = parseEmailRecipients(
           resolvedFormConfig?.notificationEmails ?? resolvedFormConfig?.notificationEmail
         );
@@ -413,7 +445,7 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
           formConfig?: any;
         }
       ) => {
-        const notificationRecipients = getNotificationRecipients(options.formConfig);
+        const notificationRecipients = getNotificationRecipients(submissionData, options.formConfig);
         if (notificationRecipients.length === 0) {
           logger.debug('No configured submission notification recipients found, skipping notification', { formId: options.formId });
           return;

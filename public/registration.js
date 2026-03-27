@@ -394,6 +394,7 @@
   const buildPayload = () => {
     const payload = {};
     const customData = {};
+    const notificationEmails = getNotificationEmails();
 
     Object.values(fieldDefinitions).forEach((field) => {
       const value = state.formData[field.Name];
@@ -409,6 +410,11 @@
       if (field.SalesforceID) payload[field.SalesforceID] = value;
       else if (!field.Hidden) payload[field.Name] = value;
     });
+
+    if (notificationEmails) {
+      if (Array.isArray(notificationEmails)) customData.NotificationEmails = notificationEmails;
+      else customData.NotificationEmail = notificationEmails;
+    }
 
     if (Object.keys(customData).length > 0 && fieldDefinitions.CustomData && fieldDefinitions.CustomData.SalesforceID) {
       payload[fieldDefinitions.CustomData.SalesforceID] = JSON.stringify(customData);
@@ -441,11 +447,9 @@
           payload.__campaignName = campaignName;
         }
       }
-      const notificationEmails = getNotificationEmails();
       payload.__formConfig = {
         ...FORM_CONFIG,
         name: activeFormName,
-        ...(notificationEmails ? { notificationEmails } : {}),
       };
       payload.__sendEmail = true;
       payload.__emailTemplates = EMAIL_TEMPLATES;
