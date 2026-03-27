@@ -13,6 +13,7 @@ describe('createForm HTTP Function', () => {
   let mockRequest: any;
   let mockContext: any;
   let mockSalesforceService: jest.Mocked<SalesforceService>;
+  let mockEmailService: any;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -58,7 +59,7 @@ describe('createForm HTTP Function', () => {
       updateContact: jest.fn().mockResolvedValue(undefined),
     } as any;
 
-    const mockEmailService = {
+    mockEmailService = {
       sendEmail: jest.fn().mockResolvedValue(undefined),
       sendApplicationCopy: jest.fn().mockResolvedValue(undefined),
       sendEventRegistrationConfirmation: jest.fn().mockResolvedValue(undefined),
@@ -132,6 +133,54 @@ describe('createForm HTTP Function', () => {
       const responseBody = JSON.parse(response.body);
       expect(responseBody.id).toBe('form-id-12345');
       expect(responseBody.formCode).toBe('abc12');
+    });
+
+    it('should send a New Registration notification to the form-configured recipient with submitted details', async () => {
+      delete process.env.AdminEmail;
+      delete process.env.ADMIN_EMAIL;
+
+      mockRequest = {
+        method: 'POST',
+        headers: {
+          get: jest.fn().mockReturnValue('notification-request-id'),
+        },
+        json: jest.fn().mockResolvedValue({
+          FirstName__c: 'Jane',
+          LastName__c: 'Doe',
+          Email__c: 'jane@example.com',
+          Comments__c: 'Needs childcare',
+          CurrentStatus__c: 'Submitted',
+          __formConfig: {
+            ...testFormConfig,
+            notificationEmails: 'registrations@example.com',
+          },
+        }),
+      };
+
+      process.env.SF_CLIENT_ID = 'test-client-id';
+      process.env.SF_CLIENT_SECRET = 'test-client-secret';
+
+      const response = await createForm(mockRequest, mockContext);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(response.status).toBe(201);
+      expect(mockEmailService.sendEmail).toHaveBeenCalledWith(
+        'registrations@example.com',
+        expect.objectContaining({ subject: 'New Registration' }),
+        expect.objectContaining({
+          formName: 'Test Form',
+          applicantName: 'Jane Doe',
+          applicantEmail: 'jane@example.com',
+          formCode: 'ABC12',
+        })
+      );
+
+      const notificationCall = mockEmailService.sendEmail.mock.calls.find((call: any[]) => call[0] === 'registrations@example.com');
+      expect(notificationCall).toBeDefined();
+      expect(notificationCall[2].submissionDetails).toContain('First Name: Jane');
+      expect(notificationCall[2].submissionDetails).toContain('Comments: Needs childcare');
+      expect(notificationCall[2].submissionDetails).toContain('Form Code: ABC12');
     });
 
 

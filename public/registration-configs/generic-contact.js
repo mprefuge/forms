@@ -12,5 +12,6 @@ window.REGISTRATION_FORM_CONFIGS['Generic Contact'] = {
       genericFormSubtitle: 'Comparta su información de contacto y comentarios a continuación.',
     },
   },
+  NotificationEmail: '',
   Fields: ['FirstName', 'LastName', 'Email', 'Phone', 'Comments', 'ReceiveUpdates']
 };

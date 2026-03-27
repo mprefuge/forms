@@ -12,6 +12,7 @@ window.REGISTRATION_FORM_CONFIGS['Volunteer Registration'] = {
       volunteerRegistrationSubtitle: 'Complete el siguiente formulario de registro para voluntarios.',
     },
   },
+  NotificationEmail: '',
   Fields: ['FirstName', 'LastName', 'Email', 'Phone', 'Birthdate', 'Street', 'City', 'State', 'Zip', 'Country', 'Location', 'Comments', 'ReceiveUpdates'],
   RequiredFields: ['Location']
 };

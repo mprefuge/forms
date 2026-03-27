@@ -12,6 +12,7 @@ window.REGISTRATION_FORM_CONFIGS['Farmdale ESL Network Registration'] = {
       farmdaleEslRegistrationSubtitle: 'Inscripción abierta para el semestre de primavera de 2026 --- cupos limitados del 12 de abril al 7 de junio',
     },
   },
+  NotificationEmail: 'micah.palmquist@gmail.com',
   Images: [
     {
       src: 'https://www.jotform.com/uploads/Foushee_Kathy/form_files/coffee%20logo.641d2680802767.02034693.PNG',

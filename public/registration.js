@@ -264,6 +264,20 @@
     return state.formData.Type || activeFormName;
   };
 
+  const getNotificationEmails = () => {
+    if (!activeFormConfig || typeof activeFormConfig !== 'object') return undefined;
+    if (Array.isArray(activeFormConfig.NotificationEmails) && activeFormConfig.NotificationEmails.length) {
+      return activeFormConfig.NotificationEmails;
+    }
+    if (typeof activeFormConfig.NotificationEmails === 'string' && activeFormConfig.NotificationEmails.trim()) {
+      return activeFormConfig.NotificationEmails.trim();
+    }
+    if (typeof activeFormConfig.NotificationEmail === 'string' && activeFormConfig.NotificationEmail.trim()) {
+      return activeFormConfig.NotificationEmail.trim();
+    }
+    return undefined;
+  };
+
   const h = (tag, attrs = {}, ...children) => {
     const el = document.createElement(tag);
     Object.entries(attrs).forEach(([key, value]) => {
@@ -427,7 +441,12 @@
           payload.__campaignName = campaignName;
         }
       }
-      payload.__formConfig = { ...FORM_CONFIG, name: activeFormName };
+      const notificationEmails = getNotificationEmails();
+      payload.__formConfig = {
+        ...FORM_CONFIG,
+        name: activeFormName,
+        ...(notificationEmails ? { notificationEmails } : {}),
+      };
       payload.__sendEmail = true;
       payload.__emailTemplates = EMAIL_TEMPLATES;
 

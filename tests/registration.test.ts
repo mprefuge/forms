@@ -15,6 +15,7 @@ describe('registration.js frontend logic', () => {
     delete window.REGISTRATION_FIELDS;
     delete window.REGISTRATION_FORMS;
     delete window.REGISTRATION_FORM_CONFIGS;
+    window.lookup = {};
     delete window.__ri_registration;
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
@@ -146,6 +147,37 @@ describe('registration.js frontend logic', () => {
     expect(payload.Campaign__c).toBeUndefined();
     expect(payload.Name).toBeUndefined();
     expect(payload.__formName).toBeUndefined();
+  });
+
+  it('passes a form-configured notification recipient in the submission config', async () => {
+    loadCore();
+    require('../public/registration-configs/volunteer-registration.js');
+    window.REGISTRATION_FORM_CONFIGS['Volunteer Registration'].NotificationEmail = 'volunteer@example.com';
+    window.history.replaceState({}, '', 'http://localhost/public/registration.html?type=volunteer&location=Lexington');
+    require('../public/registration.js');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const setField = (selector: string, value: string, eventName = 'input') => {
+      const el = document.querySelector(selector) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+      el.value = value;
+      el.dispatchEvent(new Event(eventName, { bubbles: true }));
+    };
+
+    setField('input[name="FirstName__c"]', 'Jane');
+    setField('input[name="LastName__c"]', 'Doe');
+    setField('input[name="Email__c"]', 'jane@example.com');
+    setField('input[name="Phone__c"]', '555-111-2222');
+    setField('input[name="Birthdate__c"]', '1990-01-01');
+    setField('input[name="Location"]', 'Lexington');
+
+    (document.querySelector('button.ri-btn-primary') as HTMLButtonElement).click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const [, options] = (global.fetch as jest.Mock).mock.calls[0];
+    const payload = JSON.parse(options.body);
+    expect(payload.__formConfig.notificationEmails).toBe('volunteer@example.com');
   });
 
   it('translates supported content when language is supplied', async () => {

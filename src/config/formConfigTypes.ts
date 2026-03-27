@@ -90,6 +90,7 @@ export interface FormConfig {
   name: string; // Display name
   description?: string;
   version: string; // Config version for tracking changes
+  notificationEmails?: string | string[]; // Recipients for submission notifications
   
   // UI Structure
   phases: { [phaseKey: string]: FormPhase }; // Keyed by phase ID

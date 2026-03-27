@@ -12,6 +12,7 @@ window.REGISTRATION_FORM_CONFIGS['Student Registration'] = {
       studentRegistrationSubtitle: 'Complete a continuación los datos de registro del estudiante.',
     },
   },
+  NotificationEmail: '',
   Fields: ['FirstName', 'LastName', 'Email', 'Phone', 'Birthdate', 'NativeCountry', 'Location', 'HowHeard', 'Interest', 'KTAPProgram', 'SNAPProgram', 'Comments', 'ReceiveUpdates'],
   RequiredFields: ['Location']
 };

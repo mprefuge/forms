@@ -294,6 +294,164 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
         return baseVars;
       };
 
+      const parseEmailRecipients = (value: any): string[] => {
+        if (Array.isArray(value)) {
+          return value.flatMap((entry) => parseEmailRecipients(entry));
+        }
+        if (typeof value !== 'string') return [];
+        return value
+          .split(/[;,]+/)
+          .map((entry) => entry.trim())
+          .filter(Boolean);
+      };
+
+      const getNotificationRecipients = (resolvedFormConfig: any): string[] => {
+        const configuredRecipients = parseEmailRecipients(
+          resolvedFormConfig?.notificationEmails ?? resolvedFormConfig?.notificationEmail
+        );
+        if (configuredRecipients.length > 0) return configuredRecipients;
+        return parseEmailRecipients(process.env.AdminEmail || process.env.ADMIN_EMAIL);
+      };
+
+      const formatNotificationFieldLabel = (fieldName: string): string => {
+        return String(fieldName || '')
+          .replace(/__c$/i, '')
+          .replace(/_/g, ' ')
+          .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+          .replace(/\s+/g, ' ')
+          .trim();
+      };
+
+      const stringifyNotificationValue = (value: any): string => {
+        if (value === undefined || value === null) return '';
+        if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+        if (Array.isArray(value)) return value.map((entry) => stringifyNotificationValue(entry)).filter(Boolean).join(', ');
+        if (typeof value === 'object') {
+          try {
+            return JSON.stringify(value);
+          } catch {
+            return String(value);
+          }
+        }
+        return String(value).trim();
+      };
+
+      const escapeHtml = (value: any): string => {
+        return String(value)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      };
+
+      const appendNotificationField = (
+        entries: Array<{ label: string; value: string }>,
+        fieldName: string,
+        value: any
+      ) => {
+        if (value === undefined || value === null || value === '') return;
+        if (!fieldName || fieldName.startsWith('__')) return;
+        if (['Attachments', 'attachments', 'Notes', 'notes'].includes(fieldName)) return;
+
+        if ((fieldName === 'Custom__c' || fieldName === 'CustomData') && typeof value === 'string') {
+          try {
+            const parsed = JSON.parse(value);
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+              Object.entries(parsed).forEach(([nestedKey, nestedValue]) => {
+                appendNotificationField(entries, `Custom ${nestedKey}`, nestedValue);
+              });
+              return;
+            }
+          } catch {
+            // Fall through and include the raw value.
+          }
+        }
+
+        const renderedValue = stringifyNotificationValue(value);
+        if (!renderedValue) return;
+
+        entries.push({
+          label: formatNotificationFieldLabel(fieldName) || fieldName,
+          value: renderedValue,
+        });
+      };
+
+      const buildSubmissionDetails = (payload: any): { text: string; html: string } => {
+        const entries: Array<{ label: string; value: string }> = [];
+        Object.entries(payload || {}).forEach(([fieldName, value]) => {
+          appendNotificationField(entries, fieldName, value);
+        });
+
+        if (entries.length === 0) {
+          return {
+            text: 'No submitted fields available.',
+            html: '<p>No submitted fields available.</p>',
+          };
+        }
+
+        return {
+          text: entries.map(({ label, value }) => `${label}: ${value}`).join('\n'),
+          html: `<table style="width:100%; border-collapse:collapse;">${entries.map(({ label, value }) => `<tr><td style="padding:6px 10px; border:1px solid #d9d9d9; font-weight:600; vertical-align:top;">${escapeHtml(label)}</td><td style="padding:6px 10px; border:1px solid #d9d9d9;">${escapeHtml(value)}</td></tr>`).join('')}</table>`,
+        };
+      };
+
+      const submissionNotificationTemplate: EmailTemplate = {
+        subject: 'New Registration',
+        text: 'A new registration was submitted.\n\nForm: {{formName}}\nSubmitted by: {{applicantName}} ({{applicantEmail}})\nConfirmation Code: {{formCode}}\nForm ID: {{formId}}\nCampaign: {{campaignName}}\nSubmitted At: {{timestamp}}\n\nSubmitted Details:\n{{submissionDetails}}',
+        html: '<h3>New Registration</h3><p><strong>Form:</strong> {{formName}}<br/><strong>Submitted by:</strong> {{applicantName}} ({{applicantEmail}})<br/><strong>Confirmation Code:</strong> {{formCode}}<br/><strong>Form ID:</strong> {{formId}}<br/><strong>Campaign:</strong> {{campaignName}}<br/><strong>Submitted At:</strong> {{timestamp}}</p><h4>Submitted Details</h4>{{submissionDetailsHtml}}',
+      };
+
+      const sendSubmissionNotification = async (
+        submissionData: any,
+        options: {
+          formId: string;
+          formCode?: string;
+          applicantName?: string;
+          applicantEmail?: string;
+          campaignInfo?: any;
+          formConfig?: any;
+        }
+      ) => {
+        const notificationRecipients = getNotificationRecipients(options.formConfig);
+        if (notificationRecipients.length === 0) {
+          logger.debug('No configured submission notification recipients found, skipping notification', { formId: options.formId });
+          return;
+        }
+
+        const normalizedFormCode = options.formCode ? String(options.formCode).toUpperCase() : '';
+        const payloadWithCode = { ...(submissionData || {}) };
+        if (normalizedFormCode) {
+          payloadWithCode.FormCode__c = normalizedFormCode;
+        }
+
+        const details = buildSubmissionDetails(payloadWithCode);
+        const variables = {
+          formName: options.formConfig?.name || 'Form',
+          applicantName: options.applicantName || 'Unknown',
+          applicantEmail: options.applicantEmail || 'No email',
+          formCode: normalizedFormCode || payloadWithCode.FormCode__c || 'N/A',
+          formId: options.formId,
+          campaignName: (options.campaignInfo && (options.campaignInfo.name || options.campaignInfo.Name)) || payloadWithCode.Campaign__c || 'N/A',
+          timestamp: new Date().toISOString(),
+          submissionDetails: details.text,
+          submissionDetailsHtml: details.html,
+        };
+
+        const { EmailService } = await import('../../services/emailService');
+        const emailService = new EmailService();
+
+        logger.info('Sending submission notification email', { to: notificationRecipients, formId: options.formId });
+        await Promise.all(notificationRecipients.map(async (addr: string) => {
+          try {
+            await emailService.sendEmail(addr, submissionNotificationTemplate, variables);
+            logger.info('Submission notification email sent successfully', { to: addr });
+          } catch (err: any) {
+            logger.error('Failed to send submission notification to a recipient', err, { to: addr, errorMessage: err?.message });
+          }
+        }));
+      };
+
     const salesforceService = new SalesforceService(buildSalesforceConfig());
 
     // Authenticate with Salesforce
@@ -428,6 +586,17 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
             } else {
               logger.debug('No applicant email present; skipping application copy email');
             }
+
+            await sendSubmissionNotification(
+              { ...emailData, FormCode__c: emailData?.FormCode__c || String(formCode).toUpperCase() },
+              {
+                formId: resolvedFormId,
+                formCode: formCode,
+                applicantName,
+                applicantEmail,
+                formConfig,
+              }
+            );
           } catch (e: any) {
             logger.error('Failed to send application copy email', e, { errorMessage: e?.message });
           }
@@ -853,29 +1022,9 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
     })();
     parallelOperations.push(emailPromise);
 
-    // Send admin notification email (parallel, non-blocking)
-    const adminEmailPromise = (async () => {
+    // Send submission notification email (parallel, non-blocking)
+    const submissionNotificationPromise = (async () => {
       try {
-        const adminEmailsRaw = process.env.AdminEmail || process.env.ADMIN_EMAIL;
-        if (!adminEmailsRaw) {
-          logger.debug('AdminEmail not configured, skipping admin notification');
-          return;
-        }
-
-        // Support multiple addresses separated by semicolon or comma
-        const adminEmails = (adminEmailsRaw || '')
-          .split(/[;,]+/)
-          .map((e: string) => (e || '').trim())
-          .filter(Boolean);
-
-        if (adminEmails.length === 0) {
-          logger.debug('No valid admin email addresses found, skipping admin notification');
-          return;
-        }
-
-        const { EmailService } = await import('../../services/emailService');
-        const emailService = new EmailService();
-
         const emailField = 'Email';
         const firstNameField = 'FirstName';
         const lastNameField = 'LastName';
@@ -890,37 +1039,22 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
           filteredData[lastNameField] || filteredData[lastNameSfField] || formData[lastNameField] || formData[lastNameSfField]
         ].filter(Boolean).join(' ').trim();
 
-        const adminTemplate = {
-          subject: 'Form Submission: {{formName}} - {{applicantName}}',
-          text: 'A new form submission was received.\n\nForm: {{formName}}\nSubmitted by: {{applicantName}} ({{applicantEmail}})\nForm Code: {{formCode}}\nForm ID: {{formId}}\nCampaign: {{campaignName}}\nTimestamp: {{timestamp}}',
-          html: '<h3>New Form Submission</h3><p><strong>Form:</strong> {{formName}}<br/><strong>Submitted by:</strong> {{applicantName}} ({{applicantEmail}})<br/><strong>Form Code:</strong> {{formCode}}<br/><strong>Form ID:</strong> {{formId}}<br/><strong>Campaign:</strong> {{campaignName}}<br/><strong>Timestamp:</strong> {{timestamp}}</p>'
-        };
-
-        const variables = {
-          formName: formConfig.name || 'Form',
-          applicantName: applicantName || 'Unknown',
-          applicantEmail: applicantEmail || 'No email',
-          formCode: generatedFormCode || 'N/A',
-          formId: createdFormId,
-          campaignName: (campaignInfo && (campaignInfo.name || campaignInfo.Name)) || 'N/A',
-          timestamp: new Date().toISOString()
-        };
-
-        logger.info('Sending admin notification email', { to: adminEmails, formId: createdFormId });
-        // Send a copy to each admin address
-        await Promise.all(adminEmails.map(async (addr: string) => {
-          try {
-            await emailService.sendEmail(addr, adminTemplate, variables);
-            logger.info('Admin notification email sent successfully', { to: addr });
-          } catch (err: any) {
-            logger.error('Failed to send admin notification to a recipient', err, { to: addr, errorMessage: err?.message });
+        await sendSubmissionNotification(
+          { ...sfFormData, FormCode__c: generatedFormCode || sfFormData.FormCode__c },
+          {
+            formId: createdFormId,
+            formCode: generatedFormCode,
+            applicantName,
+            applicantEmail,
+            campaignInfo,
+            formConfig,
           }
-        }));
+        );
       } catch (e: any) {
-        logger.error('Failed to send admin notification email', e, { errorMessage: e?.message });
+        logger.error('Failed to send submission notification email', e, { errorMessage: e?.message });
       }
     })();
-    parallelOperations.push(adminEmailPromise);
+    parallelOperations.push(submissionNotificationPromise);
 
     // Fire off parallel operations in background (non-blocking)
     // Don't wait for them to complete - return response immediately
