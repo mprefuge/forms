@@ -5,11 +5,11 @@ window.REGISTRATION_FORM_CONFIGS['Farmdale ESL Network Registration'] = {
   Translations: {
     en: {
       farmdaleEslRegistrationTitle: 'COFFEE Farmdale Baptist Church',
-      farmdaleEslRegistrationSubtitle: 'Spring Semester 2026 Registration open --- limited spaces April 11 - June 6 (Saturdays)\nCall or text Joseph at: 407-883-4417',
+      farmdaleEslRegistrationSubtitle: 'Spring Semester 2026 Registration open --- limited spaces April 11 - June 6 (Saturdays)\nQuestions? Call or text Joseph at: 407-883-4417',
     },
     es: {
       farmdaleEslRegistrationTitle: 'COFFEE Farmdale Baptist Church',
-      farmdaleEslRegistrationSubtitle: 'Inscripción abierta para el semestre de primavera de 2026 --- cupos limitados del 11 de abril al 6 de junio (Sábados)\nLlame o envíe un mensaje de texto a Joseph al: 407-883-4417',
+      farmdaleEslRegistrationSubtitle: 'Inscripción abierta para el semestre de primavera de 2026 --- cupos limitados del 11 de abril al 6 de junio (Sábados)\n¿Preguntas? Llame o envíe un mensaje de texto a Joseph al: 407-883-4417',
     },
   },
   NotificationEmail: 'micah.palmquist@gmail.com',
