@@ -9,7 +9,7 @@ window.REGISTRATION_FORMS = {
     esl: 'ESL Network Registration',
     'esl-network-registration': 'ESL Network Registration',
     'farmdale-esl': 'Spring 2026 - Farmdale ESL Network Registration',
-    'farmdale-esl-network-registration': 'Spring 2026 - Farmdale ESL Network Registration',
+    'farmdale esl network registration': 'Spring 2026 - Farmdale ESL Network Registration',
     student: 'Student Registration',
     'student-registration': 'Student Registration',
     volunteer: 'Volunteer Registration',
