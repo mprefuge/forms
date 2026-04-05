@@ -456,23 +456,23 @@ describe('SalesforceService - default RecordType behavior', () => {
     (sf as any).connection = {
       query: jest.fn()
         .mockResolvedValueOnce({ records: [] })
-        .mockResolvedValueOnce({ records: [{ Id: 'camp-lookup-2', Name: 'Farmdale ESL Network Registration' }] }),
+        .mockResolvedValueOnce({ records: [{ Id: 'camp-lookup-2', Name: 'Spring 2026 - Farmdale ESL Network Registration' }] }),
     } as any;
 
     const record = await (sf as any).getCampaignByNameWithFields(
-      'Farmdale ESL Network Registration',
+      'Spring 2026 - Farmdale ESL Network Registration',
       ['Id', 'Name'],
       'Registration'
     );
 
-    expect(record).toEqual({ Id: 'camp-lookup-2', Name: 'Farmdale ESL Network Registration' });
+    expect(record).toEqual({ Id: 'camp-lookup-2', Name: 'Spring 2026 - Farmdale ESL Network Registration' });
     expect((sf as any).connection.query).toHaveBeenNthCalledWith(
       1,
-      "SELECT Id, Name FROM Campaign WHERE Name = 'Farmdale ESL Network Registration' AND RecordType.Name = 'Registration' ORDER BY CreatedDate DESC LIMIT 1"
+      "SELECT Id, Name FROM Campaign WHERE Name = 'Spring 2026 - Farmdale ESL Network Registration' AND RecordType.Name = 'Registration' ORDER BY CreatedDate DESC LIMIT 1"
     );
     expect((sf as any).connection.query).toHaveBeenNthCalledWith(
       2,
-      "SELECT Id, Name FROM Campaign WHERE Name = 'Farmdale ESL Network Registration' ORDER BY CreatedDate DESC LIMIT 1"
+      "SELECT Id, Name FROM Campaign WHERE Name = 'Spring 2026 - Farmdale ESL Network Registration' ORDER BY CreatedDate DESC LIMIT 1"
     );
   });
 
@@ -510,17 +510,17 @@ describe('SalesforceService - default RecordType behavior', () => {
     } as any;
 
     const result = await (sf as any).createCampaign({
-      name: 'Farmdale ESL Network Registration',
+      name: 'Spring 2026 - Farmdale ESL Network Registration',
       recordTypeName: 'Registration',
     });
 
     expect(createMock).toHaveBeenCalledWith(expect.objectContaining({
       attributes: { type: 'Campaign' },
-      Name: 'Farmdale ESL Network Registration',
+      Name: 'Spring 2026 - Farmdale ESL Network Registration',
       IsActive: true,
     }));
     expect(createMock.mock.calls[0][0].RecordTypeId).toBeUndefined();
-    expect(result).toEqual({ id: 'camp-new-2', name: 'Farmdale ESL Network Registration' });
+    expect(result).toEqual({ id: 'camp-new-2', name: 'Spring 2026 - Farmdale ESL Network Registration' });
   });
 
 });

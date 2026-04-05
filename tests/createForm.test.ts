@@ -455,7 +455,7 @@ describe('createForm HTTP Function', () => {
           FirstName__c: 'Ana',
           LastName__c: 'Lopez',
           Email: 'ana@example.com',
-          __campaignName: 'Farmdale ESL Network Registration',
+          __campaignName: 'Spring 2026 - Farmdale ESL Network Registration',
           __formConfig: testFormConfig,
         }),
       };
@@ -467,7 +467,7 @@ describe('createForm HTTP Function', () => {
       const body = JSON.parse(response.body);
 
       expect(response.status).toBe(500);
-      expect(body.error).toContain('Unable to resolve Campaign for "Farmdale ESL Network Registration"');
+      expect(body.error).toContain('Unable to resolve Campaign for "Spring 2026 - Farmdale ESL Network Registration"');
       expect(mockSalesforceService.createForm).not.toHaveBeenCalled();
     });
 

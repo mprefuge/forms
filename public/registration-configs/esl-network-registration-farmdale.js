@@ -1,5 +1,5 @@
 window.REGISTRATION_FORM_CONFIGS = window.REGISTRATION_FORM_CONFIGS || {};
-window.REGISTRATION_FORM_CONFIGS['Farmdale ESL Network Registration'] = {
+window.REGISTRATION_FORM_CONFIGS['Spring 2026 - Farmdale ESL Network Registration'] = {
   TitleKey: 'farmdaleEslRegistrationTitle',
   SubtitleKey: 'farmdaleEslRegistrationSubtitle',
   Translations: {

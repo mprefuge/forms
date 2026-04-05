@@ -109,7 +109,7 @@ describe('registration.js frontend logic', () => {
 
     const [, options] = (global.fetch as jest.Mock).mock.calls[0];
     const payload = JSON.parse(options.body);
-    expect(payload.__campaignName).toBe('Farmdale ESL Network Registration');
+    expect(payload.__campaignName).toBe('Spring 2026 - Farmdale ESL Network Registration');
     expect(payload.__campaignName).not.toBe('COFFEE Farmdale Baptist Church');
     expect(payload.Name).toBeUndefined();
     expect(payload.__formName).toBeUndefined();
