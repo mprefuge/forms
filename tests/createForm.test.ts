@@ -480,6 +480,7 @@ describe('createForm HTTP Function', () => {
         json: jest.fn().mockResolvedValue({
           FirstName__c: 'Jane',
           LastName__c: 'Smith',
+          __formConfig: testFormConfig,
         }),
       };
 
@@ -500,6 +501,7 @@ describe('createForm HTTP Function', () => {
         },
         json: jest.fn().mockResolvedValue({
           FirstName__c: 'John',
+          __formConfig: testFormConfig,
         }),
       };
 
@@ -543,6 +545,7 @@ describe('createForm HTTP Function', () => {
         json: jest.fn().mockResolvedValue({
           FirstName__c: 'John',
           RecordType: 'InvalidType',
+          __formConfig: testFormConfig,
         }),
       };
 
@@ -568,6 +571,7 @@ describe('createForm HTTP Function', () => {
         },
         json: jest.fn().mockResolvedValue({
           FirstName__c: 'John',
+          __formConfig: testFormConfig,
         }),
       };
 
@@ -593,6 +597,7 @@ describe('createForm HTTP Function', () => {
         },
         json: jest.fn().mockResolvedValue({
           FirstName__c: 'John',
+          __formConfig: testFormConfig,
         }),
       };
 
@@ -628,7 +633,8 @@ describe('createForm HTTP Function', () => {
               text: 'Your application was updated successfully. Code: {{FormCode__c}}',
               html: '<p>Your application was <strong>updated</strong>. Code: <strong>{{FormCode__c}}</strong></p>'
             }
-          }
+          },
+          __formConfig: testFormConfig,
         }),
       };
 
@@ -979,6 +985,7 @@ describe('createForm HTTP Function', () => {
         json: jest.fn().mockResolvedValue({
           FirstName__c: 'John',
           LastName__c: 'Doe',
+          __formConfig: testFormConfig,
         }),
       };
 
