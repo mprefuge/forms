@@ -80,7 +80,7 @@ describe('registration.js frontend logic', () => {
     expect(image).toBeTruthy();
     expect(image.src).toContain('coffee%20logo');
     expect(image.alt).toBe('COFFEE Farmdale Baptist Church');
-    expect(document.querySelector('.ri-title')?.textContent).toBe('COFFEE Farmdale Baptist Church');
+    expect(document.querySelector('.ri-title')?.textContent).toBe('COFFEE Farmdale Baptist Church / Iglesia Bautista Gracia y Verdad');
   });
 
   it('uses the registration Type rather than the display title for campaign lookup', async () => {
