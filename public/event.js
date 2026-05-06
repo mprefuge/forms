@@ -1522,6 +1522,25 @@
     }
   };
 
+  const formatCalendarDateTimeLocal = (dStr, tStr) => {
+    if (!dStr) return '';
+    const d = String(dStr).trim();
+    const m = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!m) return '';
+    const Y = m[1];
+    const M = m[2];
+    const D = m[3];
+    let hh = '00', mm = '00', ss = '00';
+    if (tStr) {
+      const t = String(tStr).trim().replace(/Z$/i, '');
+      const parts = t.split(':');
+      if (parts.length >= 1) hh = parts[0].padStart(2, '0');
+      if (parts.length >= 2) mm = parts[1].padStart(2, '0');
+      if (parts.length >= 3) ss = parts[2].split('.')[0].padStart(2, '0');
+    }
+    return `${Y}${M}${D}T${hh}${mm}${ss}`;
+  };
+
   const renderEventHero = () => {
     if (!state.eventId) return null;
 
@@ -1979,26 +1998,18 @@
     // Add calendar options when campaignInfo is present
     if (state.campaignInfo) {
       const ev = state.campaignInfo;
-      const googleDates = (() => {
-        const start = (ev.startDate && ev.startTime) ? new Date(`${ev.startDate} ${ev.startTime}`) : (ev.startDate ? new Date(ev.startDate) : null);
-        const end = (ev.endDate && ev.endTime) ? new Date(`${ev.endDate} ${ev.endTime}`) : (ev.endDate ? new Date(ev.endDate) : null);
-        const fmt = (d) => {
-          if (!d || isNaN(d.getTime())) return '';
-          const pad = (n) => String(n).padStart(2, '0');
-          return `${d.getUTCFullYear()}${pad(d.getUTCMonth()+1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}Z`;
-        };
-        const s = fmt(start);
-        const e = fmt(end) || s;
-        return s && e ? `${s}/${e}` : '';
-      })();
-
-      const googleParams = new URLSearchParams({ action: 'TEMPLATE', text: ev.name || '', details: ev.description || '', location: ev.location || '', dates: googleDates || undefined });
+      const googleStart = formatCalendarDateTimeLocal(ev.startDate, ev.startTime);
+      const googleEnd = formatCalendarDateTimeLocal(ev.endDate, ev.endTime) || googleStart;
+      const googleParams = new URLSearchParams({ action: 'TEMPLATE', text: ev.name || '', details: ev.description || '', location: ev.location || '', dates: googleStart && googleEnd ? `${googleStart}/${googleEnd}` : undefined });
+      const googleTz = ev.timeZone || ev.tz || Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (googleTz) googleParams.set('ctz', googleTz);
       const googleUrl = `https://calendar.google.com/calendar/render?${googleParams.toString()}`;
 
       // Build Outlook web URL (compose deeplink)
       const fmtIso = (d) => {
         if (!d || isNaN(d.getTime())) return '';
-        return d.toISOString();
+        const pad = (n) => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
       };
       const startDt = (ev.startDate && ev.startTime) ? new Date(`${ev.startDate} ${ev.startTime}`) : (ev.startDate ? new Date(ev.startDate) : null);
       const endDt = (ev.endDate && ev.endTime) ? new Date(`${ev.endDate} ${ev.endTime}`) : (ev.endDate ? new Date(ev.endDate) : null);
@@ -2021,10 +2032,11 @@
               const end = endDt;
               const uid = `${Date.now()}@event`;
               const dtstamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
+              const tz = ev.timeZone || ev.tz || undefined;
               const fmt = (d) => {
                 if (!d || isNaN(d.getTime())) return '';
                 const pad = (n) => String(n).padStart(2, '0');
-                return `${d.getUTCFullYear()}${pad(d.getUTCMonth()+1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}Z`;
+                return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
               };
               const lines = [
                 'BEGIN:VCALENDAR',
@@ -2035,8 +2047,8 @@
                 `UID:${uid}`,
                 `DTSTAMP:${dtstamp}`,
               ];
-              if (start) lines.push(`DTSTART:${fmt(start)}`);
-              if (end) lines.push(`DTEND:${fmt(end)}`);
+              if (start) lines.push(`DTSTART${tz ? `;TZID=${tz}` : ''}:${fmt(start)}`);
+              if (end) lines.push(`DTEND${tz ? `;TZID=${tz}` : ''}:${fmt(end)}`);
               lines.push(`SUMMARY:${(ev.name || '').replace(/\n/g,'\\n')}`);
               if (ev.description) lines.push(`DESCRIPTION:${(ev.description || '').replace(/\n/g,'\\n')}`);
               if (ev.location) lines.push(`LOCATION:${(ev.location || '').replace(/\n/g,'\\n')}`);
