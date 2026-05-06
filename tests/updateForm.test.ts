@@ -370,35 +370,41 @@ describe('updateForm Function', () => {
     // Save original env vars
     const originalClientId = process.env.SF_CLIENT_ID;
     const originalClientSecret = process.env.SF_CLIENT_SECRET;
+    const originalLoginUrl = process.env.SF_LOGIN_URL;
 
-    // Simulate authenticate failing due to missing credentials
-    mockSalesforceService.authenticate.mockRejectedValue(new Error('Missing Salesforce credentials'));
-    // Clear env vars
-    delete process.env.SF_CLIENT_ID;
-    delete process.env.SF_CLIENT_SECRET;
+    try {
+      // Simulate authenticate failing due to missing credentials
+      mockSalesforceService.authenticate.mockRejectedValue(new Error('Missing Salesforce credentials'));
+      // Clear env vars
+      delete process.env.SF_CLIENT_ID;
+      delete process.env.SF_CLIENT_SECRET;
+      delete process.env.SF_LOGIN_URL;
 
-    const mockRequest = {
-      method: 'POST',
-      json: jest.fn().mockResolvedValue({
-        formId: 'form-123',
-        FirstName__c: 'John',
-      }),
-      headers: {
-        get: jest.fn(),
-      },
-      query: {
-        get: jest.fn(),
-      },
-    } as any;
+      const mockRequest = {
+        method: 'POST',
+        json: jest.fn().mockResolvedValue({
+          formId: 'form-123',
+          FirstName__c: 'John',
+        }),
+        headers: {
+          get: jest.fn(),
+        },
+        query: {
+          get: jest.fn(),
+        },
+      } as any;
 
-    const response = await updateFormHandler(mockRequest, mockContext);
+      const response = await updateFormHandler(mockRequest, mockContext);
 
-    expect(response.status).toBe(500);
-    const responseBody = JSON.parse(response.body as string);
-    expect(responseBody.error).toContain('Missing Salesforce credentials');
-
-    // Restore env vars
-    if (originalClientId) process.env.SF_CLIENT_ID = originalClientId;
-    if (originalClientSecret) process.env.SF_CLIENT_SECRET = originalClientSecret;
+      expect(response.status).toBe(500);
+      const responseBody = JSON.parse(response.body as string);
+      expect(responseBody.error).toContain('Missing Salesforce credentials');
+    } finally {
+      process.env.SF_CLIENT_ID = originalClientId ?? 'test-client-id';
+      process.env.SF_CLIENT_SECRET = originalClientSecret ?? 'test-client-secret';
+      process.env.SF_LOGIN_URL = originalLoginUrl ?? 'https://login.salesforce.com';
+      mockSalesforceService.authenticate.mockReset();
+      mockSalesforceService.authenticate.mockResolvedValue(undefined);
+    }
   });
 });
