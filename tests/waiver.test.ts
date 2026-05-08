@@ -19,6 +19,8 @@ describe('waiver.js frontend logic', () => {
     global.fetch = jest.fn().mockResolvedValue({
       json: () => Promise.resolve([]),
     });
+    // jsdom does not implement scrollTo, so stub it out for navigation helpers
+    global.scrollTo = jest.fn();
   });
 
   it('loads without throwing and registers modal helpers', () => {
@@ -75,5 +77,24 @@ describe('waiver.js frontend logic', () => {
     // value should be cleared for new instance
     expect(document.querySelector('.ri-modal #waiver-app input[name="FirstName__c"]').value).toBe('');
     second.close();
+  });
+
+  it('renders the photo release consent checkbox in the waiver form', () => {
+    require('../public/waiver.js');
+    const modal = window.openModal({
+      onOpen(container) {
+        if (window.__ri_waiver) {
+          window.__ri_waiver.hostOverride = container;
+          window.__ri_waiver.resetState();
+          window.__ri_waiver.render();
+        }
+      }
+    });
+
+    // jump to the Signatures & Consents step where the photo release consent is shown
+    window.goToStep(2);
+
+    expect(document.querySelector('.ri-modal #waiver-app input[name="PhotoRelease__c"]')).toBeTruthy();
+    modal.close();
   });
 });

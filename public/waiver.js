@@ -173,7 +173,7 @@
         'TransportationConsentSignature__c', 'TransportationConsentDate__c',
         
         // Consents
-        'EmailUpdatesConsent__c', 'TransportationConsent__c',
+        'EmailUpdatesConsent__c', 'TransportationConsent__c', 'PhotoRelease__c',
       ],
       queryFields: [
         'Id', 'FormCode__c', 'ParentFirstName__c', 'ParentLastName__c', 'FirstName__c', 'LastName__c', 'Email__c',
@@ -337,6 +337,13 @@
               type: 'checkbox', 
               required: true,
               text: 'I give my permission for my child to ride in any vehicle designated by "The Nations Next Door" adult employees and adult volunteers while participating in "The Nations Next Door" summer events.'
+            },
+            {
+              key: 'PhotoRelease__c',
+              label: 'Photo Release Consent',
+              type: 'checkbox',
+              required: true,
+              text: 'I grant Refuge International permission to use photographs and images of me (or my child) for promotional, outreach, educational, and organizational purposes.'
             },
             { 
               key: 'EmailUpdatesConsent__c', 
@@ -830,6 +837,10 @@
 
             <div class="waiver-row waiver-row--consent">
               ${renderField(currentStep.fields.find(f => f.key === 'TransportationConsent__c'))}
+            </div>
+
+            <div class="waiver-row waiver-row--consent">
+              ${renderField(currentStep.fields.find(f => f.key === 'PhotoRelease__c'))}
             </div>
 
             <div class="waiver-row waiver-row--consent">
