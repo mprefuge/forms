@@ -12,7 +12,7 @@ window.REGISTRATION_FORM_CONFIGS['Spring 2026 - Farmdale ESL Network Registratio
       farmdaleEslRegistrationSubtitle: 'Inscripción abierta para el semestre de primavera de 2026\nDel 11 de abril al 6 de junio (Sábados)\nHay servicio de guardería disponible (para niños que ya controlan sus esfínteres y mayores).\n¿Preguntas? Llame o envíe un mensaje de texto a Joseph al: 407-883-4417',
     },
   },
-  NotificationEmail: 'sweber9990@gmail.com',
+  NotificationEmail: 'sweber9990@gmail.com;farmdalecoffee@gmail.com',
   Images: [
     {
       src: 'https://www.jotform.com/uploads/Foushee_Kathy/form_files/coffee%20logo.641d2680802767.02034693.PNG',
