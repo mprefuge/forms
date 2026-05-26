@@ -13,7 +13,9 @@ window.REGISTRATION_FORMS = {
     student: 'Student Registration',
     'student-registration': 'Student Registration',
     volunteer: 'Volunteer Registration',
-    'volunteer-registration': 'Volunteer Registration'
+    'volunteer-registration': 'Volunteer Registration',
+    hospitality: 'Hospitality Guide',
+    'hospitality-guide': 'Hospitality Guide'
   },
   forms: {
     'Generic Contact': 'registration-configs/generic-contact.js',
@@ -21,6 +23,7 @@ window.REGISTRATION_FORMS = {
     'ESL Network Registration': 'registration-configs/esl-network-registration.js',
     'Spring 2026 - Farmdale ESL Network Registration': 'registration-configs/esl-network-registration-farmdale.js',
     'Student Registration': 'registration-configs/student-registration.js',
-    'Volunteer Registration': 'registration-configs/volunteer-registration.js'
+    'Volunteer Registration': 'registration-configs/volunteer-registration.js',
+    'Hospitality Guide': 'registration-configs/hospitality-guide.js'
   }
 };

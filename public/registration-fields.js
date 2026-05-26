@@ -11,6 +11,8 @@ window.REGISTRATION_FIELDS = [
   { Name: 'Zip', Type: 'String', LabelKey: 'zip', SalesforceID: 'Zip__c' },
   { Name: 'Country', Type: 'String', LabelKey: 'country', SalesforceID: 'Country__c' },
   { Name: 'Location', Type: 'String', LabelKey: 'location', UseCustomData: true },
+  { Name: 'Church', Type: 'String', LabelKey: 'church', UseCustomData: true },
+  { Name: 'Role', Type: 'String', LabelKey: 'role', UseCustomData: true },
   { Name: 'Type', Type: 'Hidden', UseCustomData: true, Hidden: true },
   { Name: 'HowHeard', Type: 'String', LabelKey: 'howHeard', PlaceholderKey: 'howHeardPlaceholder', UseCustomData: true },
   {

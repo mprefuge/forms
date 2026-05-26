@@ -68,6 +68,25 @@ describe('registration.js frontend logic', () => {
     expect(window.__ri_registration.getActiveFormType()).toBe('Event Registration');
   });
 
+  it('loads the hospitality guide form with requested fields', async () => {
+    window.history.replaceState({}, '', 'http://localhost/public/registration.html?type=hospitality-guide');
+    loadCore();
+    require('../public/registration-configs/hospitality-guide.js');
+    require('../public/registration.js');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(document.querySelector('.ri-title')?.textContent).toBe('Hospitality Guide');
+    expect(document.querySelector('input[name="FirstName__c"]')).toBeTruthy();
+    expect(document.querySelector('input[name="LastName__c"]')).toBeTruthy();
+    expect(document.querySelector('input[name="Email__c"]')).toBeTruthy();
+    expect(document.querySelector('input[name="Church"]')).toBeTruthy();
+    expect(document.querySelector('input[name="Role"]')).toBeTruthy();
+    expect(document.querySelector('input[type="checkbox"]')).toBeTruthy();
+    expect(document.querySelector('button.ri-btn-primary')?.textContent).toBe('Submit Registration');
+    expect(window.__ri_registration.getActiveFormType()).toBe('Hospitality Guide');
+  });
+
   it('renders form images when a form config provides them', async () => {
     window.history.replaceState({}, '', 'http://localhost/public/registration.html?type=farmdale-esl');
     loadCore();
