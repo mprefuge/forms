@@ -112,6 +112,13 @@ export interface FormConfig {
     applicationSubmitted?: EmailTemplate;
     [customTemplate: string]: EmailTemplate | undefined;
   };
+
+  // Mailchimp sync configuration
+  mailchimp?: {
+    enabled?: boolean;
+    audienceId?: string;
+    tags?: string[] | string;
+  };
   
   // Advanced Features
   features?: {

@@ -8,12 +8,14 @@ import { testFormConfig } from './testFormConfig';
 jest.mock('jsforce');
 jest.mock('../src/services/salesforceService');
 jest.mock('../src/services/emailService');
+jest.mock('../src/services/mailchimpService');
 
 describe('createForm HTTP Function', () => {
   let mockRequest: any;
   let mockContext: any;
   let mockSalesforceService: jest.Mocked<SalesforceService>;
   let mockEmailService: any;
+  let mockMailchimpService: any;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -66,8 +68,16 @@ describe('createForm HTTP Function', () => {
       generateEventCalendarData: jest.fn().mockReturnValue({ googleUrl: 'https://calendar.google.com/', icsDataUri: 'data:text/calendar,', icsUrl: 'http://ics', outlookUrl: 'http://outlook', appleIcsUrl: 'http://apple' })
     };
 
+    mockMailchimpService = {
+      isConfigured: jest.fn().mockReturnValue(true),
+      upsertSubscriber: jest.fn().mockResolvedValue(undefined),
+    };
+
     const { EmailService } = require('../src/services/emailService');
     (EmailService as jest.MockedClass<any>).mockImplementation(() => mockEmailService);
+
+    const { MailchimpService } = require('../src/services/mailchimpService');
+    (MailchimpService as jest.MockedClass<any>).mockImplementation(() => mockMailchimpService);
 
     (SalesforceService as jest.MockedClass<typeof SalesforceService>).mockImplementation(
       () => mockSalesforceService
@@ -133,6 +143,14 @@ describe('createForm HTTP Function', () => {
       const responseBody = JSON.parse(response.body);
       expect(responseBody.id).toBe('form-id-12345');
       expect(responseBody.formCode).toBe('abc12');
+
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(mockMailchimpService.upsertSubscriber).toHaveBeenCalledWith(
+        expect.objectContaining({
+          email: 'john@example.com',
+        })
+      );
     });
 
     it('should send a New Registration notification to the form-configured recipient with submitted details', async () => {
@@ -215,6 +233,9 @@ describe('createForm HTTP Function', () => {
         lastName: 'User',
         hasOptedOut: true // because ReceiveUpdates: false
       }));
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(mockMailchimpService.upsertSubscriber).not.toHaveBeenCalled();
     });
 
     it('should update existing Contact opt-out preference when match found', async () => {
@@ -662,6 +683,37 @@ describe('createForm HTTP Function', () => {
       } else {
         expect(foundCall).toBe(true);
       }
+    });
+
+    it('should sync to Mailchimp on update when registrant opts in', async () => {
+      mockRequest = {
+        method: 'POST',
+        headers: {
+          get: jest.fn().mockReturnValue('mailchimp-update-request-id'),
+        },
+        json: jest.fn().mockResolvedValue({
+          FormCode__c: 'abc12',
+          FirstName__c: 'John',
+          LastName__c: 'Doe',
+          Email__c: 'john.update@example.com',
+          ReceiveUpdates: true,
+          __formConfig: testFormConfig,
+        }),
+      };
+
+      process.env.SF_CLIENT_ID = 'test-client-id';
+      process.env.SF_CLIENT_SECRET = 'test-client-secret';
+
+      const response = await createForm(mockRequest, mockContext);
+
+      expect(response.status).toBe(200);
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(mockMailchimpService.upsertSubscriber).toHaveBeenCalledWith(
+        expect.objectContaining({
+          email: 'john.update@example.com',
+        })
+      );
     });
   });
 

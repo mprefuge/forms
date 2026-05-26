@@ -1,6 +1,7 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
 import { SalesforceService } from '../../services/salesforceService';
 import { Logger } from '../../services/logger';
+import { MailchimpService } from '../../services/mailchimpService';
 import { initializeFormRegistry, getFormConfig } from '../../config/FormConfigLoader';
 import { convertToSalesforceFormat, filterAllowedFields } from '../../config/FormConfigUtils';
 import { EmailTemplate } from '../../services/emailService';
@@ -305,6 +306,40 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
           .filter(Boolean);
       };
 
+      const parseBooleanFlag = (value: any): boolean | null => {
+        if (typeof value === 'boolean') return value;
+        if (typeof value === 'number') return value !== 0;
+        if (typeof value === 'string') {
+          const normalized = value.trim().toLowerCase();
+          if (['true', '1', 'yes', 'on'].includes(normalized)) return true;
+          if (['false', '0', 'no', 'off'].includes(normalized)) return false;
+        }
+        return null;
+      };
+
+      const resolveReceiveUpdatesValue = (primaryData: any, secondaryData?: any): boolean => {
+        const raw =
+          primaryData?.ReceiveUpdates ??
+          primaryData?.receiveUpdates ??
+          secondaryData?.ReceiveUpdates ??
+          secondaryData?.receiveUpdates;
+        const parsed = parseBooleanFlag(raw);
+        return parsed === true;
+      };
+
+      const resolveMailchimpTags = (resolvedFormConfig: any): string[] => {
+        const source = resolvedFormConfig?.mailchimp?.tags;
+        if (!source) return [];
+        if (Array.isArray(source)) return source.map((tag: any) => String(tag).trim()).filter(Boolean);
+        if (typeof source === 'string') {
+          return source
+            .split(',')
+            .map((tag: string) => tag.trim())
+            .filter(Boolean);
+        }
+        return [];
+      };
+
       const getNotificationRecipients = (submissionData: any, resolvedFormConfig: any): string[] => {
         const customFieldSources = [
           submissionData?.NotificationEmails,
@@ -564,6 +599,64 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
         await salesforceService.createNotes(resolvedFormId, notes);
         logger.info('Notes created successfully');
       }
+
+      // Sync opted-in registrants to Mailchimp in the background (non-blocking).
+      (async () => {
+        try {
+          const hasMapping = formConfig.salesforceMapping && Object.keys(formConfig.salesforceMapping).length > 0;
+          const emailSfField = hasMapping ? (formConfig.salesforceMapping['Email'] || 'Email__c') : 'Email__c';
+          const firstNameSfField = hasMapping ? (formConfig.salesforceMapping['FirstName'] || 'FirstName__c') : 'FirstName__c';
+          const lastNameSfField = hasMapping ? (formConfig.salesforceMapping['LastName'] || 'LastName__c') : 'LastName__c';
+
+          const optedIn = resolveReceiveUpdatesValue(updateFields, formData);
+          if (!optedIn) {
+            logger.debug('Registrant not opted in for updates; skipping Mailchimp sync (update)', { formId: resolvedFormId });
+            return;
+          }
+
+          const email = (updateFields['Email'] || updateFields[emailSfField] || formData['Email'] || formData[emailSfField] || '').toString().trim();
+          if (!email) {
+            logger.debug('No email found for Mailchimp sync (update), skipping', { formId: resolvedFormId });
+            return;
+          }
+
+          const firstName = (
+            updateFields['FirstName'] ||
+            updateFields[firstNameSfField] ||
+            formData['FirstName'] ||
+            formData[firstNameSfField] ||
+            ''
+          ).toString();
+          const lastName = (
+            updateFields['LastName'] ||
+            updateFields[lastNameSfField] ||
+            formData['LastName'] ||
+            formData[lastNameSfField] ||
+            ''
+          ).toString();
+
+          const mailchimpService = new MailchimpService({
+            enabled: formConfig?.mailchimp?.enabled !== false,
+            audienceId: formConfig?.mailchimp?.audienceId,
+            defaultTags: resolveMailchimpTags(formConfig),
+          });
+
+          if (!mailchimpService.isConfigured()) {
+            logger.debug('Mailchimp is not configured; skipping sync (update)', { formId: resolvedFormId });
+            return;
+          }
+
+          await mailchimpService.upsertSubscriber({
+            email,
+            firstName,
+            lastName,
+          });
+
+          logger.info('Registrant synced to Mailchimp (update)', { formId: resolvedFormId, email });
+        } catch (e: any) {
+          logger.error('Failed to sync registrant to Mailchimp (update)', e, { formId: resolvedFormId, errorMessage: e?.message });
+        }
+      })().catch(() => {});
 
       // Send email in background (non-blocking) if explicitly requested via __sendEmail flag
       if (sendEmail) {
@@ -1053,6 +1146,65 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
       }
     })();
     parallelOperations.push(emailPromise);
+
+    // Sync opted-in registrants to Mailchimp (parallel, non-blocking)
+    const mailchimpPromise = (async () => {
+      try {
+        const hasMapping = formConfig.salesforceMapping && Object.keys(formConfig.salesforceMapping).length > 0;
+        const emailSfField = hasMapping ? (formConfig.salesforceMapping['Email'] || 'Email__c') : 'Email__c';
+        const firstNameSfField = hasMapping ? (formConfig.salesforceMapping['FirstName'] || 'FirstName__c') : 'FirstName__c';
+        const lastNameSfField = hasMapping ? (formConfig.salesforceMapping['LastName'] || 'LastName__c') : 'LastName__c';
+
+        const optedIn = resolveReceiveUpdatesValue(filteredData, formData);
+        if (!optedIn) {
+          logger.debug('Registrant not opted in for updates; skipping Mailchimp sync (create)', { formId: createdFormId });
+          return;
+        }
+
+        const email = (filteredData['Email'] || filteredData[emailSfField] || formData['Email'] || formData[emailSfField] || '').toString().trim();
+        if (!email) {
+          logger.debug('No email found for Mailchimp sync (create), skipping', { formId: createdFormId });
+          return;
+        }
+
+        const firstName = (
+          filteredData['FirstName'] ||
+          filteredData[firstNameSfField] ||
+          formData['FirstName'] ||
+          formData[firstNameSfField] ||
+          ''
+        ).toString();
+        const lastName = (
+          filteredData['LastName'] ||
+          filteredData[lastNameSfField] ||
+          formData['LastName'] ||
+          formData[lastNameSfField] ||
+          ''
+        ).toString();
+
+        const mailchimpService = new MailchimpService({
+          enabled: formConfig?.mailchimp?.enabled !== false,
+          audienceId: formConfig?.mailchimp?.audienceId,
+          defaultTags: resolveMailchimpTags(formConfig),
+        });
+
+        if (!mailchimpService.isConfigured()) {
+          logger.debug('Mailchimp is not configured; skipping sync (create)', { formId: createdFormId });
+          return;
+        }
+
+        await mailchimpService.upsertSubscriber({
+          email,
+          firstName,
+          lastName,
+        });
+
+        logger.info('Registrant synced to Mailchimp (create)', { formId: createdFormId, email });
+      } catch (e: any) {
+        logger.error('Failed to sync registrant to Mailchimp (create)', e, { formId: createdFormId, errorMessage: e?.message });
+      }
+    })();
+    parallelOperations.push(mailchimpPromise);
 
     // Send submission notification email (parallel, non-blocking)
     const submissionNotificationPromise = (async () => {

@@ -98,6 +98,18 @@ Open the test pages in your browser:
 | `SF_CLIENT_SECRET` | Salesforce Connected App Consumer Secret | `16C092610...` |
 | `AZURE_COMMUNICATION_CONNECTION_STRING` | Azure Communication Services connection string | `endpoint=https://...;accesskey=...` |
 | `EMAIL_FROM` | Verified sender email address | `noreply@yourdomain.com` |
+| `MAILCHIMP_API_KEY` | Mailchimp API key used for list sync | `xxxx-us21` |
+| `MAILCHIMP_AUDIENCE_ID` | Mailchimp Audience/List ID for opted-in registrants | `a1b2c3d4e5` |
+
+### Optional Mailchimp Variables
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `MAILCHIMP_SERVER_PREFIX` | Data center prefix if not inferred from API key | `us21` |
+| `MAILCHIMP_TAGS` | Comma-separated default tags applied to synced members | `forms,registration` |
+| `MAILCHIMP_DOUBLE_OPT_IN` | Send new members as pending instead of subscribed (`true`/`false`) | `true` |
+
+When `ReceiveUpdates` is `true`, new and updated registrants are automatically upserted into Mailchimp. Sync is non-blocking: form submission succeeds even if Mailchimp is unavailable.
 
 ### Salesforce Setup
 
