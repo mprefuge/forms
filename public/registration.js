@@ -449,7 +449,12 @@
       }
       payload.__formConfig = {
         ...FORM_CONFIG,
-        name: activeFormName,
+        name: getFormTitle() || activeFormName,
+        salesforce: {
+          ...FORM_CONFIG.salesforce,
+          recordTypeName: activeFormConfig?.RecordTypeName || FORM_CONFIG.salesforce.recordTypeName,
+          campaignRecordTypeName: activeFormConfig?.CampaignRecordTypeName || FORM_CONFIG.salesforce.campaignRecordTypeName,
+        },
       };
       payload.__sendEmail = true;
       payload.__emailTemplates = EMAIL_TEMPLATES;

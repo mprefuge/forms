@@ -2,6 +2,7 @@ window.REGISTRATION_FORM_CONFIGS = window.REGISTRATION_FORM_CONFIGS || {};
 window.REGISTRATION_FORM_CONFIGS['Hospitality Guide'] = {
   TitleKey: 'hospitalityGuideTitle',
   SubtitleKey: 'hospitalityGuideSubtitle',
+  RecordTypeName: 'Event Registration',
   Translations: {
     en: {
       hospitalityGuideTitle: 'Hospitality Guide',
