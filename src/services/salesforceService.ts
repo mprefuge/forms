@@ -300,6 +300,33 @@ export class SalesforceService {
     return host.replace(/\/$/, '') + '/api/form';
   }
 
+  private resolveRecordName(formData: { [key: string]: any }, formConfig: FormConfig | undefined, recordTypeName: string): string | undefined {
+    const explicitName = typeof formData?.Name === 'string' ? formData.Name.trim() : '';
+    if (explicitName) return explicitName;
+
+    const formDisplayName = [
+      formConfig?.name,
+      formData?.Type,
+      formData?.Type__c,
+      formData?.FormType,
+      formData?.FormType__c,
+    ]
+      .map((value) => (typeof value === 'string' ? value.trim() : ''))
+      .find((value) => Boolean(value));
+
+    const normalizedRecordType = String(recordTypeName || '').trim();
+    const normalizedFormName = String(formDisplayName || '').trim();
+
+    if (normalizedRecordType && normalizedFormName) {
+      if (normalizedRecordType.toLowerCase() === normalizedFormName.toLowerCase()) {
+        return normalizedRecordType;
+      }
+      return `${normalizedRecordType} - ${normalizedFormName}`;
+    }
+
+    return normalizedFormName || normalizedRecordType || undefined;
+  }
+
   /**
    * Create a form record. Requires FormConfig to specify which fields to write.
    * All field specifications come from the form configuration.
@@ -327,6 +354,15 @@ export class SalesforceService {
     // Get field metadata from Salesforce schema
     const describedFields = await this.describeFormFields(formConfig);
     const fieldMetaMap = new Map(describedFields.map(f => [f.name, f]));
+
+    // Set an explicit record title when the Name field is writable.
+    const nameFieldMeta: any = fieldMetaMap.get('Name');
+    if (nameFieldMeta?.createable === true) {
+      const resolvedName = this.resolveRecordName(formData as { [key: string]: any }, formConfig, String(recordTypeRecord_Name || ''));
+      if (resolvedName) {
+        recordTypeRecord.Name = resolvedName;
+      }
+    }
 
     // Copy only allowed fields from input data.
     // If a FormConfig is provided, use its allowedFields list; otherwise, accept any fields present in the incoming data that

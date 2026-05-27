@@ -29,7 +29,7 @@ describe('SalesforceService - default RecordType behavior', () => {
     expect(result.formCode).toMatch(/^[a-z0-9]{5}$/);
   });
 
-  it('overrides provided Name with generated GUID', async () => {
+  it('sets Name as record type plus form name when Name is createable', async () => {
     const sf = new SalesforceService({ loginUrl: 'https://login.salesforce.com', clientId: 'id', clientSecret: 'secret' });
 
     jest.spyOn(sf as any, 'getRecordTypeId').mockResolvedValue('rt-general-id');
@@ -38,15 +38,37 @@ describe('SalesforceService - default RecordType behavior', () => {
     (sf as any).connection = {
       sobject: jest.fn().mockReturnValue({
         create: createMock,
-        describe: jest.fn().mockResolvedValue({ fields: [] }),
+        describe: jest.fn().mockResolvedValue({
+          fields: [
+            { name: 'Name', createable: true },
+          ],
+        }),
       }),
       query: jest.fn().mockResolvedValue({ records: [] }),
     } as any;
 
-    const result = await (sf as any).createForm({ Name: 'Test Name 1766244308895', FormCode__c: 'supplied' }, 'req-3');
+    const result = await (sf as any).createForm(
+      { Type: 'Hospitality Guide', FormCode__c: 'supplied' },
+      'req-3',
+      {
+        id: 'registration',
+        name: 'Hospitality Guide',
+        version: '1.0.0',
+        defaultPhase: 'main',
+        phases: { main: { name: 'Main', steps: [] } },
+        fieldMetadata: {},
+        salesforceMapping: {},
+        salesforce: {
+          objectName: 'Form__c',
+          recordTypeName: 'Registration',
+          allowedFields: [],
+        },
+      } as any
+    );
 
     expect(createMock).toHaveBeenCalled();
     const createdObj = createMock.mock.calls[0][0];
+    expect(createdObj.Name).toBe('Registration - Hospitality Guide');
     expect(createdObj.FormCode__c).toMatch(/^[a-z0-9]{5}$/);
     expect(result.formCode).toMatch(/^[a-z0-9]{5}$/);
   });
