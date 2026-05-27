@@ -434,7 +434,12 @@
 
     try {
       const payload = buildPayload();
-      payload.CurrentStatus__c = 'Submitted';
+      const submissionStatus = activeFormConfig && Object.prototype.hasOwnProperty.call(activeFormConfig, 'SubmissionStatus')
+        ? activeFormConfig.SubmissionStatus
+        : 'Submitted';
+      if (typeof submissionStatus === 'string' && submissionStatus.trim()) {
+        payload.CurrentStatus__c = submissionStatus.trim();
+      }
       const campaignId = getParam('campaignId') || getParam('eventId') || '';
       if (campaignId) {
         payload.__eventId = campaignId;
