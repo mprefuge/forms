@@ -294,7 +294,7 @@
     FirstName: { label: "First Name", type: "text", required: true },
     LastName: { label: "Last Name", type: "text", required: true },
     Email: { label: "Email", type: "email", required: true },
-    ReceiveUpdates: { label: "I agree to receive periodic updates from Refuge International", type: "checkbox", required: false },
+    ReceiveUpdates: { label: "I would like to receive news and updates about Refuge International!", type: "checkbox", required: false },
     Phone: { label: "Phone", type: "tel", required: true },
     Gender: { label: "Gender", type: "select", options: ["Male","Female"], required: true },
     MaritalStatus: { label: "Marital Status", type: "select", options: [], required: false },

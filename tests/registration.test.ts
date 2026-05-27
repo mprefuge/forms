@@ -83,7 +83,7 @@ describe('registration.js frontend logic', () => {
     expect(document.querySelector('input[name="Church"]')).toBeTruthy();
     expect(document.querySelector('input[name="Role"]')).toBeTruthy();
     expect(document.querySelector('input[type="checkbox"]')).toBeTruthy();
-    expect(document.querySelector('button.ri-btn-primary')?.textContent).toBe('Submit Registration');
+    expect(document.querySelector('button.ri-btn-primary')?.textContent).toBe('Submit');
     expect(window.__ri_registration.getActiveFormType()).toBe('Hospitality Guide');
   });
 

@@ -281,7 +281,7 @@
     FirstName: { label: "First Name", type: "text", required: true },
     LastName: { label: "Last Name", type: "text", required: true },
     Email: { label: "Email", type: "email", required: true },
-    ReceiveUpdates: { label: "I agree to receive periodic updates from Refuge International", type: "checkbox", required: false },
+    ReceiveUpdates: { label: "I would like to receive news and updates about Refuge International!", type: "checkbox", required: false },
     Phone: { label: "Phone", type: "tel", required: true },
     Street: { label: "Street Address", type: "text", required: false },
     City: { label: "City", type: "text", required: false },

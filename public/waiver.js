@@ -350,7 +350,7 @@
               label: 'Email Updates Consent', 
               type: 'checkbox', 
               required: false,
-              text: 'By signing this form, I agree to receive periodic updates from Refuge International.'
+              text: 'By signing this form, I would like to receive news and updates about Refuge International!.'
             },
           ]
         }
