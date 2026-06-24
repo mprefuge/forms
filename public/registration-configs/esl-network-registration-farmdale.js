@@ -5,11 +5,11 @@ window.REGISTRATION_FORM_CONFIGS['Spring 2026 - Farmdale ESL Network Registratio
   Translations: {
     en: {
       farmdaleEslRegistrationTitle: 'COFFEE Farmdale Baptist Church / Iglesia Bautista Gracia y Verdad',
-      farmdaleEslRegistrationSubtitle: 'Spring Semester 2026 Registration open\nApril 11 - June 6 (Saturdays)\nChildcare available (for potty-trained and older) children.\nQuestions? Call or text Joseph at: 407-883-4417',
+      farmdaleEslRegistrationSubtitle: 'Summer Semester 2026 Registration open\nJuly 11 - September 5 (Saturdays)\nChildcare available (for potty-trained and older) children.\nQuestions? Call or text Joseph at: 407-883-4417',
     },
     es: {
       farmdaleEslRegistrationTitle: 'COFFEE Farmdale Baptist Church / Iglesia Bautista Gracia y Verdad',
-      farmdaleEslRegistrationSubtitle: 'Inscripción abierta para el semestre de primavera de 2026\nDel 11 de abril al 6 de junio (Sábados)\nHay servicio de guardería disponible (para niños que ya controlan sus esfínteres y mayores).\n¿Preguntas? Llame o envíe un mensaje de texto a Joseph al: 407-883-4417',
+      farmdaleEslRegistrationSubtitle: 'Inscripción abierta para el semestre de primavera de 2026\nDel 11 de julio al 5 de septiembre (Sábados)\nHay servicio de guardería disponible (para niños que ya controlan sus esfínteres y mayores).\n¿Preguntas? Llame o envíe un mensaje de texto a Joseph al: 407-883-4417',
     },
   },
   NotificationEmail: 'sweber9990@gmail.com;farmdalecoffee@gmail.com',
