@@ -49,6 +49,20 @@ window.REGISTRATION_FIELDS = [
       { Value: 'No', LabelKey: 'no' }
     ]
   },
+  { Name: 'PhoneOptional', Type: 'Phone', LabelKey: 'phone', SalesforceID: 'Phone__c' },
+  { Name: 'WhyLearnEnglish', Type: 'TextArea', LabelKey: 'whyLearnEnglish', UseCustomData: true },
+  { Name: 'OriginAndFirstLanguage', Type: 'String', LabelKey: 'originAndFirstLanguage', UseCustomData: true },
+  {
+    Name: 'Gender',
+    Type: 'Dropdown',
+    LabelKey: 'gender',
+    UseCustomData: true,
+    Values: [
+      { Value: '', LabelKey: 'selectOption' },
+      { Value: 'Male', LabelKey: 'optionMale' },
+      { Value: 'Female', LabelKey: 'optionFemale' }
+    ]
+  },
   { Name: 'Comments', Type: 'TextArea', LabelKey: 'comments', PlaceholderKey: 'commentsPlaceholder', SalesforceID: 'Comments__c' },
   { Name: 'ReceiveUpdates', Type: 'Boolean', LabelKey: 'receiveUpdates' },
   { Name: 'CustomData', Type: 'JSON', SalesforceID: 'Custom__c', Hidden: true }
