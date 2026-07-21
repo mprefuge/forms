@@ -455,6 +455,7 @@
       payload.__formConfig = {
         ...FORM_CONFIG,
         name: getFormTitle() || activeFormName,
+        formFields: Array.isArray(activeFormConfig && activeFormConfig.Fields) ? activeFormConfig.Fields : [],
         salesforce: {
           ...FORM_CONFIG.salesforce,
           recordTypeName: activeFormConfig?.RecordTypeName || FORM_CONFIG.salesforce.recordTypeName,

@@ -327,6 +327,17 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
         return parsed === true;
       };
 
+      // Only honor a ReceiveUpdates opt-in when the form actually presents that field.
+      // Some forms (e.g. certain registration variants) omit the opt-in checkbox but the
+      // client still carries a default ReceiveUpdates value in its state; without this
+      // guard those submissions would be silently synced to Mailchimp. When the form config
+      // does not declare its visible field list, preserve the previous behavior.
+      const isReceiveUpdatesFieldConfigured = (resolvedFormConfig: any): boolean => {
+        const declaredFields = resolvedFormConfig?.formFields;
+        if (!Array.isArray(declaredFields)) return true;
+        return declaredFields.some((field: any) => String(field) === 'ReceiveUpdates');
+      };
+
       const resolveMailchimpTags = (resolvedFormConfig: any): string[] => {
         const source = resolvedFormConfig?.mailchimp?.tags;
         if (!source) return [];
@@ -607,6 +618,11 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
           const emailSfField = hasMapping ? (formConfig.salesforceMapping['Email'] || 'Email__c') : 'Email__c';
           const firstNameSfField = hasMapping ? (formConfig.salesforceMapping['FirstName'] || 'FirstName__c') : 'FirstName__c';
           const lastNameSfField = hasMapping ? (formConfig.salesforceMapping['LastName'] || 'LastName__c') : 'LastName__c';
+
+          if (!isReceiveUpdatesFieldConfigured(formConfig)) {
+            logger.debug('ReceiveUpdates is not a configured field for this form; skipping Mailchimp sync (update)', { formId: resolvedFormId });
+            return;
+          }
 
           const optedIn = resolveReceiveUpdatesValue(updateFields, formData);
           if (!optedIn) {
@@ -1154,6 +1170,11 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
         const emailSfField = hasMapping ? (formConfig.salesforceMapping['Email'] || 'Email__c') : 'Email__c';
         const firstNameSfField = hasMapping ? (formConfig.salesforceMapping['FirstName'] || 'FirstName__c') : 'FirstName__c';
         const lastNameSfField = hasMapping ? (formConfig.salesforceMapping['LastName'] || 'LastName__c') : 'LastName__c';
+
+        if (!isReceiveUpdatesFieldConfigured(formConfig)) {
+          logger.debug('ReceiveUpdates is not a configured field for this form; skipping Mailchimp sync (create)', { formId: createdFormId });
+          return;
+        }
 
         const optedIn = resolveReceiveUpdatesValue(filteredData, formData);
         if (!optedIn) {

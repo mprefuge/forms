@@ -153,6 +153,83 @@ describe('createForm HTTP Function', () => {
       );
     });
 
+    it('should not sync to Mailchimp when ReceiveUpdates is not a configured form field', async () => {
+      mockRequest = {
+        method: 'POST',
+        headers: {
+          get: (header: string) => {
+            if (header === 'X-Request-Id') return 'no-optin-field-request-id';
+            return null;
+          },
+        },
+        json: jest.fn().mockResolvedValue({
+          FirstName__c: 'John',
+          LastName__c: 'Doe',
+          Email__c: 'john@example.com',
+          RecordType: 'Registration',
+          // Client carries a default ReceiveUpdates value even though the form never
+          // presented the opt-in checkbox for this configuration.
+          ReceiveUpdates: true,
+          __formConfig: {
+            ...testFormConfig,
+            // Declared visible fields intentionally omit ReceiveUpdates.
+            formFields: ['FirstName', 'LastName', 'Email', 'Phone'],
+          },
+        }),
+      };
+
+      process.env.SF_CLIENT_ID = 'test-client-id';
+      process.env.SF_CLIENT_SECRET = 'test-client-secret';
+      process.env.SF_LOGIN_URL = 'https://login.salesforce.com';
+
+      const response = await createForm(mockRequest, mockContext);
+
+      expect(response.status).toBe(201);
+
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(mockMailchimpService.upsertSubscriber).not.toHaveBeenCalled();
+    });
+
+    it('should sync to Mailchimp when ReceiveUpdates is a configured form field and opted in', async () => {
+      mockRequest = {
+        method: 'POST',
+        headers: {
+          get: (header: string) => {
+            if (header === 'X-Request-Id') return 'optin-field-request-id';
+            return null;
+          },
+        },
+        json: jest.fn().mockResolvedValue({
+          FirstName__c: 'John',
+          LastName__c: 'Doe',
+          Email__c: 'john@example.com',
+          RecordType: 'Registration',
+          ReceiveUpdates: true,
+          __formConfig: {
+            ...testFormConfig,
+            formFields: ['FirstName', 'LastName', 'Email', 'ReceiveUpdates'],
+          },
+        }),
+      };
+
+      process.env.SF_CLIENT_ID = 'test-client-id';
+      process.env.SF_CLIENT_SECRET = 'test-client-secret';
+      process.env.SF_LOGIN_URL = 'https://login.salesforce.com';
+
+      const response = await createForm(mockRequest, mockContext);
+
+      expect(response.status).toBe(201);
+
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(mockMailchimpService.upsertSubscriber).toHaveBeenCalledWith(
+        expect.objectContaining({
+          email: 'john@example.com',
+        })
+      );
+    });
+
     it('should send a New Registration notification to the form-configured recipient with submitted details', async () => {
       delete process.env.AdminEmail;
       delete process.env.ADMIN_EMAIL;

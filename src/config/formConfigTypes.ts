@@ -96,6 +96,11 @@ export interface FormConfig {
   phases: { [phaseKey: string]: FormPhase }; // Keyed by phase ID
   defaultPhase: string; // Which phase to start with
   
+  // Visible field keys declared by the form (as presented to the user). Sent by some
+  // clients so the backend can distinguish fields the form actually showed (e.g. the
+  // ReceiveUpdates opt-in) from default values carried in client state.
+  formFields?: string[];
+
   // Field Definitions
   fieldMetadata: { [fieldKey: string]: FieldMetadata };
   salesforceMapping: SalesforceFieldMapping;
