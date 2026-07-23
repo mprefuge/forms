@@ -1,9 +1,11 @@
 window.REGISTRATION_FORM_CONFIGS = window.REGISTRATION_FORM_CONFIGS || {};
 window.REGISTRATION_FORM_CONFIGS['ESL Immigrant Form'] = {
   TitleKey: 'eslImmigrantTitle',
+  StyleVariant: 'minimal',
   Translations: {
     en: {
       eslImmigrantTitle: 'ESL Immigrant Form',
+      nameGroup: 'Name',
       receiveUpdates: 'Sign up for news and updates',
       whyLearnEnglish: 'Why do you want to learn English and how will this help you adjust to your home in the U.S.?',
       originAndFirstLanguage: 'What is your country of origin and first language? *This information will only be used in the process of pairing you with an English Mentor.',
@@ -14,6 +16,7 @@ window.REGISTRATION_FORM_CONFIGS['ESL Immigrant Form'] = {
     },
     es: {
       eslImmigrantTitle: 'Formulario de ESL para inmigrantes',
+      nameGroup: 'Nombre',
       receiveUpdates: 'Suscríbase para recibir noticias y actualizaciones',
       whyLearnEnglish: '¿Por qué desea aprender inglés y cómo le ayudará esto a adaptarse a su hogar en los EE. UU.?',
       originAndFirstLanguage: '¿Cuál es su país de origen y su lengua materna? *Esta información solo se utilizará en el proceso de emparejarlo con un mentor de inglés.',

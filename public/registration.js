@@ -232,6 +232,7 @@
   });
 
   let activeFormConfig = null;
+  let styleVariant = null;
   let state = {
     formData: buildInitialFormData(),
     loading: false,
@@ -324,6 +325,16 @@
     return match ? match.value : rawValue;
   };
 
+  const isFieldRequired = (fieldName) => getRequiredFieldNames().includes(fieldName);
+
+  const buildFieldLabel = (field, id) => {
+    const showHint = styleVariant === 'minimal' && isFieldRequired(field.Name);
+    return h('label', { for: id },
+      getFieldLabel(field),
+      showHint ? h('span', { className: 'ri-required-hint', text: ' (required)' }) : null
+    );
+  };
+
   const buildField = (fieldName) => {
     const field = fieldDefinitions[fieldName];
     if (!field || field.Hidden) return null;
@@ -359,7 +370,11 @@
     } else if (field.Type === 'Dropdown') {
       input = h('select', {
         ...shared,
-        onchange: (event) => updateField(field.Name, getCanonicalDropdownValue(field, event.target.value)),
+        className: (state.formData[field.Name] || '') ? null : 'ri-select-empty',
+        onchange: (event) => {
+          updateField(field.Name, getCanonicalDropdownValue(field, event.target.value));
+          event.target.classList.toggle('ri-select-empty', !event.target.value);
+        },
       }, buildOptions(field).map((option) => h('option', {
         value: option.value,
         selected: option.value === (state.formData[field.Name] || '') ? 'selected' : null,
@@ -370,9 +385,48 @@
     }
 
     return h('div', { className: 'ri-field' },
-      h('label', { for: id, text: getFieldLabel(field) }),
+      buildFieldLabel(field, id),
       input
     );
+  };
+
+  const buildFormFields = () => {
+    const names = getVisibleFieldNames();
+    if (styleVariant !== 'minimal') {
+      return h('div', { className: 'ri-grid ri-grid-two' }, names.map(buildField).filter(Boolean));
+    }
+
+    // Minimal variant: single column, with First/Last name grouped under a heading.
+    const hasFirst = names.includes('FirstName');
+    const hasLast = names.includes('LastName');
+    const consumed = new Set();
+    const container = h('div', { className: 'ri-grid ri-form-fields' });
+
+    names.forEach((fieldName) => {
+      if (consumed.has(fieldName)) return;
+      if (fieldName === 'FirstName' && hasLast) {
+        consumed.add('FirstName');
+        consumed.add('LastName');
+        container.appendChild(
+          h('div', { className: 'ri-name-group' },
+            h('div', { className: 'ri-group-heading', text: copy.nameGroup || 'Name' }),
+            h('div', { className: 'ri-grid ri-grid-two ri-name-fields' },
+              buildField('FirstName'),
+              buildField('LastName')
+            )
+          )
+        );
+        return;
+      }
+      if (fieldName === 'LastName' && hasFirst) {
+        // Rendered alongside FirstName in the name group.
+        return;
+      }
+      const field = buildField(fieldName);
+      if (field) container.appendChild(field);
+    });
+
+    return container;
   };
 
   const getVisibleFieldNames = () => {
@@ -498,7 +552,6 @@
   const renderForm = () => {
     const title = getFormTitle();
     const subtitle = copy[activeFormConfig.SubtitleKey] || activeFormConfig.Subtitle || '';
-    const fields = getVisibleFieldNames().map((fieldName) => buildField(fieldName)).filter(Boolean);
     const images = Array.isArray(activeFormConfig.Images) ? activeFormConfig.Images : [];
     return h('div', { className: 'ri-card' },
       images.length ? h('div', { className: images.length > 1 ? 'ri-form-media-grid' : 'ri-form-media' },
@@ -517,7 +570,7 @@
         subtitle ? h('p', { className: 'ri-subtitle', text: subtitle }) : null
       ),
       state.error ? h('div', { className: 'ri-alert ri-alert-error', text: state.error }) : null,
-      h('div', { className: 'ri-grid ri-grid-two' }, fields),
+      buildFormFields(),
       h('div', { className: 'ri-actions' },
         h('button', {
           type: 'button',
@@ -549,7 +602,7 @@
     document.documentElement.lang = language;
     if (copy.documentTitle) document.title = copy.documentTitle;
     root.innerHTML = '';
-    root.className = 'ri-app';
+    root.className = styleVariant ? `ri-app ri-variant-${styleVariant}` : 'ri-app';
 
     if (state.status === 'success') {
       root.appendChild(renderSuccess());
@@ -578,6 +631,7 @@
         loadLookup(),
       ]);
       activeFormConfig = formConfig;
+      styleVariant = (formConfig && typeof formConfig.StyleVariant === 'string') ? formConfig.StyleVariant : null;
       applyLookupOptions(lookup);
       syncCopyWithFormConfig();
       state = { ...state, formData: buildInitialFormData(), initializing: false };

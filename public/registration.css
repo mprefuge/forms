@@ -242,6 +242,146 @@ body {
   color: var(--accent-600);
 }
 
+/* ==========================================================================
+   Minimal variant (ESL Immigrant Form) — flat, underline inputs, red button
+   ========================================================================== */
+.ri-variant-minimal {
+  max-width: 960px;
+}
+
+.ri-variant-minimal .ri-card {
+  background: #fff;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 8px 0 0;
+}
+
+/* The host page provides its own heading; hide the form's built-in title. */
+.ri-variant-minimal .ri-header-copy {
+  display: none;
+}
+
+.ri-variant-minimal .ri-grid {
+  gap: 34px;
+}
+
+.ri-variant-minimal .ri-form-fields {
+  grid-template-columns: 1fr;
+}
+
+.ri-variant-minimal .ri-grid-two {
+  gap: 44px;
+}
+
+.ri-variant-minimal .ri-name-group .ri-name-fields {
+  margin-top: 0;
+}
+
+.ri-variant-minimal .ri-group-heading {
+  margin-bottom: 18px;
+  font-size: 17px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.ri-variant-minimal .ri-field {
+  margin-bottom: 0;
+}
+
+.ri-variant-minimal .ri-field label {
+  display: block;
+  margin-bottom: 26px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: #1a1a1a;
+}
+
+.ri-variant-minimal .ri-required-hint {
+  font-weight: 400;
+  color: #9aa0a6;
+}
+
+.ri-variant-minimal .ri-field input,
+.ri-variant-minimal .ri-field select,
+.ri-variant-minimal .ri-field textarea {
+  width: 100%;
+  padding: 6px 0;
+  border: 0;
+  border-bottom: 1px solid #333;
+  border-radius: 0;
+  background: transparent;
+  color: #1a1a1a;
+  transition: border-color 0.16s ease;
+}
+
+.ri-variant-minimal .ri-field textarea {
+  min-height: 90px;
+}
+
+.ri-variant-minimal .ri-field input:focus,
+.ri-variant-minimal .ri-field select:focus,
+.ri-variant-minimal .ri-field textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: none;
+}
+
+.ri-variant-minimal .ri-field select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 24px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23333' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 2px center;
+}
+
+.ri-variant-minimal .ri-field select.ri-select-empty {
+  color: #6b7280;
+}
+
+.ri-variant-minimal .ri-checkbox {
+  padding: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.ri-variant-minimal .ri-checkbox input {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  accent-color: var(--accent);
+}
+
+.ri-variant-minimal .ri-checkbox label {
+  font-size: 15px;
+  font-weight: 400;
+  color: #1a1a1a;
+}
+
+.ri-variant-minimal .ri-actions {
+  margin-top: 6px;
+}
+
+.ri-variant-minimal .ri-btn-primary {
+  width: auto;
+  border-radius: 0;
+  padding: 20px 34px;
+  background: var(--accent);
+  box-shadow: none;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ri-variant-minimal .ri-btn-primary:hover {
+  transform: none;
+  background: var(--accent-600);
+}
+
 @media (max-width: 720px) {
   body {
     padding: 14px;
