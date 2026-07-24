@@ -281,10 +281,10 @@ For local development, you don't even need the configuration block—just load t
 When you need to drop a single registration form into a page that you don't
 fully control — a Squarespace Code Block, a Wix HTML embed, a CMS rich-text
 widget — use the embed generator. It produces **one self-contained snippet**
-(no external files to host) that renders the form inside an isolated
-`<iframe>`, so the form's CSS and JavaScript can never affect the surrounding
-page and the surrounding page can never affect the form. The iframe
-auto-resizes to the form's height.
+(no external files to host) that renders the form inside an `<iframe>`, so the
+form's styles are isolated from the surrounding page and vice-versa — the embed
+can't restyle the host page and the host page's CSS can't break the form. The
+iframe auto-resizes to the form's height.
 
 Generate the snippet for a form by its slug (see the aliases in
 [`public/registration-forms.js`](public/registration-forms.js)):
@@ -314,6 +314,16 @@ Notes:
   re-run `npm run build:embed <slug>`; the change is picked up automatically.
 - The generated `embed/*.html` files are committed for convenience, so the
   current snippet is always available without rebuilding.
+- Forms with country/address dropdowns (e.g. `volunteer`) fetch the shared
+  country list at runtime; forms without them (e.g. `esl-immigrant`) are fully
+  self-contained.
+- **Security note:** an `about:srcdoc` iframe is same-origin with the host page,
+  so the isolation is a styling boundary, not a security sandbox. For a form
+  collecting sensitive data on a page that also loads untrusted third-party
+  scripts, you can harden the iframe by adding
+  `sandbox="allow-scripts allow-forms allow-popups"` to the generated `<iframe>`
+  tag — but first confirm the API endpoint's CORS accepts an `Origin: null`
+  request, since the sandbox gives the frame an opaque origin.
 
 ## API Reference
 

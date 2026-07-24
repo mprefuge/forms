@@ -56,4 +56,27 @@ describe('build-embed generator', () => {
     const doc = buildInnerDocument({ slug: 'esl-immigrant', apiEndpoint: 'https://example.test/api/form' });
     expect(doc).toContain('https://example.test/api/form');
   });
+
+  it('sizes the iframe from the (non-viewport-clamped) body height and never inflates', () => {
+    const doc = buildInnerDocument({ slug: 'esl-immigrant' });
+    // The resize reporter must measure document.body, not documentElement, or the
+    // root's viewport-clamped scrollHeight causes unbounded growth.
+    expect(doc).toContain('var b = document.body;');
+    expect(doc).toContain('b.scrollHeight');
+    expect(doc).not.toContain('documentElement.scrollHeight');
+
+    const embed = buildEmbed({ slug: 'esl-immigrant' });
+    // The parent must apply the reported height as-is (no +N fudge) and only
+    // accept messages from its own iframe.
+    expect(embed).toContain('e.source !== iframe.contentWindow');
+    expect(embed).toContain('document.currentScript');
+    expect(embed).not.toContain('+ 2)');
+  });
+
+  it('stubs the lookup only for forms without country fields', () => {
+    // esl-immigrant has no Country/NativeCountry field -> stubbed, self-contained.
+    expect(buildInnerDocument({ slug: 'esl-immigrant' })).toContain('window.lookup = window.lookup');
+    // volunteer includes a Country field -> must NOT stub (dropdown needs the lookup).
+    expect(buildInnerDocument({ slug: 'volunteer' })).not.toContain('window.lookup = window.lookup');
+  });
 });
