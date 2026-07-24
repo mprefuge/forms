@@ -10,6 +10,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "dev": "npm run build && npm start",
+    "build:embed": "node scripts/build-embed.js",
     "live-test": "node scripts/liveTest.js"
   },
   "engines": {

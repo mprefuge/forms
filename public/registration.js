@@ -18,7 +18,11 @@
   const urlParams = new URLSearchParams(window.location.search);
   const getParam = (name) => {
     const scriptValue = scriptEl ? (scriptEl.getAttribute(name) || scriptEl.getAttribute(`data-${name}`)) : null;
-    return scriptValue || urlParams.get(name) || '';
+    // Fall back to window.FORMS_CONFIG (e.g. { type: 'esl-immigrant', language: 'es' })
+    // so the form can be configured entirely in JS. This makes a fully self-contained
+    // embed possible, where the scripts are inlined and have no src/data-* attributes.
+    const configValue = (config && config[name] != null && config[name] !== '') ? config[name] : null;
+    return scriptValue || urlParams.get(name) || configValue || '';
   };
 
   const injectCSS = () => {
