@@ -52,6 +52,7 @@ window.REGISTRATION_FIELDS = [
   { Name: 'PhoneOptional', Type: 'Phone', LabelKey: 'phone', SalesforceID: 'Phone__c' },
   { Name: 'WhyLearnEnglish', Type: 'TextArea', LabelKey: 'whyLearnEnglish', UseCustomData: true },
   { Name: 'OriginAndFirstLanguage', Type: 'String', LabelKey: 'originAndFirstLanguage', UseCustomData: true },
+  { Name: 'MentorAvailability', Type: 'TextArea', LabelKey: 'mentorAvailability', UseCustomData: true },
   {
     Name: 'Gender',
     Type: 'Dropdown',
