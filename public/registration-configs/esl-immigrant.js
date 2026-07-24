@@ -27,6 +27,7 @@ window.REGISTRATION_FORM_CONFIGS['ESL Immigrant Form'] = {
       howHeardPlaceholder: 'Cuéntenos cómo se enteró de nosotros',
       mentorAvailability: '¿Qué días y horas de la semana está disponible para reunirse con un mentor de inglés?',
       gender: 'Género',
+      selectOption: 'Seleccione una opción',
       optionMale: 'Masculino',
       optionFemale: 'Femenino',
     },

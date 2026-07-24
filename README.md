@@ -276,6 +276,55 @@ That's it! The configuration applies to all forms. Just use the appropriate scri
 
 For local development, you don't even need the configuration block—just load the script and it uses localhost defaults.
 
+### Self-Contained Embed (Squarespace / any site builder)
+
+When you need to drop a single registration form into a page that you don't
+fully control — a Squarespace Code Block, a Wix HTML embed, a CMS rich-text
+widget — use the embed generator. It produces **one self-contained snippet**
+(no external files to host) that renders the form inside an `<iframe>`, so the
+form's styles are isolated from the surrounding page and vice-versa — the embed
+can't restyle the host page and the host page's CSS can't break the form. The
+iframe auto-resizes to the form's height.
+
+Generate the snippet for a form by its slug (see the aliases in
+[`public/registration-forms.js`](public/registration-forms.js)):
+
+```bash
+# Writes embed/esl-immigrant-embed.html
+npm run build:embed esl-immigrant
+
+# Point the form at a specific API endpoint:
+FORMS_API_ENDPOINT=https://your-app.azurewebsites.net/api/form \
+  npm run build:embed esl-immigrant
+
+# Or choose a custom output path:
+node scripts/build-embed.js volunteer --out ./volunteer-embed.html
+```
+
+Then open the generated file and paste its entire contents into a single
+**Squarespace Code Block** (Edit page → Add Block → Code, with "Display Source"
+off). Publish the page — Squarespace only runs embedded scripts on the live
+site, not in the editor preview.
+
+Notes:
+
+- The snippet is self-contained: the only network request the embedded form
+  makes is the submission `POST` to the configured API endpoint.
+- To change the wording, fields, or styling, edit the source in `public/` and
+  re-run `npm run build:embed <slug>`; the change is picked up automatically.
+- The generated `embed/*.html` files are committed for convenience, so the
+  current snippet is always available without rebuilding.
+- Forms with country/address dropdowns (e.g. `volunteer`) fetch the shared
+  country list at runtime; forms without them (e.g. `esl-immigrant`) are fully
+  self-contained.
+- **Security note:** an `about:srcdoc` iframe is same-origin with the host page,
+  so the isolation is a styling boundary, not a security sandbox. For a form
+  collecting sensitive data on a page that also loads untrusted third-party
+  scripts, you can harden the iframe by adding
+  `sandbox="allow-scripts allow-forms allow-popups"` to the generated `<iframe>`
+  tag — but first confirm the API endpoint's CORS accepts an `Origin: null`
+  request, since the sandbox gives the frame an opaque origin.
+
 ## API Reference
 
 ### POST /api/form
