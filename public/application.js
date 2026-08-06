@@ -289,6 +289,22 @@
   let currentPhase = 'initial';
   const steps = phases[currentPhase].steps;
 
+  // Field keys this form presents, flattened across every phase and step. Sent to
+  // the backend so it can distinguish a field the form actually showed from a
+  // default carried in client state (e.g. the ReceiveUpdates opt-in).
+  const getDeclaredFieldNames = () => {
+    const names = [];
+    Object.values(phases || {}).forEach((phase) => {
+      (phase && Array.isArray(phase.steps) ? phase.steps : []).forEach((step) => {
+        (step && Array.isArray(step.fields) ? step.fields : []).forEach((field) => {
+          const name = typeof field === 'string' ? field : (field && field.key);
+          if (name && !names.includes(name)) names.push(name);
+        });
+      });
+    });
+    return names;
+  };
+
   const fieldMeta = {
     Salutation: { label: "Salutation", type: "select", options: [], required: false },
     FirstName: { label: "First Name", type: "text", required: true },
@@ -1338,7 +1354,7 @@
     }
 
     // Attach form config to all requests
-    payload['__formConfig'] = FORM_CONFIG;
+    payload['__formConfig'] = { ...FORM_CONFIG, formFields: getDeclaredFieldNames() };
 
     // When sending emails (final submit), include templates in the payload
     if (sendEmail) {
@@ -1545,7 +1561,7 @@
     const res = await fetch(ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code, FormCode__c: code, __formConfig: FORM_CONFIG }),
+      body: JSON.stringify({ code, FormCode__c: code, __formConfig: { ...FORM_CONFIG, formFields: getDeclaredFieldNames() } }),
     });
     const json = await res.json().catch(() => ({}));
     if (res.ok) {

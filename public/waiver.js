@@ -210,8 +210,10 @@
   const initialState = {
     phase: 'initial',
     step: 0,
-    // Default preference: agree to receive periodic updates
-    formData: { ReceiveUpdates: true },
+    // This form never presents a ReceiveUpdates opt-in, so it must not carry a
+    // default for it: a truthy value here reads as consent to the backend and
+    // syncs the signer to Mailchimp without them ever being asked.
+    formData: {},
     formCode: null,
     status: null,
     error: null,
@@ -505,13 +507,30 @@
   // ============================================================================
   // API FUNCTIONS
   // ============================================================================
+
+  // Field keys this form actually presents. Sent to the backend so it can tell a
+  // field the form showed from a default carried in client state -- notably the
+  // ReceiveUpdates opt-in, which this form does not present at all.
+  function getDeclaredFieldNames() {
+    const names = [];
+    Object.values(formStructure || {}).forEach((phase) => {
+      (phase && Array.isArray(phase.steps) ? phase.steps : []).forEach((step) => {
+        (step && Array.isArray(step.fields) ? step.fields : []).forEach((field) => {
+          const name = typeof field === 'string' ? field : (field && field.key);
+          if (name && !names.includes(name)) names.push(name);
+        });
+      });
+    });
+    return names;
+  }
+
   async function submitForm(formData) {
     updateState({ loading: true, error: null });
-    
+
     try {
       const payload = {
         ...formData,
-        __formConfig: FORM_CONFIG,
+        __formConfig: { ...FORM_CONFIG, formFields: getDeclaredFieldNames() },
         __sendEmail: true,
         __emailTemplates: {
           waiverCopy: EMAIL_TEMPLATES.waiverCopy
@@ -1104,6 +1123,8 @@
     window.__ri_waiver = {
       render,
       resetState,
+      getDeclaredFieldNames,
+      get state() { return state; },
       get hostOverride() { return hostOverride; },
       set hostOverride(v) { hostOverride = v; }
     };

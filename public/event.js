@@ -442,6 +442,11 @@
             el.className = v;
           } else if (k === 'disabled') {
             if (v) el.setAttribute('disabled', '');
+          } else if (k === 'checked') {
+            // Must be set as a property. Falling through to setAttribute below
+            // would write checked="false", and the mere presence of the attribute
+            // renders the box checked -- silently reverting opt-outs on re-render.
+            el.checked = !!v;
           } else if (k.startsWith('on')) {
             // Use passive listeners for scroll/touch events, non-passive for others
             const eventName = k.slice(2).toLowerCase();
@@ -528,6 +533,20 @@
   // API FUNCTIONS
   // ============================================================================
   
+  // Field keys this form presents, flattened across every phase and step.
+  const getDeclaredFieldNames = () => {
+    const names = [];
+    Object.values(phases || {}).forEach((phase) => {
+      (phase && Array.isArray(phase.steps) ? phase.steps : []).forEach((step) => {
+        (step && Array.isArray(step.fields) ? step.fields : []).forEach((field) => {
+          const name = typeof field === 'string' ? field : (field && field.key);
+          if (name && !names.includes(name)) names.push(name);
+        });
+      });
+    });
+    return names;
+  };
+
   const submitForm = async () => {
     // Collect current form values from DOM
     const currentValues = collectFormValues();
@@ -567,8 +586,10 @@
         payload[sfKey] = value;
       });
 
-      // Add form configuration
-      payload['__formConfig'] = FORM_CONFIG;
+      // Add form configuration, including the field keys this form actually
+      // presents so the backend can distinguish a shown field from a default
+      // carried in client state (e.g. the ReceiveUpdates opt-in).
+      payload['__formConfig'] = { ...FORM_CONFIG, formFields: getDeclaredFieldNames() };
 
       // Include email templates for event registration confirmation
       payload['__sendEmail'] = true;
