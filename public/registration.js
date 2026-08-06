@@ -449,8 +449,14 @@
     const payload = {};
     const customData = {};
     const notificationEmails = getNotificationEmails();
+    const declaredFields = Array.isArray(activeFormConfig && activeFormConfig.Fields) ? activeFormConfig.Fields : null;
 
     Object.values(fieldDefinitions).forEach((field) => {
+      // Never send a value for a field this form did not present. State seeds a
+      // default for every known field, so without this an opt-in the user was
+      // never shown (ReceiveUpdates) would reach the backend as consent.
+      if (declaredFields && !field.Hidden && !declaredFields.includes(field.Name)) return;
+
       const value = state.formData[field.Name];
       const isBoolean = typeof value === 'boolean';
       const hasValue = isBoolean || !(value === '' || value === null || value === undefined);

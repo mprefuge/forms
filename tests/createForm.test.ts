@@ -230,6 +230,44 @@ describe('createForm HTTP Function', () => {
       );
     });
 
+    it('should not sync to Mailchimp when a form declares Salesforce-named fields without an opt-in', async () => {
+      // Mirrors the waiver client, whose declared field keys are Salesforce API
+      // names and which presents no opt-in checkbox at all.
+      mockRequest = {
+        method: 'POST',
+        headers: {
+          get: (header: string) => {
+            if (header === 'X-Request-Id') return 'sf-named-fields-request-id';
+            return null;
+          },
+        },
+        json: jest.fn().mockResolvedValue({
+          FirstName__c: 'John',
+          LastName__c: 'Doe',
+          Email__c: 'john@example.com',
+          RecordType: 'Registration',
+          // A stale cached client may still carry this default.
+          ReceiveUpdates: true,
+          __formConfig: {
+            ...testFormConfig,
+            formFields: ['FirstName__c', 'LastName__c', 'Email__c', 'Phone__c'],
+          },
+        }),
+      };
+
+      process.env.SF_CLIENT_ID = 'test-client-id';
+      process.env.SF_CLIENT_SECRET = 'test-client-secret';
+      process.env.SF_LOGIN_URL = 'https://login.salesforce.com';
+
+      const response = await createForm(mockRequest, mockContext);
+
+      expect(response.status).toBe(201);
+
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(mockMailchimpService.upsertSubscriber).not.toHaveBeenCalled();
+    });
+
     it('should send a New Registration notification to the form-configured recipient with submitted details', async () => {
       delete process.env.AdminEmail;
       delete process.env.ADMIN_EMAIL;

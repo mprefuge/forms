@@ -97,4 +97,24 @@ describe('waiver.js frontend logic', () => {
     expect(document.querySelector('.ri-modal #waiver-app input[name="PhotoRelease__c"]')).toBeTruthy();
     modal.close();
   });
+
+  describe('email opt-in', () => {
+    // The waiver never presents a ReceiveUpdates checkbox. A default for it in
+    // client state reads as consent on the backend and syncs the signer to
+    // Mailchimp without them ever being asked, so it must stay absent.
+    it('does not seed a ReceiveUpdates default in initial state', () => {
+      require('../public/waiver.js');
+      window.__ri_waiver.resetState();
+
+      expect(window.__ri_waiver.state.formData).not.toHaveProperty('ReceiveUpdates');
+    });
+
+    it('does not declare ReceiveUpdates among the fields it presents', () => {
+      require('../public/waiver.js');
+      const declared = window.__ri_waiver.getDeclaredFieldNames();
+
+      expect(declared.length).toBeGreaterThan(0);
+      expect(declared).not.toContain('ReceiveUpdates');
+    });
+  });
 });
