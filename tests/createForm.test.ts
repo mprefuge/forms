@@ -135,7 +135,7 @@ describe('createForm HTTP Function', () => {
           RecordType: 'Registration',
         }),
         'test-request-id-123',
-        testFormConfig
+        expect.objectContaining({ id: 'test', name: 'Test Form' })
       );
 
       // Email dispatch is validated in integration tests; here we only assert success response
@@ -233,6 +233,7 @@ describe('createForm HTTP Function', () => {
     it('should send a New Registration notification to the form-configured recipient with submitted details', async () => {
       delete process.env.AdminEmail;
       delete process.env.ADMIN_EMAIL;
+      process.env.NOTIFICATION_EMAIL_ALLOWED_DOMAINS = 'example.com';
 
       mockRequest = {
         method: 'POST',
@@ -278,6 +279,91 @@ describe('createForm HTTP Function', () => {
       expect(notificationCall[2].submissionDetails).toContain('First Name: Jane');
       expect(notificationCall[2].submissionDetails).toContain('Comments: Needs childcare');
       expect(notificationCall[2].submissionDetails).toContain('Form Code: ABC12');
+      delete process.env.NOTIFICATION_EMAIL_ALLOWED_DOMAINS;
+    });
+
+    it('should ignore client-supplied notification recipients outside the allowed domains', async () => {
+      delete process.env.AdminEmail;
+      delete process.env.ADMIN_EMAIL;
+      delete process.env.NOTIFICATION_EMAIL_ALLOWED_DOMAINS;
+      delete process.env.EMAIL_FROM;
+
+      mockRequest = {
+        method: 'POST',
+        headers: { get: jest.fn().mockReturnValue('relay-request-id') },
+        json: jest.fn().mockResolvedValue({
+          FirstName__c: 'Mallory',
+          LastName__c: 'Relay',
+          Email__c: 'mallory@example.com',
+          Custom__c: JSON.stringify({ NotificationEmail: 'victim@attacker.test' }),
+          __formConfig: { ...testFormConfig, notificationEmails: 'another@attacker.test' },
+        }),
+      };
+
+      process.env.SF_CLIENT_ID = 'test-client-id';
+      process.env.SF_CLIENT_SECRET = 'test-client-secret';
+
+      const response = await createForm(mockRequest, mockContext);
+      expect(response.status).toBe(201);
+
+      const recipients = mockEmailService.sendEmail.mock.calls.map((call: any[]) => call[0]);
+      expect(recipients).not.toContain('victim@attacker.test');
+      expect(recipients).not.toContain('another@attacker.test');
+    });
+
+    it('should reject a client form configuration that targets another object', async () => {
+      mockRequest = {
+        method: 'POST',
+        headers: { get: jest.fn().mockReturnValue('bad-config-id') },
+        json: jest.fn().mockResolvedValue({
+          FirstName__c: 'Eve',
+          __formConfig: { ...testFormConfig, salesforce: { ...testFormConfig.salesforce, objectName: 'Contact' } },
+        }),
+      };
+
+      const response = await createForm(mockRequest, mockContext);
+      expect(response.status).toBe(400);
+      expect(JSON.parse(response.body).error).toContain('Unsupported Salesforce object');
+      expect(mockSalesforceService.createForm).not.toHaveBeenCalled();
+    });
+
+    it('should reject a client form configuration with an unsafe field name', async () => {
+      mockRequest = {
+        method: 'POST',
+        headers: { get: jest.fn().mockReturnValue('bad-field-id') },
+        json: jest.fn().mockResolvedValue({
+          FirstName__c: 'Eve',
+          __formConfig: {
+            ...testFormConfig,
+            salesforce: { ...testFormConfig.salesforce, queryFields: ['Id', "Name FROM Contact WHERE Id != null OR Id"] },
+          },
+        }),
+      };
+
+      const response = await createForm(mockRequest, mockContext);
+      expect(response.status).toBe(400);
+      expect(mockSalesforceService.createForm).not.toHaveBeenCalled();
+    });
+
+    it('should not touch an existing Contact opt-out preference when ReceiveUpdates was not submitted', async () => {
+      mockSalesforceService.findContact = jest.fn().mockResolvedValue({ contactId: 'existing-2' } as any);
+      mockSalesforceService.updateContact = jest.fn().mockResolvedValue(undefined);
+
+      mockRequest = {
+        method: 'POST',
+        headers: { get: jest.fn().mockReturnValue('contact-noop-id') },
+        json: jest.fn().mockResolvedValue({
+          FirstName__c: 'Existing',
+          LastName__c: 'Contact',
+          Email: 'existing.contact@example.com',
+          __formConfig: testFormConfig,
+        }),
+      };
+
+      const response = await createForm(mockRequest, mockContext);
+
+      expect(response.status).toBe(201);
+      expect(mockSalesforceService.updateContact).not.toHaveBeenCalled();
     });
 
 
@@ -369,7 +455,7 @@ describe('createForm HTTP Function', () => {
       expect(mockSalesforceService.createForm).toHaveBeenCalledWith(
         expect.any(Object),
         'test-request-id-123',
-        testFormConfig
+        expect.objectContaining({ id: 'test', name: 'Test Form' })
       );
     });
 
@@ -400,7 +486,7 @@ describe('createForm HTTP Function', () => {
           Notes: expect.any(Array),
         }),
         'attach-request-id',
-        testFormConfig
+        expect.objectContaining({ id: 'test' })
       );
     });
 
@@ -484,7 +570,7 @@ describe('createForm HTTP Function', () => {
           Campaign__c: 'camp-registration-1',
         }),
         'registration-campaign-request-id',
-        testFormConfig
+        expect.objectContaining({ id: 'test' })
       );
     });
 
@@ -531,7 +617,7 @@ describe('createForm HTTP Function', () => {
           Campaign__c: 'camp-registration-2',
         }),
         'registration-create-request-id',
-        testFormConfig
+        expect.objectContaining({ id: 'test' })
       );
       expect(mockSalesforceService.createCampaignMember).toHaveBeenCalledWith(
         'camp-registration-2',
@@ -870,7 +956,7 @@ describe('createForm HTTP Function', () => {
       expect(body.error).toContain('code');
     });
 
-    it('should retrieve a form successfully by email', async () => {
+    it('should not look up forms by email address', async () => {
       mockRequest = {
         method: 'GET',
         headers: {
@@ -887,16 +973,24 @@ describe('createForm HTTP Function', () => {
 
       const response = await createForm(mockRequest, mockContext);
 
-      expect(response.status).toBe(200);
-      expect(response.headers?.['X-Request-Id']).toBe('get-request-id-456');
+      expect(response.status).toBe(400);
+      expect(mockSalesforceService.getFormByEmail).not.toHaveBeenCalled();
+    });
 
-      const body = JSON.parse(response.body);
-      expect(body.Id).toBe('form-id-12345');
-      expect(body.FormCode__c).toBe('abc12');
-      expect(body.Email__c).toBe('john@example.com');
+    it('should reject an unsafe fields parameter', async () => {
+      mockRequest = {
+        method: 'GET',
+        headers: { get: () => null },
+        query: new Map([
+          ['code', 'abc12'],
+          ['fields', 'Id,Owner.Email'],
+        ]),
+      };
 
-      expect(mockSalesforceService.authenticate).toHaveBeenCalled();
-      expect(mockSalesforceService.getFormByEmail).toHaveBeenCalledWith('john@example.com', undefined);
+      const response = await createForm(mockRequest, mockContext);
+
+      expect(response.status).toBe(400);
+      expect(mockSalesforceService.getFormByCode).not.toHaveBeenCalled();
     });
 
     // Verify that querying with eventId returns campaign metadata including rich text field
@@ -1074,7 +1168,7 @@ describe('createForm HTTP Function', () => {
       expect(mockSalesforceService.createForm).toHaveBeenCalledWith(
         expect.objectContaining(allowedFields),
         expect.any(String),
-        testFormConfig
+        expect.objectContaining({ id: 'test' })
       );
     });
   });

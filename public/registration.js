@@ -200,14 +200,6 @@
     }
   };
 
-  const EMAIL_TEMPLATES = {
-    applicationCopy: {
-      subject: 'Registration received',
-      text: 'Hello {{FirstName__c}},\n\nYour registration has been received. Your confirmation code is {{FormCode__c}}.\n\nThank you,\nRefuge International',
-      html: '<p>Hello {{FirstName__c}},</p><p>Your registration has been received. Your confirmation code is <strong>{{FormCode__c}}</strong>.</p><p>Thank you,<br/>Refuge International</p>'
-    }
-  };
-
   const buildInitialFormData = () => ({
     FirstName: '',
     LastName: '',
@@ -517,7 +509,7 @@
         },
       };
       payload.__sendEmail = true;
-      payload.__emailTemplates = EMAIL_TEMPLATES;
+      // Email templates are owned by the API and selected by FORM_CONFIG.id.
 
       const response = await fetch(ENDPOINT, {
         method: 'POST',

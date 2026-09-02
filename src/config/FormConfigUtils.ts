@@ -6,6 +6,7 @@
  */
 
 import { FormConfig, FieldMetadata } from './formConfigTypes';
+import { assertSafeFieldList, assertSafeSoqlIdentifier, escapeSoqlString } from '../functions/shared/soql';
 
 /**
  * Get the Salesforce field name for a client-side field
@@ -260,11 +261,14 @@ export function convertFromSalesforceFormat(
  * Queries the fields specified in salesforce.queryFields, or all allowedFields if not specified
  */
 export function buildSoqlSelectClause(formConfig: FormConfig): string {
-  const fieldsToQuery = formConfig.salesforce.queryFields || formConfig.salesforce.allowedFields;
-  
+  const fieldsToQuery = assertSafeFieldList(
+    formConfig.salesforce.queryFields || formConfig.salesforce.allowedFields,
+    'query field'
+  );
+
   // Always include Id if not already present
   const uniqueFields = Array.from(new Set(['Id', ...fieldsToQuery]));
-  
+
   return uniqueFields.join(', ');
 }
 
@@ -275,13 +279,14 @@ export function buildSoqlSelectClause(formConfig: FormConfig): string {
  * @returns SOQL query string
  */
 export function buildSoqlQuery(formConfig: FormConfig, searchValue: string): string {
-  const objectName = formConfig.salesforce.objectName || 'Form__c';
-  const searchField = formConfig.salesforce.searchField || formConfig.salesforce.lookupCodeField || 'FormCode__c';
+  const objectName = assertSafeSoqlIdentifier(formConfig.salesforce.objectName || 'Form__c', 'object');
+  const searchField = assertSafeSoqlIdentifier(
+    formConfig.salesforce.searchField || formConfig.salesforce.lookupCodeField || 'FormCode__c',
+    'search field'
+  );
   const selectClause = buildSoqlSelectClause(formConfig);
-  
-  // Escape single quotes in search value for SOQL
-  const escapedValue = String(searchValue).replace(/'/g, "\\'");
-  
+  const escapedValue = escapeSoqlString(searchValue);
+
   return `SELECT ${selectClause} FROM ${objectName} WHERE ${searchField} = '${escapedValue}' LIMIT 1`;
 }
 
@@ -293,13 +298,12 @@ export function buildSoqlQuery(formConfig: FormConfig, searchValue: string): str
  * @returns SOQL query string
  */
 export function buildSoqlQueryByField(formConfig: FormConfig, searchField: string, searchValue: string): string {
-  const objectName = formConfig.salesforce.objectName || 'Form__c';
+  const objectName = assertSafeSoqlIdentifier(formConfig.salesforce.objectName || 'Form__c', 'object');
+  const safeSearchField = assertSafeSoqlIdentifier(searchField, 'search field');
   const selectClause = buildSoqlSelectClause(formConfig);
-  
-  // Escape single quotes in search value for SOQL
-  const escapedValue = String(searchValue).replace(/'/g, "\\'");
-  
-  return `SELECT ${selectClause} FROM ${objectName} WHERE ${searchField} = '${escapedValue}' LIMIT 1`;
+  const escapedValue = escapeSoqlString(searchValue);
+
+  return `SELECT ${selectClause} FROM ${objectName} WHERE ${safeSearchField} = '${escapedValue}' LIMIT 1`;
 }
 
 /**

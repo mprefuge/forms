@@ -20,7 +20,7 @@ A production-ready TypeScript Azure Functions application for managing Salesforc
 
 ## Prerequisites
 
-- Node.js >= 18.0.0
+- Node.js >= 20.0.0 (CI and the Function App run Node 22)
 - Azure Functions v4
 - Azure subscription (for deployment)
 - Salesforce org with Connected App configured
@@ -38,32 +38,13 @@ npm install
 
 ### 2. Configure Environment Variables
 
-Create a `local.settings.json` file for local development:
+Create a `local.settings.json` file for local development from the checked-in example:
 
 ```bash
-cp .env.example local.settings.json
+cp local.settings.example.json local.settings.json
 ```
 
-Edit `local.settings.json` with your actual credentials:
-
-```json
-{
-  "IsEncrypted": false,
-  "Values": {
-    "FUNCTIONS_WORKER_RUNTIME": "node",
-    "WEBSITE_NODE_DEFAULT_VERSION": "18.x",
-    "SF_LOGIN_URL": "https://login.salesforce.com",
-    "SF_CLIENT_ID": "your_salesforce_connected_app_client_id",
-    "SF_CLIENT_SECRET": "your_salesforce_connected_app_client_secret",
-    "AZURE_COMMUNICATION_CONNECTION_STRING": "endpoint=https://your-resource.communication.azure.com/;accesskey=your_key",
-    "EMAIL_FROM": "noreply@yourdomain.com"
-  },
-  "Host": {
-    "CORS": "*",
-    "CORSCredentials": false
-  }
-}
-```
+Then fill in your Salesforce and email credentials. `NODE_ENV` is set to `development` in the example so that debug logging and error details are enabled locally; leave it unset in Azure (the code treats anything other than `development`/`test` as production).
 
 **Important**: Never commit `local.settings.json` to version control. It's already in `.gitignore`.
 
@@ -100,6 +81,18 @@ Open the test pages in your browser:
 | `EMAIL_FROM` | Verified sender email address | `noreply@yourdomain.com` |
 | `MAILCHIMP_API_KEY` | Mailchimp API key used for list sync | `xxxx-us21` |
 | `MAILCHIMP_AUDIENCE_ID` | Mailchimp Audience/List ID for opted-in registrants | `a1b2c3d4e5` |
+
+### Security and Operations Variables
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `ADMIN_EMAIL` | Recipient(s) for submission notifications and failure alerts (comma/semicolon separated) | `staff@yourdomain.org` |
+| `NOTIFICATION_EMAIL_ALLOWED_DOMAINS` | Domains that client-supplied notification recipients may belong to. The domains of `ADMIN_EMAIL` and `EMAIL_FROM` are always allowed. Recipients outside this set are ignored. | `yourdomain.org,partner.org` |
+| `NOTIFICATION_EMAIL_ALLOWED_ADDRESSES` | Exact addresses that may receive notifications when their domain is not allowlisted (for example volunteers on Gmail). The Farmdale ESL registration form currently notifies two Gmail addresses that must be listed here. | `person@gmail.com,other@gmail.com` |
+| `SF_ALLOWED_RECORD_TYPES` | Optional allowlist of `Form__c` record type names a submission may target. When unset, any record type the integration user can create is accepted. | `Registration,Volunteer Application` |
+| `PUBLIC_BASE_URL` | Public URL of this Function App, used to build calendar and file links in emails. Defaults to `https://$WEBSITE_HOSTNAME`. | `https://forms.yourdomain.org` |
+| `NODE_ENV` | Leave unset in Azure. Set to `development` locally to enable debug logging and error details in responses. | `development` |
+| `LOG_LEVEL` | Set to `debug` to enable debug-level log lines in production temporarily. | `debug` |
 
 ### Optional Mailchimp Variables
 
@@ -278,9 +271,11 @@ For local development, you don't even need the configuration block—just load t
 
 ## API Reference
 
+All endpoints are anonymous. The browser sends its form configuration with each request as `__formConfig` (POST) or `formConfig` (GET); the API sanitizes it before use (see `src/config/clientFormConfig.ts`): the Salesforce object is always `Form__c`, lookups are always by `FormCode__c`, every field name must be a plain identifier, and the record type can be restricted with `SF_ALLOWED_RECORD_TYPES`. Email templates are owned by the API (`src/config/emailTemplates.ts`) and selected by the form config `id`; any templates in the request are ignored.
+
 ### POST /api/form
 
-Create a new form submission.
+Create a new form submission. When the body contains a `FormCode__c`, the matching record is updated instead.
 
 **Request Body**:
 ```json
@@ -289,7 +284,8 @@ Create a new form submission.
   "LastName__c": "Doe",
   "Email__c": "john@example.com",
   "Phone__c": "555-1234",
-  "RecordType": "Volunteer Application"
+  "__sendEmail": true,
+  "__formConfig": { "id": "volunteer", "name": "Volunteer Application", "salesforce": { "recordTypeName": "Volunteer Application", "allowedFields": ["FirstName__c", "LastName__c", "Email__c", "Phone__c"] } }
 }
 ```
 
@@ -303,7 +299,7 @@ Create a new form submission.
 
 ### GET /api/form?code={formCode}
 
-Retrieve form by code.
+Retrieve form by code. An optional `fields` parameter (comma-separated field names) limits the returned columns. Lookup by email address is not supported on this endpoint; use the send-code endpoint below so the code is delivered to the address on file.
 
 **Response** (200):
 ```json
@@ -315,29 +311,27 @@ Retrieve form by code.
 }
 ```
 
-### POST /api/sendCode
+### POST /api/form/send-code
 
-Send verification code to email.
+Email the form code to the address on file. The response is the same whether or not a submission exists for the address.
 
 **Request Body**:
 ```json
 {
   "email": "user@example.com",
-  "formCode": "abc12"
+  "formId": "volunteer"
 }
 ```
 
-### POST /api/form (Update)
+### GET /api/calendar
 
-Update existing form.
+Returns an `.ics` file for the event details passed in the query string. Links to this endpoint are embedded in event confirmation emails.
 
-**Request Body**:
-```json
-{
-  "formId": "a01xx000003DHzAAM",
-  "FirstName__c": "Jane"
-}
-```
+### Other query modes on GET /api/form
+
+- `?eventId={campaignId}` returns campaign metadata for an event.
+- `?listActiveEvents=true` lists active Event campaigns.
+- `?downloadContentVersion={id}` / `?downloadAttachment={id}` proxy campaign images referenced by the event pages.
 
 ## Testing
 
@@ -356,44 +350,46 @@ npm test -- --coverage
 
 1. **Never commit secrets**:
    - `local.settings.json` is in `.gitignore`
-   - Use Azure Key Vault for production secrets
+   - Use Azure Key Vault references for production app settings
    - Rotate credentials regularly
 
-2. **Use Managed Identity** (when possible):
-   - Enable Managed Identity on Function App
-   - Grant access to Azure resources without storing credentials
+2. **Lock down the Salesforce integration user**: the API is anonymous and the browser supplies the list of fields it wants to write. The integration user's profile and field-level security are the backstop, so grant it create/edit only on the `Form__c` fields the forms use, create on `Contact`/`CampaignMember`, and read on `Campaign`. Set `SF_ALLOWED_RECORD_TYPES` to the record types the forms use.
 
-3. **Secure CORS**:
-   - Configure specific allowed origins in production
-   - Avoid using `"*"` for CORS in production
+3. **Restrict who can be emailed**: set `NOTIFICATION_EMAIL_ALLOWED_DOMAINS` and, for individual recipients on shared providers, `NOTIFICATION_EMAIL_ALLOWED_ADDRESSES` (the `ADMIN_EMAIL`/`EMAIL_FROM` domains are always allowed). Recipients outside the allowlist are dropped and logged.
 
-4. **Monitor and Log**:
-   - Enable Application Insights
-   - Review logs regularly for suspicious activity
-   - Set up alerts for errors
+4. **Rate limit the public endpoints**: form codes are short and the endpoints are anonymous. Put the Function App behind Azure Front Door or API Management with a per-IP rate limit, or use App Service access restrictions, before exposing it broadly.
+
+5. **Secure CORS**: configure the specific site origins in the Function App's CORS settings; do not use `*`.
+
+6. **Monitor and Log**: Application Insights is enabled through `host.json`. Logs mask secrets, email addresses and phone numbers; set `LOG_LEVEL=debug` only while troubleshooting.
 
 ## Project Structure
 
 ```
 ├── src/
 │   ├── functions/
-│   │   ├── createForm/        # Create and retrieve forms
-│   │   ├── sendCode/           # Email verification
-│   │   ├── sendCodeDiagnostics/ # Email diagnostics
-│   │   └── updateForm/         # Update existing forms
+│   │   ├── createForm/        # Create, update and retrieve forms (entry point; imports the others)
+│   │   ├── sendCode/           # Email the form code to the address on file
+│   │   ├── calendar/           # .ics download used by event confirmation emails
+│   │   ├── updateForm/         # Legacy update handler (not registered with the host)
+│   │   └── shared/             # Request parsing, SOQL safety, env and recipient helpers
 │   ├── services/
-│   │   ├── emailService.ts     # Azure Communication Services
+│   │   ├── emailService.ts     # Azure Communication Services / SMTP
 │   │   ├── salesforceService.ts # Salesforce integration
-│   │   └── logger.ts           # Logging utility
+│   │   ├── contactMatchService.ts # Contact matching
+│   │   ├── mailchimpService.ts # Mailchimp sync
+│   │   └── logger.ts           # Structured logging with PII masking
 │   └── config/
-│       └── FormConfigLoader.ts # Form configuration
+│       ├── clientFormConfig.ts # Sanitizes browser-supplied form configs
+│       ├── emailTemplates.ts   # Server-owned email templates per form
+│       └── FormConfigLoader.ts # Server-side form registry
 ├── public/
 │   ├── application.js          # Volunteer application form
 │   ├── waiver.js              # Parental waiver form
 │   ├── event.js               # Event registration form
 │   └── *.html                 # Form pages
 ├── tests/                      # Unit tests
-├── .env.example               # Environment template
+├── local.settings.example.json # Local settings template
 ├── host.json                  # Azure Functions configuration
 └── package.json
 ```

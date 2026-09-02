@@ -7,6 +7,7 @@ import {
   getUpdateableFields 
 } from '../config/FormConfigUtils';
 import { ContactMatchService, ContactMatchCriteria, ContactMatchResult } from './contactMatchService';
+import { assertSafeFieldList, assertSafeSoqlIdentifier, escapeSoqlString } from '../functions/shared/soql';
 
 export interface SalesforceServiceConfig {
   loginUrl: string;
@@ -250,7 +251,7 @@ export class SalesforceService {
 
   // Escape a value so it is safe to interpolate in a SOQL string literal
   private escapeSoql(val: any): string {
-    return String(val).replace(/'/g, "\\'");
+    return escapeSoqlString(val);
   }
 
   // Format a field value according to its metadata (picklists, multipicklists, etc.)
@@ -333,7 +334,7 @@ export class SalesforceService {
    */
   async createForm(formData: FormData | { [key: string]: any }, requestId: string, formConfig?: FormConfig): Promise<{ id: string; formCode: string }> {
     // Allow callers to omit a full FormConfig; fall back to sensible defaults when missing
-    const objectName = formConfig?.salesforce?.objectName || 'Form__c';
+    const objectName = assertSafeSoqlIdentifier(formConfig?.salesforce?.objectName || 'Form__c', 'object');
     const recordTypeName = formConfig?.salesforce?.recordTypeName || 'General';
     const allowedFields = formConfig?.salesforce?.allowedFields || [];
     const codeLength = formConfig?.salesforce?.codeLength || 5;
@@ -538,7 +539,9 @@ export class SalesforceService {
       } else {
         // Legacy behavior: use custom fields
         const defaultFields = ['Id', 'FormCode__c', 'Name', 'FirstName__c', 'LastName__c', 'Email__c', 'Phone__c', 'CreatedDate'];
-        const fieldsToQuery = customFields && customFields.length > 0 ? [...customFields] : [...defaultFields];
+        const fieldsToQuery = customFields && customFields.length > 0
+          ? assertSafeFieldList(customFields, 'query field')
+          : [...defaultFields];
 
         if (!fieldsToQuery.includes('Id')) {
           fieldsToQuery.unshift('Id');
@@ -570,7 +573,7 @@ export class SalesforceService {
 
     // Default fields if none specified
     const defaultFields = ['Id', 'FormCode__c', 'Name', 'FirstName__c', 'LastName__c', 'Email__c', 'Phone__c', 'CreatedDate'];
-    let fieldsToQuery = fields && fields.length > 0 ? [...fields] : [...defaultFields];
+    let fieldsToQuery = fields && fields.length > 0 ? assertSafeFieldList(fields, 'query field') : [...defaultFields];
 
     // Validate fields against Salesforce schema
     const desc: any = await this.connection.sobject('Form__c').describe();
@@ -675,8 +678,6 @@ export class SalesforceService {
       fieldMetaMap = new Map((desc.fields || []).map((f: any) => [f.name, f]));
     }
     
-    console.log('Updateable fields list:', updateableFieldsList);
-    console.log('Fields to update:', Object.keys(formData));
 
     // Copy only updateable fields
     for (const field of updateableFieldsList) {
@@ -692,7 +693,7 @@ export class SalesforceService {
     }
 
     try {
-      const objectName = formConfig?.salesforce.objectName || 'Form__c';
+      const objectName = assertSafeSoqlIdentifier(formConfig?.salesforce.objectName || 'Form__c', 'object');
       const result: any = await this.connection.sobject(objectName).update(updateRecord);
 
       if (!result.success) {
@@ -744,7 +745,7 @@ export class SalesforceService {
       }
 
       // Sanitize and build select clause
-      const safeFields = (fields || []).filter(f => typeof f === 'string' && f.trim().length > 0);
+      const safeFields = assertSafeFieldList(fields, 'campaign field');
       const select = safeFields.length > 0 ? safeFields.join(', ') : 'Id, Name';
       const query = `SELECT ${select} FROM Campaign WHERE Id = '${this.escapeSoql(campaignId)}' LIMIT 1`;
       const result: any = await this.runQuery(query);
@@ -787,7 +788,7 @@ export class SalesforceService {
         return null;
       }
 
-      const safeFields = (fields || []).filter(f => typeof f === 'string' && f.trim().length > 0);
+      const safeFields = assertSafeFieldList(fields, 'campaign field');
       const select = safeFields.length > 0 ? safeFields.join(', ') : 'Id, Name';
       const runLookup = async (recordType?: string): Promise<Record<string, any> | null> => {
         const clauses = [`Name = '${this.escapeSoql(campaignName)}'`];
@@ -1023,7 +1024,7 @@ export class SalesforceService {
    */
   async getActiveEventCampaigns(fields: string[] = ['Id','Name','StartDate','EndDate','Description']): Promise<Array<Record<string, any>>> {
     try {
-      const safeFields = (fields || []).filter(f => typeof f === 'string' && f.trim().length > 0);
+      const safeFields = assertSafeFieldList(fields, 'campaign field');
       const select = safeFields.length > 0 ? safeFields.join(', ') : 'Id, Name';
       const query = `SELECT ${select} FROM Campaign WHERE RecordType.Name = 'Event' AND IsActive = true ORDER BY StartDate DESC NULLS LAST, Name ASC`;
       const result: any = await this.runQuery(query);
@@ -1071,16 +1072,11 @@ export class SalesforceService {
       const matchService = new ContactMatchService();
       const query = matchService.buildContactSearchQuery(criteria);
       
-      console.log('Contact search query:', query);
-
-      // Execute query
+      // Execute query (the query text contains applicant PII, so it is not logged)
       const result: any = await this.runQuery(query);
       const contacts = result.records || [];
-      
+
       console.log(`Contact search results: Found ${contacts.length} contacts`);
-      if (contacts.length > 0) {
-        console.log('First contact:', JSON.stringify(contacts[0]));
-      }
 
       if (contacts.length === 0) {
         return null;

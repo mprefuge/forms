@@ -1,3 +1,4 @@
+import { escapeSoqlString } from '../functions/shared/soql';
 /**
  * Contact Match Service
  *
@@ -333,41 +334,41 @@ export class ContactMatchService {
     const conditions: string[] = [];
 
     if (criteria.email) {
-      const email = String(criteria.email).replace(/'/g, "\\'");
+      const email = escapeSoqlString(criteria.email);
       // Check if the provided email matches EITHER Email OR Secondary_Email__c
       conditions.push(`(Email = '${email}' OR Secondary_Email__c = '${email}')`);
     }
 
     if (criteria.phone) {
-      const phone = String(criteria.phone).replace(/'/g, "\\'");
+      const phone = escapeSoqlString(criteria.phone);
       conditions.push(`Phone = '${phone}'`);
     }
 
     if (criteria.secondaryEmail) {
-      const secondaryEmail = String(criteria.secondaryEmail).replace(/'/g, "\\'");
+      const secondaryEmail = escapeSoqlString(criteria.secondaryEmail);
       conditions.push(`Secondary_Email__c = '${secondaryEmail}'`);
     }
 
     if (criteria.city) {
-      const city = String(criteria.city).replace(/'/g, "\\'");
+      const city = escapeSoqlString(criteria.city);
       conditions.push(`MailingCity = '${city}'`);
     }
 
     if (criteria.state) {
-      const state = String(criteria.state).replace(/'/g, "\\'");
+      const state = escapeSoqlString(criteria.state);
       conditions.push(`MailingState = '${state}'`);
     }
 
     if (criteria.zip) {
-      const zip = String(criteria.zip).replace(/'/g, "\\'");
+      const zip = escapeSoqlString(criteria.zip);
       conditions.push(`MailingPostalCode = '${zip}'`);
     }
 
     // If we have identifying info (email, phone, secondary email), also search by names
     if (conditions.length > 0) {
       if (criteria.firstName && criteria.lastName) {
-        const firstName = String(criteria.firstName).replace(/'/g, "\\'");
-        const lastName = String(criteria.lastName).replace(/'/g, "\\'");
+        const firstName = escapeSoqlString(criteria.firstName);
+        const lastName = escapeSoqlString(criteria.lastName);
         conditions.push(`(FirstName = '${firstName}' AND LastName = '${lastName}')`);
       }
     }

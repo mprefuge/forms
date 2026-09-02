@@ -8,36 +8,41 @@ import { EmailTemplate } from '../../services/emailService';
 import { resolveRequestObject, resolveRequestId } from '../shared/requestUtils';
 import { buildSalesforceConfig } from '../shared/salesforceUtils';
 import { mapCommonHandlerError } from '../shared/errorUtils';
+import { isDevelopment } from '../shared/env';
+import { assertSafeFieldList } from '../shared/soql';
+import { filterAllowedRecipients, parseEmailList } from '../shared/notificationRecipients';
+import { sanitizeClientFormConfig, ClientConfigError } from '../../config/clientFormConfig';
+import { getConfirmationTemplate } from '../../config/emailTemplates';
 import {
   getFirstQueryValue,
-  getTrimmedQueryValue,
   getTrimmedFirstQueryValue,
   isTruthyQueryFlag,
   parseJsonFromQuery,
   parseDecodedJsonFromQuery,
 } from '../shared/queryUtils';
 
-// Ensure sendCode (and its diagnostics) are registered by importing its module so its top-level app.http calls run
+// The Functions host only loads the entry point named in package.json "main".
+// Import the other HTTP functions here so their app.http registrations run.
 import '../sendCode';
+import '../calendar';
+
+function clientConfigErrorResponse(error: ClientConfigError, requestId: string): HttpResponseInit {
+  return {
+    status: 400,
+    body: JSON.stringify({ error: `Invalid form configuration: ${error.message}` }),
+    headers: { 'Content-Type': 'application/json', 'X-Request-Id': requestId },
+  };
+}
 
 // Initialize form registry on startup
 initializeFormRegistry();
 
 async function createFormHandler(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
   const reqObj: any = resolveRequestObject(request, context);
-  const headersAny: any = reqObj?.headers || request.headers || {};
   const requestId = resolveRequestId(request, context, reqObj);
   const logger = new Logger(requestId, context.invocationId);
 
   logger.info('createForm function triggered', { method: reqObj?.method });
-  logger.debug('Raw request headers', { headers: headersAny });
-  try {
-    logger.debug('Request method type and value', { type: typeof reqObj?.method, value: reqObj?.method });
-    const keys = Object.keys(reqObj || {}).slice(0, 20);
-    logger.debug('Request top-level keys', { keys });
-  } catch (e: any) {
-    logger.debug('Failed to inspect request object', { error: e?.message || e });
-  }
 
   try {
     const method = request.method?.toUpperCase();
@@ -56,6 +61,10 @@ async function createFormHandler(request: HttpRequest, context: InvocationContex
       };
     }
   } catch (error: any) {
+    if (error instanceof ClientConfigError) {
+      logger.error('Rejected client form configuration', error);
+      return clientConfigErrorResponse(error, requestId);
+    }
     logger.error('Error in createForm handler', error, { errorMessage: error?.message });
     const { statusCode, errorMessage } = mapCommonHandlerError(error, {
       includeRecordTypeNotFound: true,
@@ -143,7 +152,9 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
           formData = {};
         }
         logger.debug('Request body parsed', { formDataKeys: Object.keys(formData || {}) });
-        try { logger.debug('Parsed email value', { email: formData.Email__c || formData.email }); } catch(e) {}
+      }
+      if (!formData || typeof formData !== 'object' || Array.isArray(formData)) {
+        formData = {};
       }
     } catch (error: any) {
       logger.error('Invalid request body', error);
@@ -158,8 +169,17 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
     // First check if form config was sent from client (application.js)
     let sendEmail = false; // Track if email should be sent
     if (formData.__formConfig && typeof formData.__formConfig === 'object') {
-      // Form config sent from client-side JavaScript
-      formConfig = formData.__formConfig;
+      // Form config sent from client-side JavaScript. It is untrusted: pin the
+      // object/lookup fields and validate every identifier before use.
+      try {
+        formConfig = sanitizeClientFormConfig(formData.__formConfig);
+      } catch (err: any) {
+        if (err instanceof ClientConfigError) {
+          logger.error('Rejected client form configuration', err);
+          return clientConfigErrorResponse(err, requestId);
+        }
+        throw err;
+      }
       logger.info('Using form configuration from client request', { formId: formConfig.id, formName: formConfig.name });
       delete formData.__formConfig; // Remove from payload before processing
     } else {
@@ -186,29 +206,9 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
       logger.debug('Email flag detected - will send confirmation email');
     }
 
-    // Extract email templates supplied by the caller (front-end)
-    const emailTemplates: any = formData.__emailTemplates || {};
+    // Email templates are owned by the server (see config/emailTemplates.ts).
+    // Older clients still send __emailTemplates; it is ignored.
     if (formData.__emailTemplates) delete formData.__emailTemplates;
-
-      // Determine which copy template is provided (applicationCopy, waiverCopy, etc)
-      let copyTemplateKey: string | undefined;
-    if (sendEmail) {
-      // Allow form-specific templates (e.g., waiverCopy, eventRegistration, applicationCopy)
-      // Determine which copy template is provided by checking what exists
-        copyTemplateKey = Object.keys(emailTemplates).find(k => 
-        k.endsWith('Copy') || k === 'applicationCopy' || k === 'waiverCopy'
-      );
-        const hasCopyTemplate = copyTemplateKey && emailTemplates[copyTemplateKey] && 
-        emailTemplates[copyTemplateKey].subject && 
-        emailTemplates[copyTemplateKey].text && 
-        emailTemplates[copyTemplateKey].html;
-      
-        const hasEventTemplate = emailTemplates.eventRegistration ? (emailTemplates.eventRegistration.subject && emailTemplates.eventRegistration.text && emailTemplates.eventRegistration.html) : false;
-        if (!hasCopyTemplate && !hasEventTemplate) {
-          return { status: 400, body: JSON.stringify({ error: 'Missing email template for submission confirmation' }), headers: { 'Content-Type': 'application/json' } };
-      }
-      // event template validated later when campaign info exists
-    }
 
       const buildEmailVariables = (formPayload: any, campaignInfo?: any, formConfig?: any, generatedFormCode?: string) => {
         const orgName = (formConfig && formConfig.terms && formConfig.terms.orgName) || 'our organization';
@@ -295,15 +295,17 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
         return baseVars;
       };
 
-      const parseEmailRecipients = (value: any): string[] => {
-        if (Array.isArray(value)) {
-          return value.flatMap((entry) => parseEmailRecipients(entry));
+      const parseEmailRecipients = (value: any): string[] => parseEmailList(value);
+
+      // Recipients named by the browser (in the submission or its form config) are
+      // only honored when their domain is allowlisted; see notificationRecipients.ts.
+      const allowClientRecipients = (candidates: string[], source: string): string[] => {
+        if (candidates.length === 0) return [];
+        const { allowed, rejected } = filterAllowedRecipients(candidates);
+        if (rejected.length > 0) {
+          logger.error('Ignoring notification recipients outside the allowed domains', undefined, { source, rejected });
         }
-        if (typeof value !== 'string') return [];
-        return value
-          .split(/[;,]+/)
-          .map((entry) => entry.trim())
-          .filter(Boolean);
+        return allowed;
       };
 
       const parseBooleanFlag = (value: any): boolean | null => {
@@ -362,31 +364,31 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
         for (const source of customFieldSources) {
           if (!source) continue;
           if (typeof source === 'object') {
-            const nestedRecipients = parseEmailRecipients(
+            const nestedRecipients = allowClientRecipients(parseEmailRecipients(
               (source as any).NotificationEmails ?? (source as any).NotificationEmail
-            );
+            ), 'submission');
             if (nestedRecipients.length > 0) return nestedRecipients;
             continue;
           }
           if (typeof source === 'string' && (source.trim().startsWith('{') || source.trim().startsWith('['))) {
             try {
               const parsed = JSON.parse(source);
-              const nestedRecipients = parseEmailRecipients(
+              const nestedRecipients = allowClientRecipients(parseEmailRecipients(
                 parsed?.NotificationEmails ?? parsed?.NotificationEmail
-              );
+              ), 'submission');
               if (nestedRecipients.length > 0) return nestedRecipients;
               continue;
             } catch {
               // Fall through and treat the value as a plain recipient string.
             }
           }
-          const directRecipients = parseEmailRecipients(source);
+          const directRecipients = allowClientRecipients(parseEmailRecipients(source), 'submission');
           if (directRecipients.length > 0) return directRecipients;
         }
 
-        const configuredRecipients = parseEmailRecipients(
+        const configuredRecipients = allowClientRecipients(parseEmailRecipients(
           resolvedFormConfig?.notificationEmails ?? resolvedFormConfig?.notificationEmail
-        );
+        ), 'formConfig');
         if (configuredRecipients.length > 0) return configuredRecipients;
         return parseEmailRecipients(process.env.AdminEmail || process.env.ADMIN_EMAIL);
       };
@@ -611,8 +613,12 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
         logger.info('Notes created successfully');
       }
 
-      // Sync opted-in registrants to Mailchimp in the background (non-blocking).
-      (async () => {
+      // Post-update side effects run concurrently and are awaited before responding so
+      // the host cannot recycle the worker while they are still in flight.
+      const updateSideEffects: Promise<any>[] = [];
+
+      // Sync opted-in registrants to Mailchimp.
+      updateSideEffects.push((async () => {
         try {
           const hasMapping = formConfig.salesforceMapping && Object.keys(formConfig.salesforceMapping).length > 0;
           const emailSfField = hasMapping ? (formConfig.salesforceMapping['Email'] || 'Email__c') : 'Email__c';
@@ -672,11 +678,11 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
         } catch (e: any) {
           logger.error('Failed to sync registrant to Mailchimp (update)', e, { formId: resolvedFormId, errorMessage: e?.message });
         }
-      })().catch(() => {});
+      })());
 
-      // Send email in background (non-blocking) if explicitly requested via __sendEmail flag
+      // Send confirmation email if explicitly requested via __sendEmail flag
       if (sendEmail) {
-        (async () => {
+        updateSideEffects.push((async () => {
           try {
             const emailField = 'Email';
             const firstNameField = 'FirstName';
@@ -712,17 +718,13 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
             ].filter(Boolean).join(' ').trim();
 
             if (applicantEmail) {
-              const appTemplate = copyTemplateKey ? emailTemplates[copyTemplateKey] : (emailTemplates.applicationCopy || emailTemplates.waiverCopy || emailTemplates.eventRegistration);
-              if (!appTemplate || !appTemplate.subject || !appTemplate.text || !appTemplate.html) {
-                logger.error('Missing email template for submission confirmation');
-                return;
-              }
+              const appTemplate = getConfirmationTemplate(formConfig.id, false);
 
-              logger.info('Dispatching application copy email (update)', { to: applicantEmail, applicantName, formId: resolvedFormId });
+              logger.info('Dispatching application copy email (update)', { to: applicantEmail, formId: resolvedFormId });
               const { EmailService } = await import('../../services/emailService');
               const emailService = new EmailService();
               await emailService.sendApplicationCopy(applicantEmail, applicantName, emailData, formConfig, appTemplate);
-              try { (global as any).__LAST_APPLICATION_COPY_SENT__ = { to: applicantEmail, name: applicantName, formData: emailData }; } catch(e) {}
+              if (isDevelopment()) { try { (global as any).__LAST_APPLICATION_COPY_SENT__ = { to: applicantEmail, name: applicantName, formData: emailData }; } catch(e) {} }
               logger.info('Application copy email dispatched', { to: applicantEmail });
             } else {
               logger.debug('No applicant email present; skipping application copy email');
@@ -741,8 +743,10 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
           } catch (e: any) {
             logger.error('Failed to send application copy email', e, { errorMessage: e?.message });
           }
-        })().catch(() => {});
+        })());
       }
+
+      await Promise.allSettled(updateSideEffects);
 
       // Return success response for update
       return {
@@ -914,10 +918,13 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
         contactMatchCriteria.phone = filteredData[phoneField] || filteredData[phoneSfField] || formData[phoneField] || formData[phoneSfField];
         contactMatchCriteria.secondaryEmail = filteredData[secondaryEmailField] || filteredData[secondaryEmailSfField] || formData[secondaryEmailField] || formData[secondaryEmailSfField];
 
-        // Extract preference for receiving updates (defaults to true when not explicitly provided)
+        // Extract the opt-in preference. It is only meaningful when the form actually
+        // presented the ReceiveUpdates choice and the submission carried an explicit
+        // value; otherwise leave the Contact's existing preference untouched.
         const rawReceive = (filteredData && typeof filteredData.ReceiveUpdates !== 'undefined') ? filteredData.ReceiveUpdates : formData.ReceiveUpdates;
-        const receiveUpdatesBool = (typeof rawReceive === 'boolean') ? rawReceive : String(rawReceive).toLowerCase() === 'true' || rawReceive === '1' || typeof rawReceive === 'undefined';
-        const hasOptedOut = !receiveUpdatesBool;
+        const parsedReceive = isReceiveUpdatesFieldConfigured(formConfig) ? parseBooleanFlag(rawReceive) : null;
+        const receiveUpdatesBool = parsedReceive === null ? undefined : parsedReceive;
+        const hasOptedOut: boolean | undefined = receiveUpdatesBool === undefined ? undefined : !receiveUpdatesBool;
 
         logger.debug('Contact match criteria extracted', { 
           hasFirstName: !!contactMatchCriteria.firstName,
@@ -948,7 +955,7 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
             });
             contactId = contactMatch.contactId;
 
-            // Update opt-out preference on existing contact (if explicitly provided)
+            // Update opt-out preference on existing contact only when explicitly provided
             try {
               if (typeof hasOptedOut === 'boolean') {
                 logger.info('Updating Contact opt-out preference for existing contact', { contactId, HasOptedOutOfEmail: hasOptedOut });
@@ -1110,7 +1117,7 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
         let enrichedFormData = { ...filteredData, ...formData };
 
         // Debug info: whether we have an applicant email and whether campaign info was resolved
-        logger.debug('Applicant email check (creation)', { applicantEmail, campaignInfoPresent: !!campaignInfo, campaignInfo, formDataKeys: Object.keys(enrichedFormData || {}) });
+        logger.debug('Applicant email check (creation)', { hasApplicantEmail: !!applicantEmail, campaignInfoPresent: !!campaignInfo, formDataKeys: Object.keys(enrichedFormData || {}) });
 
         // Send application copy to applicant when an email address is present.
         // Default behavior: send on create if applicant email exists (aligns with update flow).
@@ -1121,33 +1128,25 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
           const emailService = new EmailService();
 
           if (campaignInfo) {
-            const selectedTemplate = emailTemplates.eventRegistration || (copyTemplateKey ? emailTemplates[copyTemplateKey] : undefined);
-            if (!selectedTemplate || !selectedTemplate.subject || !selectedTemplate.text || !selectedTemplate.html) {
-              logger.error('Missing email template for submission confirmation');
-              return;
-            }
+            const selectedTemplate = getConfirmationTemplate(formConfig.id, true);
 
             const variables = buildEmailVariables(enrichedFormData, campaignInfo, formConfig, generatedFormCode);
-            logger.info('Dispatching event registration email (creation)', { to: applicantEmail, applicantName, formId: createdFormId, campaign: campaignInfo });
+            logger.info('Dispatching event registration email (creation)', { to: applicantEmail, formId: createdFormId, campaignId: campaignInfo.id });
             try {
               await emailService.sendEmail(applicantEmail, selectedTemplate, variables);
-              try { (global as any).__LAST_EVENT_CONFIRMATION_SENT__ = { to: applicantEmail, name: applicantName, campaign: campaignInfo }; } catch (e) {}
+              if (isDevelopment()) { try { (global as any).__LAST_EVENT_CONFIRMATION_SENT__ = { to: applicantEmail, name: applicantName, campaign: campaignInfo }; } catch (e) {} }
               logger.info('Event confirmation email dispatched', { to: applicantEmail });
             } catch (e: any) {
               logger.error('Failed to send event confirmation email', e, { errorMessage: e?.message });
             }
           } else {
-            const selectedTemplate = copyTemplateKey ? emailTemplates[copyTemplateKey] : (emailTemplates.applicationCopy || emailTemplates.waiverCopy || emailTemplates.eventRegistration);
-            if (!selectedTemplate || !selectedTemplate.subject || !selectedTemplate.text || !selectedTemplate.html) {
-              logger.error('Missing email template for submission confirmation');
-              return;
-            }
+            const selectedTemplate = getConfirmationTemplate(formConfig.id, false);
 
             const variables = buildEmailVariables(enrichedFormData, undefined, formConfig, generatedFormCode);
-            logger.info('Dispatching submission email (creation)', { to: applicantEmail, applicantName, formId: createdFormId });
+            logger.info('Dispatching submission email (creation)', { to: applicantEmail, formId: createdFormId });
             try {
               await emailService.sendEmail(applicantEmail, selectedTemplate, variables);
-              try { (global as any).__LAST_APPLICATION_COPY_SENT__ = { to: applicantEmail, name: applicantName, formData: enrichedFormData }; } catch(e) {}
+              if (isDevelopment()) { try { (global as any).__LAST_APPLICATION_COPY_SENT__ = { to: applicantEmail, name: applicantName, formData: enrichedFormData }; } catch(e) {} }
               logger.info('Submission email dispatched', { to: applicantEmail });
             } catch (e: any) {
               logger.error('Failed to send submission email', e, { errorMessage: e?.message });
@@ -1261,13 +1260,12 @@ async function postFormHandler(request: HttpRequest, context: InvocationContext,
     })();
     parallelOperations.push(submissionNotificationPromise);
 
-    // Fire off parallel operations in background (non-blocking)
-    // Don't wait for them to complete - return response immediately
-    Promise.allSettled(parallelOperations).then(() => {
-      logger.info('Background post-creation operations completed', { formId: createdFormId });
-    }).catch((err) => {
-      logger.error('Error in background operations', err);
-    });
+    // The side effects run concurrently with each other, but the response waits for
+    // them: work left running after the response can be lost when the Functions
+    // host recycles the worker, and failures would no longer be tied to this
+    // invocation. Each operation catches and logs its own errors.
+    await Promise.allSettled(parallelOperations);
+    logger.info('Post-creation operations completed', { formId: createdFormId });
 
     // Return success response immediately (include generated form code when available)
     const headers: any = { 'Content-Type': 'application/json', 'X-Request-Id': requestId };
@@ -1474,19 +1472,32 @@ async function getFormHandler(request: HttpRequest, context: InvocationContext, 
       }
     }
 
+    // Client-supplied form config (query string). Parsed once and sanitized; a
+    // malformed value falls back to the server registry, an invalid one is a 400.
+    const parseQueryFormConfig = (): any => {
+      const fcParam = getFirstQueryValue(request, ['formConfig']);
+      if (!fcParam) return undefined;
+      let raw: any;
+      try {
+        raw = parseJsonFromQuery(fcParam);
+      } catch {
+        try {
+          raw = parseDecodedJsonFromQuery(fcParam);
+        } catch (e: any) {
+          logger.info('Failed to parse formConfig from query parameter, will use server registry', { error: e?.message });
+          return undefined;
+        }
+      }
+      return sanitizeClientFormConfig(raw);
+    };
+
     // Support event campaign info retrieval: ?eventId=... or ?eventid=...
     const eventId = getFirstQueryValue(request, ['eventId', 'eventid']);
     if (eventId) {
       // Determine form config to obtain event query fields if provided
-      let formConfig: any = undefined;
-      try {
-        const fcParam = getFirstQueryValue(request, ['formConfig']);
-        if (fcParam) {
-          formConfig = parseJsonFromQuery(fcParam);
-          logger.info('Using form configuration from client query for event lookup', { formId: formConfig.id, formName: formConfig.name });
-        }
-      } catch (e: any) {
-        logger.debug('Failed to parse formConfig from query', { error: e?.message });
+      const formConfig: any = parseQueryFormConfig();
+      if (formConfig) {
+        logger.info('Using form configuration from client query for event lookup', { formId: formConfig.id, formName: formConfig.name });
       }
 
       const salesforceService = new SalesforceService(buildSalesforceConfig());
@@ -1519,15 +1530,9 @@ async function getFormHandler(request: HttpRequest, context: InvocationContext, 
     const listActiveEvents = getFirstQueryValue(request, ['listActiveEvents']);
     if (isTruthyQueryFlag(listActiveEvents)) {
       // Determine form config to obtain event query fields if provided
-      let formConfig: any = undefined;
-      try {
-        const fcParam = getFirstQueryValue(request, ['formConfig']);
-        if (fcParam) {
-          formConfig = parseJsonFromQuery(fcParam);
-          logger.info('Using form configuration from client query for listing events', { formId: formConfig.id, formName: formConfig.name });
-        }
-      } catch (e: any) {
-        logger.debug('Failed to parse formConfig from query', { error: e?.message });
+      const formConfig: any = parseQueryFormConfig();
+      if (formConfig) {
+        logger.info('Using form configuration from client query for listing events', { formId: formConfig.id, formName: formConfig.name });
       }
 
       const salesforceService = new SalesforceService(buildSalesforceConfig());
@@ -1556,64 +1561,23 @@ async function getFormHandler(request: HttpRequest, context: InvocationContext, 
       'FormCode__c',
       'form_code',
     ]);
-    // Also support lookup by email: ?email=foo@bar.com
-    const emailQuery = getTrimmedQueryValue(request, 'email');
+    // Lookups by email are intentionally not supported here: this endpoint is
+    // anonymous, and an email address is not a secret. Use POST /api/form/send-code
+    // to email the code to the address on file instead.
 
-    // Support a diagnostics query for local troubleshooting: ?diagnostics=1
-    const diagnosticsQuery = getFirstQueryValue(request, ['diagnostics']);
-    if (isTruthyQueryFlag(diagnosticsQuery)) {
-      if (process.env.NODE_ENV === 'production') {
-        return { status: 403, body: JSON.stringify({ error: 'Diagnostics not available in production' }), headers: { 'Content-Type': 'application/json' } };
-      }
-
-      let azureSdkAvailable = false;
-      try {
-        const m = require('@azure/communication-email');
-        azureSdkAvailable = !!(m && (m.EmailClient || m.default?.EmailClient));
-      } catch (e) {
-        azureSdkAvailable = false;
-      }
-
-      let nodemailerAvailable = false;
-      try {
-        const m = require('nodemailer');
-        nodemailerAvailable = !!(m && m.createTransport);
-      } catch (e) {
-        nodemailerAvailable = false;
-      }
-
-      const diagnostics = {
-        azureConfigured: !!(process.env.AZURE_COMMUNICATION_CONNECTION_STRING || process.env.AZURE_EMAIL_CONNECTION_STRING),
-        azureSdkAvailable,
-        smtpConfigured: !!(process.env.SMTP_HOST && process.env.SMTP_PORT && process.env.SMTP_USER && process.env.SMTP_PASS),
-        nodemailerAvailable,
-        emailFrom: process.env.EMAIL_FROM || null,
-        nodeEnv: process.env.NODE_ENV || 'development'
-      };
-
-      return { status: 200, body: JSON.stringify(diagnostics), headers: { 'Content-Type': 'application/json' } };
-    }
-
-    // Determine which form configuration to use
-    // First check if form config was sent from client (application.js) via query parameter
-    let formConfig;
-    const formConfigParam = getFirstQueryValue(request, ['formConfig']);
-    if (formConfigParam) {
-      try {
-        formConfig = parseDecodedJsonFromQuery(formConfigParam);
-        logger.info('Using form configuration from client request', { formId: formConfig.id, formName: formConfig.name });
-      } catch (e: any) {
-        logger.info('Failed to parse formConfig from query parameter, will use server registry', { error: e?.message });
-        // Fall through to server-side registry
-      }
+    // Determine which form configuration to use (client query parameter first)
+    const formConfig: any = parseQueryFormConfig();
+    if (formConfig) {
+      logger.info('Using form configuration from client request', { formId: formConfig.id, formName: formConfig.name });
     }
 
     // Fallback to loading from server-side registry
-    if (!formConfig) {
+    let resolvedFormConfig: any = formConfig;
+    if (!resolvedFormConfig) {
       const formId = getFirstQueryValue(request, ['formId', 'form_id', 'FormId']) || 'general';
       try {
-        formConfig = getFormConfig(formId);
-        logger.info('Using form configuration from server registry', { formId, formName: formConfig.name });
+        resolvedFormConfig = getFormConfig(formId);
+        logger.info('Using form configuration from server registry', { formId, formName: resolvedFormConfig.name });
       } catch (err: any) {
         logger.error('Form configuration not found', err);
         return {
@@ -1624,27 +1588,7 @@ async function getFormHandler(request: HttpRequest, context: InvocationContext, 
       }
     }
 
-    const salesforceService = new SalesforceService(buildSalesforceConfig());
-
-    // Authenticate with Salesforce
-    logger.info('Authenticating with Salesforce');
-    await salesforceService.authenticate();
-    logger.info('Successfully authenticated with Salesforce');
-
-    // If email query provided, resolve by email and return the record
-    if (emailQuery) {
-      logger.info('Retrieving form by email', { email: emailQuery });
-      // Explicitly pass undefined as second arg so tests expecting undefined can assert it
-      const formData = await salesforceService.getFormByEmail(emailQuery, undefined);
-      logger.info('Form retrieved successfully by email', { formId: formData.Id });
-      return {
-        status: 200,
-        body: JSON.stringify(formData),
-        headers: { 'Content-Type': 'application/json', 'X-Request-Id': requestId },
-      };
-    }
-
-    // Require formCode when email is not provided
+    // Require formCode
     if (!formCode) {
       logger.error('Missing form code parameter', new Error('code query parameter is required'));
       return {
@@ -1654,12 +1598,28 @@ async function getFormHandler(request: HttpRequest, context: InvocationContext, 
       };
     }
 
+    const salesforceService = new SalesforceService(buildSalesforceConfig());
+
+    // Authenticate with Salesforce
+    logger.info('Authenticating with Salesforce');
+    await salesforceService.authenticate();
+    logger.info('Successfully authenticated with Salesforce');
+
     // Retrieve form by code — if specific fields requested via ?fields=foo,bar pass those, otherwise omit second arg
-    logger.info('Retrieving form by code', { formCode, formConfigId: formConfig.id });
+    logger.info('Retrieving form by code', { formConfigId: resolvedFormConfig.id });
     const fieldsParam = request.query.get('fields');
     let formData;
     if (fieldsParam) {
-      const fields = fieldsParam.split(',').map((f: string) => f.trim()).filter(Boolean);
+      let fields: string[];
+      try {
+        fields = assertSafeFieldList(fieldsParam.split(','), 'field');
+      } catch (err: any) {
+        return {
+          status: 400,
+          body: JSON.stringify({ error: err.message }),
+          headers: { 'Content-Type': 'application/json', 'X-Request-Id': requestId },
+        };
+      }
       formData = await salesforceService.getFormByCode(formCode, fields);
     } else {
       // Explicitly pass `undefined` as second arg so tests that assert undefined receive it
@@ -1675,6 +1635,10 @@ async function getFormHandler(request: HttpRequest, context: InvocationContext, 
       headers: { 'Content-Type': 'application/json', 'X-Request-Id': requestId },
     };
   } catch (error: any) {
+    if (error instanceof ClientConfigError) {
+      logger.error('Rejected client form configuration', error);
+      return clientConfigErrorResponse(error, requestId);
+    }
     logger.error('Error retrieving form', error, { errorMessage: error?.message });
     const { statusCode, errorMessage } = mapCommonHandlerError(error, {
       includeFormNotFound: true,

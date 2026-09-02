@@ -2,6 +2,8 @@ import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/fu
 import { SalesforceService } from '../../services/salesforceService';
 import { Logger } from '../../services/logger';
 import { EmailTemplate } from '../../services/emailService';
+import { getConfirmationTemplate } from '../../config/emailTemplates';
+import { isDevelopment } from '../shared/env';
 import { resolveRequestObject, resolveRequestId } from '../shared/requestUtils';
 import { buildSalesforceConfig } from '../shared/salesforceUtils';
 import { mapCommonHandlerError } from '../shared/errorUtils';
@@ -31,9 +33,9 @@ async function parseUpdateData(request: HttpRequest, logger: Logger): Promise<{ 
   }
 }
 
-function extractEmailControls(updateData: any, logger: Logger): { sendEmail: boolean; emailTemplates: any } {
+function extractEmailControls(updateData: any, logger: Logger): { sendEmail: boolean; formId: string } {
   let sendEmail = false;
-  let emailTemplates: any = {};
+  let formId = '';
 
   if (updateData && updateData.__sendEmail === true) {
     sendEmail = true;
@@ -41,45 +43,17 @@ function extractEmailControls(updateData: any, logger: Logger): { sendEmail: boo
     logger.debug('Email flag detected - will send confirmation email');
   }
 
+  // Templates are server-owned (config/emailTemplates.ts); client copies are ignored.
   if (updateData && updateData.__emailTemplates) {
-    emailTemplates = updateData.__emailTemplates;
     delete updateData.__emailTemplates;
   }
 
-  return { sendEmail, emailTemplates };
-}
-
-function validateEmailTemplates(sendEmail: boolean, emailTemplates: any): { ok: true; copyTemplateKey?: string } | { ok: false; response: HttpResponseInit } {
-  let copyTemplateKey: string | undefined;
-
-  if (sendEmail) {
-    copyTemplateKey = Object.keys(emailTemplates).find(
-      k => k.endsWith('Copy') || k === 'applicationCopy' || k === 'waiverCopy'
-    );
-    const hasCopyTemplate =
-      copyTemplateKey &&
-      emailTemplates[copyTemplateKey] &&
-      emailTemplates[copyTemplateKey].subject &&
-      emailTemplates[copyTemplateKey].text &&
-      emailTemplates[copyTemplateKey].html;
-    const hasEventTemplate = emailTemplates.eventRegistration
-      ? emailTemplates.eventRegistration.subject &&
-        emailTemplates.eventRegistration.text &&
-        emailTemplates.eventRegistration.html
-      : false;
-    if (!hasCopyTemplate && !hasEventTemplate) {
-      return {
-        ok: false,
-        response: {
-          status: 400,
-          body: JSON.stringify({ error: 'Missing email template for submission confirmation' }),
-          headers: { 'Content-Type': 'application/json' },
-        },
-      };
-    }
+  if (updateData && updateData.__formConfig) {
+    if (typeof updateData.__formConfig.id === 'string') formId = updateData.__formConfig.id;
+    delete updateData.__formConfig;
   }
 
-  return { ok: true, copyTemplateKey };
+  return { sendEmail, formId };
 }
 
 function getFormIdentifiers(request: HttpRequest, updateData: any): { formCode: any; formId: any } {
@@ -131,13 +105,7 @@ async function updateFormHandler(request: HttpRequest, context: InvocationContex
     }
     const updateData = updateDataResult.data;
 
-    const { sendEmail, emailTemplates } = extractEmailControls(updateData, logger);
-
-    const templateValidation = validateEmailTemplates(sendEmail, emailTemplates);
-    if (!templateValidation.ok) {
-      return templateValidation.response;
-    }
-    const copyTemplateKey = templateValidation.copyTemplateKey;
+    const { sendEmail, formId: templateFormId } = extractEmailControls(updateData, logger);
 
     const { formCode, formId } = getFormIdentifiers(request, updateData);
 
@@ -219,15 +187,7 @@ async function updateFormHandler(request: HttpRequest, context: InvocationContex
           logger.info('Dispatching application copy email (update)', { to: applicantEmail, applicantName, formId: resolvedFormId });
           const { EmailService } = await import('../../services/emailService');
           const emailService = new EmailService();
-          const emailTemplate: EmailTemplate = copyTemplateKey ? emailTemplates[copyTemplateKey] : (emailTemplates.applicationCopy || emailTemplates.waiverCopy || emailTemplates.eventRegistration);
-
-          if (!emailTemplate || !emailTemplate.subject || !emailTemplate.text || !emailTemplate.html) {
-            return {
-              status: 400,
-              body: JSON.stringify({ error: 'Missing email template for submission confirmation' }),
-              headers: { 'Content-Type': 'application/json' },
-            };
-          }
+          const emailTemplate: EmailTemplate = getConfirmationTemplate(templateFormId, false);
 
           const orgName = 'our organization';
           const code = emailData?.FormCode__c || emailData?.formCode || formCode;
@@ -245,7 +205,7 @@ async function updateFormHandler(request: HttpRequest, context: InvocationContex
           };
 
           await emailService.sendEmail(applicantEmail, emailTemplate, variables);
-          try { (global as any).__LAST_APPLICATION_COPY_SENT__ = { to: applicantEmail, name: applicantName, formData: emailData }; } catch(e) {}
+          if (isDevelopment()) { try { (global as any).__LAST_APPLICATION_COPY_SENT__ = { to: applicantEmail, name: applicantName, formData: emailData }; } catch(e) {} }
           logger.info('Application copy email dispatched (update)', { to: applicantEmail });
         } else {
           logger.debug('No applicant email present; skipping application copy email (update)');

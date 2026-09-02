@@ -152,19 +152,6 @@
   // Each form (Donor, Survey, etc.) has its own dedicated .js file with its own config.
   // ============================================================================
 
-  const EMAIL_TEMPLATES = {
-    applicationCopy: {
-      subject: 'Your {{orgName}} Application Submission',
-      text: 'Hello {{FirstName}},\n\nThank you — your application has been successfully submitted. You can monitor its progress by navigating to the application page and selecting "Check Progress", then entering your application code{{codeText}}.\n\nIf you cannot locate your application code, use the "Forgot your code?" link on the application page.\n\nThank you,\n{{orgName}}',
-      html: '<p>Hello {{FirstName}},</p><p>Thank you — your application has been <strong>successfully submitted</strong>. You can monitor its progress by navigating to the application page and selecting <strong>Check Progress</strong>, then entering your application code{{codeHtml}}.</p><p>If you cannot locate your application code, use the <em>Forgot your code?</em> link on the application page.</p><p>Thank you,<br/>{{orgName}}</p>'
-    },
-    applicationCode: {
-      subject: 'Your Application Code',
-      text: 'Hello,\n\nWe received a request to retrieve your application code. Your application code is: {{FormCode__c}}\n\nYou can use this code to resume your application at our website. If you did not request this email, please ignore it.\n\nThank you',
-      html: '<p>Hello,</p><p>We received a request to retrieve your application code. <strong>Your application code is: <code>{{FormCode__c}}</code></strong></p><p>You can use this code to resume your application at our website. If you did not request this email, please ignore it.</p><p>Thank you</p>'
-    }
-  };
-
   const FORM_CONFIG = {
     id: 'volunteer',
     name: 'Volunteer Application',
@@ -1343,9 +1330,7 @@
     // When sending emails (final submit), include templates in the payload
     if (sendEmail) {
       payload['__sendEmail'] = true;
-      payload['__emailTemplates'] = {
-        applicationCopy: EMAIL_TEMPLATES.applicationCopy
-      };
+      // Email templates are owned by the API and selected by FORM_CONFIG.id.
     }
 
     // Handle file uploads
@@ -2090,13 +2075,11 @@
           findBtn.innerHTML = '<span class="ri-loader"></span>';
           setStatus('Requesting that we email your application code...', '');
           try {
-            const template = EMAIL_TEMPLATES.applicationCode;
-
             const url = `${ENDPOINT}/send-code`;
             const res = await fetch(url, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ email, template }),
+              body: JSON.stringify({ email, formId: FORM_CONFIG.id }),
             });
             const json = await res.json().catch(() => ({}));
             if (!res.ok) {

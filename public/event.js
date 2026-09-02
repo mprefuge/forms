@@ -210,19 +210,6 @@
   // FORM CONFIGURATION
   // ============================================================================
 
-  const EMAIL_TEMPLATES = {
-    eventRegistration: {
-      subject: 'Registration Confirmed: {{Name}}',
-      text: 'Hello {{FirstName__c}},\n\nThank you — your registration for {{Name}} has been confirmed. Your confirmation code is: {{FormCode__c}}\n\nEvent details:\n{{eventDetails}}\nAdd to calendar:\n- Google: {{googleUrl}}\n- Outlook: {{outlookUrl}}\n- Apple: {{appleIcsUrl}}\n- ICS: {{icsUrl}}\n\nThank you,\nRefuge International',
-      html: '<p>Hello {{FirstName__c}},</p><p>Thank you — your registration for <strong>{{Name}}</strong> has been confirmed. Your confirmation code is: <strong>{{FormCode__c}}</strong></p><div>{{eventDetailsHtml}}</div><p>Add to calendar: <a href="{{googleUrl}}" target="_blank">Google</a> | <a href="{{outlookUrl}}" target="_blank">Outlook</a> | <a href="{{appleIcsUrl}}">Apple</a> | <a href="{{icsUrl}}">ICS</a></p><p>Thank you,<br/>Refuge International</p>'
-    },
-    applicationCode: {
-      subject: 'Your Registration Code',
-      text: 'Hello,\n\nWe received a request to retrieve your registration code. Your registration code is: {{FormCode__c}}\n\nYou can use this code to view or update your registration at our website. If you did not request this email, please ignore it.\n\nThank you',
-      html: '<p>Hello,</p><p>We received a request to retrieve your registration code. <strong>Your registration code is: <code>{{FormCode__c}}</code></strong></p><p>You can use this code to view or update your registration at our website. If you did not request this email, please ignore it.</p><p>Thank you</p>'
-    }
-  };
-
   const FORM_CONFIG = {
     id: 'event',
     name: 'Events Calendar',
@@ -572,9 +559,7 @@
 
       // Include email templates for event registration confirmation
       payload['__sendEmail'] = true;
-      payload['__emailTemplates'] = {
-        eventRegistration: EMAIL_TEMPLATES.eventRegistration
-      };
+      // Email templates are owned by the API and selected by FORM_CONFIG.id.
 
       // Attach client time zone so server can generate calendar links appropriately
       try {

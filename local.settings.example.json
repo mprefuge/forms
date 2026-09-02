@@ -1,0 +1,24 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "NODE_ENV": "development",
+    "SF_LOGIN_URL": "https://login.salesforce.com",
+    "SF_CLIENT_ID": "",
+    "SF_CLIENT_SECRET": "",
+    "SF_ALLOWED_RECORD_TYPES": "",
+    "AZURE_COMMUNICATION_CONNECTION_STRING": "",
+    "EMAIL_FROM": "noreply@yourdomain.org",
+    "ADMIN_EMAIL": "",
+    "NOTIFICATION_EMAIL_ALLOWED_DOMAINS": "",
+    "NOTIFICATION_EMAIL_ALLOWED_ADDRESSES": "",
+    "PUBLIC_BASE_URL": "http://localhost:7071",
+    "MAILCHIMP_API_KEY": "",
+    "MAILCHIMP_AUDIENCE_ID": ""
+  },
+  "Host": {
+    "CORS": "http://localhost:3000",
+    "CORSCredentials": false
+  }
+}
