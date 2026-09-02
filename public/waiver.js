@@ -136,19 +136,6 @@
   // FORM CONFIGURATION (Parental Waiver)
   // ============================================================================
 
-  const EMAIL_TEMPLATES = {
-    waiverCopy: {
-      subject: 'Waiver and Release Form of Liability Submission - The Nations Next Door',
-      text: 'Hello {{ParentFirstName__c}},\n\nYour waiver and release form of liability for {{FirstName__c}} has been successfully submitted for The Nations Next Door program. Your confirmation code is {{codeText}}.\n\nThank you,\nRefuge International',
-      html: '<p>Hello {{ParentFirstName__c}},</p><p>Your waiver and release form of liability for <strong>{{FirstName__c}}</strong> has been successfully submitted for The Nations Next Door program. Your confirmation code is <strong>{{codeHtml}}</strong>.</p><p>Thank you,<br/>Refuge International</p>'
-    },
-    applicationCode: {
-      subject: 'Your Waiver Code - The Nations Next Door',
-      text: 'Hello,\n\nWe received a request to retrieve your waiver code for The Nations Next Door program. Your waiver code is: {{FormCode__c}}\n\nYou can use this code to view or update your waiver at our website. If you did not request this email, please ignore it.\n\nThank you,\nRefuge International',
-      html: '<p>Hello,</p><p>We received a request to retrieve your waiver code for The Nations Next Door program. <strong>Your waiver code is: <code>{{FormCode__c}}</code></strong></p><p>You can use this code to view or update your waiver at our website. If you did not request this email, please ignore it.</p><p>Thank you,<br/>Refuge International</p>'
-    }
-  };
-
   const FORM_CONFIG = {
     id: 'waiver',
     name: 'Waiver and Release Form of Liability',
@@ -513,9 +500,7 @@
         ...formData,
         __formConfig: FORM_CONFIG,
         __sendEmail: true,
-        __emailTemplates: {
-          waiverCopy: EMAIL_TEMPLATES.waiverCopy
-        }
+        // Email templates are owned by the API and selected by FORM_CONFIG.id.
       };
 
       const response = await fetch(ENDPOINT, {

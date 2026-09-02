@@ -1,3 +1,5 @@
+import { isDevelopment } from '../functions/shared/env';
+
 export interface EmailServiceConfig {
   smtpHost?: string;
   smtpPort?: number;
@@ -14,6 +16,28 @@ export interface EmailTemplate {
 
 export interface EmailVariables {
   [key: string]: string | number | boolean | undefined;
+}
+
+export function escapeHtml(value: any): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * Escape a value for use as an iCalendar TEXT property (RFC 5545 3.3.11).
+ * Line breaks are folded into the escape sequence so a value cannot inject
+ * additional properties.
+ */
+export function escapeIcsText(value: any): string {
+  return String(value ?? '')
+    .replace(/\\/g, '\\\\')
+    .replace(/;/g, '\\;')
+    .replace(/,/g, '\\,')
+    .replace(/\r\n|\r|\n/g, '\\n');
 }
 
 /**
@@ -71,8 +95,8 @@ export class EmailService {
         recipients: { to: [{ address: toEmail, email: toEmail }] },
       };
 
-      if (process.env.NODE_ENV !== 'production') {
-        console.debug('ACS send details', { connectionStringSet: !!conn, from, toEmail, messageShape: Object.keys(message) });
+      if (isDevelopment()) {
+        console.debug('ACS send details', { connectionStringSet: !!conn, from, messageShape: Object.keys(message) });
       }
 
       try {
@@ -134,25 +158,34 @@ export class EmailService {
     if (!template || !template.subject) throw new Error('Invalid email template');
 
     // Replace variables in template
-    // Supports {{variableName}} or {{data.fieldName}} syntax
-    const replaceVariables = (str: string): string => {
-      return str.replace(/\{\{([\w\.]+)\}\}/g, (match, path) => {
-        // Split path by dots to support nested access (e.g., data.FirstName__c)
-        const keys = path.split('.');
-        let value: any = variables;
-        
-        for (const key of keys) {
-          value = value?.[key];
-          if (value === undefined) break;
+    // Supports {{variableName}} or {{data.fieldName}} syntax.
+    // Values inserted into the HTML body are escaped unless the variable name
+    // ends in "Html", which marks it as pre-rendered, trusted markup.
+    const resolveVariable = (path: string): any => {
+      const keys = path.split('.');
+      let value: any = variables;
+      for (const key of keys) {
+        value = value?.[key];
+        if (value === undefined) break;
+      }
+      return value;
+    };
+
+    const replaceVariables = (str: string, escapeForHtml: boolean): string => {
+      return String(str || '').replace(/\{\{([\w\.]+)\}\}/g, (match, path) => {
+        const value = resolveVariable(path);
+        if (value === undefined || value === null) return match;
+        const rendered = String(value);
+        if (escapeForHtml && !/Html$/.test(path)) {
+          return escapeHtml(rendered);
         }
-        
-        return value !== undefined ? String(value) : match;
+        return rendered;
       });
     };
 
-    const subject = replaceVariables(template.subject);
-    const text = replaceVariables(template.text);
-    const html = replaceVariables(template.html);
+    const subject = replaceVariables(template.subject, false);
+    const text = replaceVariables(template.text, false);
+    const html = replaceVariables(template.html, true);
 
     await this.sendRawEmail(toEmail, subject, text, html);
   }
@@ -286,9 +319,9 @@ export class EmailService {
     // Floating local DTSTART/DTEND (no Z) so clients render in user's local time
     if (startLocal) icsLines.push(`DTSTART:${startLocal}`);
     if (endLocal) icsLines.push(`DTEND:${endLocal}`);
-    icsLines.push(`SUMMARY:${(eventInfo.name || '').replace(/\n/g, '\\n')}`);
-    if (eventInfo.description) icsLines.push(`DESCRIPTION:${(eventInfo.description || '').replace(/\n/g, '\\n')}`);
-    if (eventInfo.location) icsLines.push(`LOCATION:${(eventInfo.location || '').replace(/\n/g, '\\n')}`);
+    icsLines.push(`SUMMARY:${escapeIcsText(eventInfo.name)}`);
+    if (eventInfo.description) icsLines.push(`DESCRIPTION:${escapeIcsText(eventInfo.description)}`);
+    if (eventInfo.location) icsLines.push(`LOCATION:${escapeIcsText(eventInfo.location)}`);
     icsLines.push('END:VEVENT', 'END:VCALENDAR');
 
     const ics = icsLines.join('\r\n');

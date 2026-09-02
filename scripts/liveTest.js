@@ -1,7 +1,7 @@
 const fs = require('fs');
 const axios = require('axios');
 const { SalesforceService } = require('../dist/services/salesforceService');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 
 async function loadLocalSettings() {
   const path = './local.settings.json';
@@ -29,7 +29,7 @@ async function loadLocalSettings() {
       process.exit(1);
     }
 
-    const requestId = `live-test-${uuidv4()}`;
+    const requestId = `live-test-${randomUUID()}`;
 
     console.log('Posting sample createForm request to local function...');
 

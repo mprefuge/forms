@@ -1,7 +1,8 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
+import { randomUUID } from 'crypto';
 import { Logger } from '../../services/logger';
 import { SalesforceService } from '../../services/salesforceService';
-import { EmailService, EmailTemplate } from '../../services/emailService';
+import { EmailService } from '../../services/emailService';
 import {
   resolveRequestObject,
   resolveRequestId,
@@ -9,19 +10,21 @@ import {
   getRawBodyTextForDiagnostics,
 } from '../shared/requestUtils';
 import { buildSalesforceConfig } from '../shared/salesforceUtils';
+import { isDevelopment } from '../shared/env';
+import { getEmailTemplate } from '../../config/emailTemplates';
 
-function logRequestBodyShape(request: HttpRequest, reqObj: any, logger: Logger): void {
-  try {
-    if (process.env.NODE_ENV !== 'production') {
-      logger.debug('Request body shapes', {
-        hasRequestJsonFn: !!(request && typeof request.json === 'function'),
-        requestBodyType: typeof request?.body,
-        reqObjBodyType: typeof reqObj?.body,
-        reqObjRawBodyType: reqObj && reqObj.rawBody ? reqObj.rawBody.constructor?.name || typeof reqObj.rawBody : null,
-      });
-    }
-  } catch (e) {
-  }
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// The response is identical whether or not a submission exists for the address,
+// so the endpoint cannot be used to discover who has applied.
+const ACCEPTED_MESSAGE = 'If a submission exists for that email address, the code has been sent to it.';
+
+function jsonResponse(status: number, body: any, extraHeaders: { [key: string]: string } = {}): HttpResponseInit {
+  return {
+    status,
+    body: JSON.stringify(body),
+    headers: { 'Content-Type': 'application/json', ...extraHeaders },
+  };
 }
 
 function extractEmail(body: any, request: HttpRequest, reqObj: any): string {
@@ -31,18 +34,9 @@ function extractEmail(body: any, request: HttpRequest, reqObj: any): string {
   return emailFromBody || String(emailFromQuery || '').trim();
 }
 
-function validateEmailTemplateFromBody(body: any): EmailTemplate | null {
-  const emailTemplate = (body && body.template) as EmailTemplate | undefined;
-  if (!emailTemplate || !emailTemplate.subject || !emailTemplate.text || !emailTemplate.html) {
-    return null;
-  }
-  return emailTemplate;
-}
-
-function generateErrorId(): string {
-  return typeof require('crypto')?.randomUUID === 'function'
-    ? require('crypto').randomUUID()
-    : `${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+function extractFormId(body: any): string {
+  const candidate = body?.formId ?? body?.form_id ?? body?.__formConfig?.id;
+  return typeof candidate === 'string' ? candidate.trim() : '';
 }
 
 async function sendCodeHandler(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
@@ -51,16 +45,11 @@ async function sendCodeHandler(request: HttpRequest, context: InvocationContext)
   const logger = new Logger(requestId, context.invocationId);
 
   logger.info('sendCode function triggered', { method: reqObj?.method });
-  logRequestBodyShape(request, reqObj, logger);
 
   try {
     const method = request.method?.toUpperCase();
     if (method !== 'POST') {
-      return {
-        status: 405,
-        body: JSON.stringify({ error: 'Method not allowed. Only POST is supported.' }),
-        headers: { 'Content-Type': 'application/json' },
-      };
+      return jsonResponse(405, { error: 'Method not allowed. Only POST is supported.' });
     }
 
     let body: any;
@@ -69,78 +58,59 @@ async function sendCodeHandler(request: HttpRequest, context: InvocationContext)
     } catch (e: any) {
       logger.error('Invalid JSON in request body', e);
       const extra: any = { error: 'Invalid JSON in request body' };
-      if (process.env.NODE_ENV !== 'production') {
+      if (isDevelopment()) {
         extra.raw = getRawBodyTextForDiagnostics(reqObj, request);
       }
-      return { status: 400, body: JSON.stringify(extra), headers: { 'Content-Type': 'application/json' } };
+      return jsonResponse(400, extra);
     }
 
     const email = extractEmail(body, request, reqObj);
-
     if (!email) {
-      logger.error('Missing email parameter', new Error('email is required'));
-      return { status: 400, body: JSON.stringify({ error: 'Missing required parameter: email' }), headers: { 'Content-Type': 'application/json' } };
+      return jsonResponse(400, { error: 'Missing required parameter: email' });
+    }
+    if (!EMAIL_PATTERN.test(email) || email.length > 254) {
+      return jsonResponse(400, { error: 'Invalid email address' });
     }
 
-    // Initialize services
-    const sfConfig = buildSalesforceConfig();
-    const salesforceService = new SalesforceService(sfConfig);
+    // Templates are owned by the server and selected by form id; any template
+    // supplied in the request body is ignored.
+    const formId = extractFormId(body);
+    const emailTemplate = getEmailTemplate(formId, 'applicationCode');
+
+    const salesforceService = new SalesforceService(buildSalesforceConfig());
     await salesforceService.authenticate();
 
-    // Lookup by email to retrieve application code
-    logger.info('Looking up application by email', { email });
     let form: any;
     try {
       form = await salesforceService.getFormByEmail(email);
     } catch (err: any) {
-      logger.info('Form not found by email', { email });
-      return { status: 404, body: JSON.stringify({ error: `No application found for email: ${email}` }), headers: { 'Content-Type': 'application/json' } };
+      logger.info('No form found for email; returning generic acknowledgement', { email });
+      return jsonResponse(200, { message: ACCEPTED_MESSAGE }, { 'X-Request-Id': requestId });
     }
 
-    const code = form.FormCode__c || form.FormCode || form.formCode || null;
+    const code = form?.FormCode__c || form?.FormCode || form?.formCode || null;
     if (!code) {
-      logger.error('Form found but no FormCode available', { formId: form.Id });
-      return { status: 500, body: JSON.stringify({ error: 'Application found but no application code present' }), headers: { 'Content-Type': 'application/json' } };
+      logger.error('Form found but no FormCode available', undefined, { formId: form?.Id });
+      return jsonResponse(200, { message: ACCEPTED_MESSAGE }, { 'X-Request-Id': requestId });
     }
 
-    // Send email using template supplied by caller (front-end)
     try {
       const emailService = new EmailService();
-
-      const emailTemplate = validateEmailTemplateFromBody(body);
-      if (!emailTemplate) {
-        return {
-          status: 400,
-          body: JSON.stringify({ error: 'Missing email template. Provide subject, text, and html fields.' }),
-          headers: { 'Content-Type': 'application/json' },
-        };
-      }
-
       await emailService.sendApplicationCode(email, code, emailTemplate);
     } catch (err: any) {
-      const errorId = generateErrorId();
-      logger.error('Failed to send email with application code', {
-        errorId,
-        errorMessage: err?.message || String(err),
-        stack: err?.stack || null,
-      });
+      const errorId = randomUUID();
+      logger.error('Failed to send email with application code', err, { errorId });
 
-      const detail = (err && err.message) ? String(err.message) : undefined;
       const bodyPayload: any = { error: 'Failed to send email', errorId };
-      if (process.env.NODE_ENV !== 'production' && detail) bodyPayload.detail = detail;
+      if (isDevelopment() && err?.message) bodyPayload.detail = String(err.message);
 
-      return { status: 500, body: JSON.stringify(bodyPayload), headers: { 'Content-Type': 'application/json', 'X-Error-Id': errorId } };
+      return jsonResponse(500, bodyPayload, { 'X-Error-Id': errorId, 'X-Request-Id': requestId });
     }
 
-    return {
-      status: 200,
-      body: JSON.stringify({ message: 'Email sent' }),
-      headers: { 'Content-Type': 'application/json', 'X-Request-Id': requestId },
-    };
-
+    return jsonResponse(200, { message: ACCEPTED_MESSAGE }, { 'X-Request-Id': requestId });
   } catch (error: any) {
     logger.error('Unhandled error in sendCode handler', error);
-    return { status: 500, body: JSON.stringify({ error: 'Internal server error' }), headers: { 'Content-Type': 'application/json' } };
+    return jsonResponse(500, { error: 'Internal server error' }, { 'X-Request-Id': requestId });
   }
 }
 
@@ -150,42 +120,5 @@ app.http('sendCode', {
   route: 'form/send-code',
   handler: sendCodeHandler
 });
-
-// Diagnostics endpoint implementation (kept here for reuse by a small wrapper function)
-export async function sendCodeDiagnostics(request: any, context: InvocationContext): Promise<HttpResponseInit> {
-  const logger = new Logger('', context.invocationId);
-  if (process.env.NODE_ENV === 'production') {
-    logger.info('Diagnostics endpoint hit in production - refusing to reveal details');
-    return { status: 403, body: JSON.stringify({ error: 'Diagnostics not available in production' }), headers: { 'Content-Type': 'application/json' } };
-  }
-
-  let azureSdkAvailable = false;
-  try {
-    // Try to require the @azure/communication-email module
-    const m = require('@azure/communication-email');
-    azureSdkAvailable = !!(m && (m.EmailClient || m.default?.EmailClient));
-  } catch (e) {
-    azureSdkAvailable = false;
-  }
-
-  let nodemailerAvailable = false;
-  try {
-    const m = require('nodemailer');
-    nodemailerAvailable = !!(m && m.createTransport);
-  } catch (e) {
-    nodemailerAvailable = false;
-  }
-
-  const diagnostics = {
-    azureConfigured: !!(process.env.AZURE_COMMUNICATION_CONNECTION_STRING || process.env.AZURE_EMAIL_CONNECTION_STRING),
-    azureSdkAvailable,
-    smtpConfigured: !!(process.env.SMTP_HOST && process.env.SMTP_PORT && process.env.SMTP_USER && process.env.SMTP_PASS),
-    nodemailerAvailable,
-    emailFrom: process.env.EMAIL_FROM || null,
-    nodeEnv: process.env.NODE_ENV || 'development'
-  };
-
-  return { status: 200, body: JSON.stringify(diagnostics), headers: { 'Content-Type': 'application/json' } };
-}
 
 export default sendCodeHandler;

@@ -52,10 +52,10 @@ describe('sendCode function', () => {
     const res = await sendCode(mockRequest, mockContext);
     expect(res.status).toBe(200);
     const body = JSON.parse(res.body);
-    expect(body.message).toBe('Email sent');
+    expect(body.message).toContain('has been sent');
     expect(mockSf.authenticate).toHaveBeenCalled();
     expect(mockSf.getFormByEmail).toHaveBeenCalledWith('joe@example.com');
-    expect(mockEmailService.sendApplicationCode).toHaveBeenCalledWith('joe@example.com', 'abc12', expect.objectContaining({ subject: 'Your code' }));
+    expect(mockEmailService.sendApplicationCode).toHaveBeenCalledWith('joe@example.com', 'abc12', expect.objectContaining({ subject: expect.any(String) }));
   });
 
   it('returns 500 when email sending fails and includes detail and errorId in non-production', async () => {
@@ -87,7 +87,7 @@ describe('sendCode function', () => {
     expect(res.headers['X-Error-Id'] || res.headers['x-error-id']).toBeDefined();
   });
 
-  it('returns 404 when no form found', async () => {
+  it('returns the same acknowledgement when no form exists (no enumeration)', async () => {
     mockSf.getFormByEmail.mockRejectedValue(new Error('Form not found with email'));
 
     mockRequest = {
@@ -97,9 +97,9 @@ describe('sendCode function', () => {
     };
 
     const res = await sendCode(mockRequest, mockContext);
-    expect(res.status).toBe(404);
-    const body = JSON.parse(res.body);
-    expect(body.error).toContain('No application found');
+    expect(res.status).toBe(200);
+    expect(JSON.parse(res.body).message).toContain('has been sent');
+    expect(mockEmailService.sendApplicationCode).not.toHaveBeenCalled();
   });
 
   it('returns 400 for missing email', async () => {

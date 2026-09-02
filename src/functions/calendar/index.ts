@@ -1,5 +1,6 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
 import { Logger } from '../../services/logger';
+import { escapeIcsText } from '../../services/emailService';
 
 function formatLocal(d?: string, t?: string): string | null {
   if (!d) return null;
@@ -49,9 +50,9 @@ export async function calendarHandler(request: HttpRequest, context: InvocationC
     ];
     if (dtStart) lines.push(`DTSTART:${dtStart}`);
     if (dtEnd) lines.push(`DTEND:${dtEnd}`);
-    lines.push(`SUMMARY:${(name || '').replace(/\n/g, '\\n')}`);
-    if (description) lines.push(`DESCRIPTION:${(description || '').replace(/\n/g, '\\n')}`);
-    if (location) lines.push(`LOCATION:${(location || '').replace(/\n/g, '\\n')}`);
+    lines.push(`SUMMARY:${escapeIcsText(name)}`);
+    if (description) lines.push(`DESCRIPTION:${escapeIcsText(description)}`);
+    if (location) lines.push(`LOCATION:${escapeIcsText(location)}`);
     lines.push('END:VEVENT','END:VCALENDAR');
 
     const ics = lines.join('\r\n');
