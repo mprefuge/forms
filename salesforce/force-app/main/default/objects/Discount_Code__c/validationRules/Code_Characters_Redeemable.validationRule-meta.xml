@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Code_Characters_Redeemable</fullName>
+    <active>true</active>
+    <description>The order form normalises what the buyer types down to letters, digits, hyphen and underscore before looking it up, so a code stored with a space, an apostrophe or a stray character can never be matched. Saving one produces a code that is impossible to redeem and gives no clue why, so it is refused at entry.</description>
+    <errorConditionFormula>NOT(REGEX(UPPER(Code__c), &quot;^[A-Z0-9_-]{1,40}$&quot;))</errorConditionFormula>
+    <errorDisplayField>Code__c</errorDisplayField>
+    <errorMessage>Code may only contain letters, numbers, hyphens and underscores (no spaces or punctuation), and must be 40 characters or fewer.</errorMessage>
+</ValidationRule>

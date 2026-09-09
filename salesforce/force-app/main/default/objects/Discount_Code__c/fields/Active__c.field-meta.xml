@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Active__c</fullName>
+    <defaultValue>true</defaultValue>
+    <description>Unticking this switches the code off immediately, whatever its dates say. This is the fastest way to retire a code that has leaked or been over-used; the record and its history are kept.</description>
+    <inlineHelpText>Untick to switch this code off immediately, whatever the dates say.</inlineHelpText>
+    <label>Active</label>
+    <trackHistory>true</trackHistory>
+    <type>Checkbox</type>
+</CustomField>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>End_Date_Not_Before_Start</fullName>
+    <active>true</active>
+    <description>An End Date before the Start Date describes a window that never opens. The code would look live in the list view and be refused every time it was typed, which reads as a broken form rather than a mis-keyed date.</description>
+    <errorConditionFormula>AND(NOT(ISBLANK(Start_Date__c)), NOT(ISBLANK(End_Date__c)), End_Date__c &lt; Start_Date__c)</errorConditionFormula>
+    <errorDisplayField>End_Date__c</errorDisplayField>
+    <errorMessage>End Date cannot be before Start Date.</errorMessage>
+</ValidationRule>

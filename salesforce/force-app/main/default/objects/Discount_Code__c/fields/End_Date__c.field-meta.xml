@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>End_Date__c</fullName>
+    <description>Last day the code works, inclusive, judged in US Eastern time. A code with an End Date of 15 October still works all day on 15 October and stops at midnight Eastern. Leave blank for a code with no expiry.</description>
+    <inlineHelpText>Last day the code works (inclusive), Eastern time. Leave blank for no expiry.</inlineHelpText>
+    <label>End Date</label>
+    <required>false</required>
+    <trackHistory>true</trackHistory>
+    <type>Date</type>
+</CustomField>

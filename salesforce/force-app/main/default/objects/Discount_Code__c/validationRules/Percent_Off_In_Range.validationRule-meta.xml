@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Percent_Off_In_Range</fullName>
+    <active>true</active>
+    <description>A percentage outside 1-100 is always a mistake. The order form rejects one anyway, but a code saved at 0 or 250 would look active in the list view and silently do nothing (or something alarming) at the till, so it is stopped here where somebody can see the error.</description>
+    <errorConditionFormula>OR(Percent_Off__c &lt; 1, Percent_Off__c &gt; 100)</errorConditionFormula>
+    <errorDisplayField>Percent_Off__c</errorDisplayField>
+    <errorMessage>Percent Off must be a whole number between 1 and 100.</errorMessage>
+</ValidationRule>
