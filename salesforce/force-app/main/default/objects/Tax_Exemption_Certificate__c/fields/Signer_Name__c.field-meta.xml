@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Signer_Name__c</fullName>
+    <description>The person who signed the certificate on the organisation's behalf. Form 51A126 is signed under penalty of perjury, so who signed it is the part that makes it enforceable.</description>
+    <inlineHelpText>Who signed the certificate for the organisation.</inlineHelpText>
+    <label>Signer Name</label>
+    <length>121</length>
+    <required>false</required>
+    <trackHistory>true</trackHistory>
+    <type>Text</type>
+</CustomField>

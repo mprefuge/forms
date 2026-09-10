@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Tax_Base__c</fullName>
+    <description>The amount tax was calculated on: the order subtotal after any discount, plus shipping. Stored rather than derived because the rate, the discount and the shipping rule can all change afterwards, and a tax figure has to stay explainable years later - this is the number the rate was actually applied to on the day.</description>
+    <inlineHelpText>What the tax was calculated on: subtotal after discount, plus shipping.</inlineHelpText>
+    <label>Tax Base</label>
+    <precision>18</precision>
+    <required>false</required>
+    <scale>2</scale>
+    <type>Currency</type>
+</CustomField>

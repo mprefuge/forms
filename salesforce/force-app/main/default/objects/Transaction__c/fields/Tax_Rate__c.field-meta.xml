@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Tax_Rate__c</fullName>
+    <description>The rate applied, as a percentage - 6 for Kentucky's 6%. Recorded per order rather than looked up, so a rate change does not silently rewrite the history of what was charged. Zero where no tax applied.</description>
+    <inlineHelpText>Rate applied to this order, as a percentage. 6 means 6%.</inlineHelpText>
+    <label>Tax Rate</label>
+    <precision>6</precision>
+    <required>false</required>
+    <scale>3</scale>
+    <type>Number</type>
+    <unique>false</unique>
+</CustomField>

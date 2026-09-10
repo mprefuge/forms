@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Tax_Certificate_Status__c</fullName>
+    <description>Where the exemption paperwork stands for this order. Not Applicable covers every order that was taxed or shipped out of state. Complete is the only value that justifies zero tax on a Kentucky order; Pending means exemption was claimed but the certificate is not yet in hand, which is a liability until it is.</description>
+    <inlineHelpText>Where the exemption paperwork stands. Only Complete justifies zero tax on a KY order.</inlineHelpText>
+    <label>Tax Certificate Status</label>
+    <required>false</required>
+    <type>Picklist</type>
+    <valueSet>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value><fullName>Not Applicable</fullName><default>true</default><label>Not Applicable</label></value>
+            <value><fullName>Pending</fullName><default>false</default><label>Pending</label></value>
+            <value><fullName>Complete</fullName><default>false</default><label>Complete</label></value>
+            <value><fullName>Rejected</fullName><default>false</default><label>Rejected</label></value>
+        </valueSetDefinition>
+    </valueSet>
+</CustomField>

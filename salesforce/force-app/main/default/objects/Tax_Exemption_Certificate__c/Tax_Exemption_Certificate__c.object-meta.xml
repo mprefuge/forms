@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
+    <!-- Exemption id, organisation, status and how long it has been outstanding -
+         what somebody triaging the pending list needs without opening the record. -->
+    <compactLayoutAssignment>Tax_Exemption_Certificate_Compact</compactLayoutAssignment>
+    <deploymentStatus>Deployed</deploymentStatus>
+    <description>A Kentucky Form 51A126 purchase exemption certificate captured from a buyer. Evidence for every order that was not charged sales tax. Stored against the Account so a repeat buyer is not asked twice, and never deleted while an order relies on it.</description>
+    <!-- On so a Task can hang off a certificate. The ninety-day chase files one
+         here, and a chase nobody can see against the record it is about is not
+         a chase. -->
+    <enableActivities>true</enableActivities>
+    <enableFeeds>false</enableFeeds>
+    <enableHistory>true</enableHistory>
+    <enableReports>true</enableReports>
+    <enableSearch>true</enableSearch>
+    <label>Tax Exemption Certificate</label>
+    <nameField>
+        <displayFormat>TEC-{00000}</displayFormat>
+        <label>Certificate Number</label>
+        <type>AutoNumber</type>
+    </nameField>
+    <pluralLabel>Tax Exemption Certificates</pluralLabel>
+    <sharingModel>ReadWrite</sharingModel>
+    <visibility>Public</visibility>
+</CustomObject>

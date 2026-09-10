@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <PermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">
-    <description>Lets the payment service record which discount code an order used. Assign it to whichever user that service authenticates as: without it the writes fail silently, because a newly deployed field is visible to nobody and Modify All Data does not cover FLS.</description>
+    <description>Lets the payment service record the discount and tax an order carried. Assign it to the user that service authenticates as: without it the writes fail silently, because a newly deployed field is visible to nobody and Modify All Data does not cover FLS.</description>
     <hasActivationRequired>false</hasActivationRequired>
     <label>Discount Tracking Integration</label>
     <!--
@@ -16,14 +16,39 @@
         <object>Discount_Code__c</object>
         <viewAllRecords>true</viewAllRecords>
     </objectPermissions>
-    <fieldPermissions><editable>false</editable><field>Discount_Code__c.Active__c</field><readable>true</readable></fieldPermissions>
     <!--
-        Edit on the three transaction fields, and only those three. No object
-        permission on Transaction__c is granted here: the payment service
-        already has that from its profile, and this permission set exists to add
-        the new fields, not to re-grant what already works.
+        Read on the certificates, because the payment service turns the
+        exemption number in Stripe metadata into the record it refers to, the
+        same way it does for a discount code. It never writes one: the
+        certificate is captured by the forms service, before the money moves.
+    -->
+    <objectPermissions>
+        <allowCreate>false</allowCreate>
+        <allowDelete>false</allowDelete>
+        <allowEdit>false</allowEdit>
+        <allowRead>true</allowRead>
+        <modifyAllRecords>false</modifyAllRecords>
+        <object>Tax_Exemption_Certificate__c</object>
+        <viewAllRecords>true</viewAllRecords>
+    </objectPermissions>
+    <fieldPermissions><editable>false</editable><field>Discount_Code__c.Active__c</field><readable>true</readable></fieldPermissions>
+    <fieldPermissions><editable>false</editable><field>Tax_Exemption_Certificate__c.Exemption_Id__c</field><readable>true</readable></fieldPermissions>
+    <fieldPermissions><editable>false</editable><field>Tax_Exemption_Certificate__c.Status__c</field><readable>true</readable></fieldPermissions>
+    <!--
+        Edit on the transaction fields this work added, and only those. No
+        object permission on Transaction__c is granted here: the payment
+        service already has that from its profile, and this permission set
+        exists to add the new fields, not to re-grant what already works.
     -->
     <fieldPermissions><editable>true</editable><field>Transaction__c.Discount_Code__c</field><readable>true</readable></fieldPermissions>
     <fieldPermissions><editable>true</editable><field>Transaction__c.Discount_Percent__c</field><readable>true</readable></fieldPermissions>
     <fieldPermissions><editable>true</editable><field>Transaction__c.Discount_Amount__c</field><readable>true</readable></fieldPermissions>
+    <fieldPermissions><editable>true</editable><field>Transaction__c.Tax_Base__c</field><readable>true</readable></fieldPermissions>
+    <fieldPermissions><editable>true</editable><field>Transaction__c.Tax_Amount__c</field><readable>true</readable></fieldPermissions>
+    <fieldPermissions><editable>true</editable><field>Transaction__c.Tax_Rate__c</field><readable>true</readable></fieldPermissions>
+    <fieldPermissions><editable>true</editable><field>Transaction__c.Tax_State__c</field><readable>true</readable></fieldPermissions>
+    <fieldPermissions><editable>true</editable><field>Transaction__c.Tax_Exemption_Id__c</field><readable>true</readable></fieldPermissions>
+    <fieldPermissions><editable>true</editable><field>Transaction__c.Tax_Certificate_Status__c</field><readable>true</readable></fieldPermissions>
+    <fieldPermissions><editable>true</editable><field>Transaction__c.Tax_Exemption_Certificate__c</field><readable>true</readable></fieldPermissions>
+    <fieldPermissions><editable>true</editable><field>Transaction__c.Manual_Reference__c</field><readable>true</readable></fieldPermissions>
 </PermissionSet>
