@@ -21,7 +21,6 @@ import {
 import '../sendCode';
 // Same reason: this module is the app entry point, so a function nobody imports never registers its route.
 import '../discountCode';
-import '../taxExemptionCertificate';
 
 // Initialize form registry on startup
 initializeFormRegistry();

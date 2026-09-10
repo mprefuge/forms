@@ -34,18 +34,6 @@
                 <field>Discount_Amount__c</field>
             </layoutItems>
             <layoutItems>
-                <behavior>Readonly</behavior>
-                <field>Tax_Base__c</field>
-            </layoutItems>
-            <layoutItems>
-                <behavior>Readonly</behavior>
-                <field>Tax_Amount__c</field>
-            </layoutItems>
-            <layoutItems>
-                <behavior>Readonly</behavior>
-                <field>Tax_Rate__c</field>
-            </layoutItems>
-            <layoutItems>
                 <behavior>Edit</behavior>
                 <field>Received_At__c</field>
             </layoutItems>
@@ -74,36 +62,6 @@
             <layoutItems>
                 <behavior>Readonly</behavior>
                 <field>Discount_Percent__c</field>
-            </layoutItems>
-            <layoutItems>
-                <behavior>Readonly</behavior>
-                <field>Tax_State__c</field>
-            </layoutItems>
-            <layoutItems>
-                <behavior>Readonly</behavior>
-                <field>Tax_Certificate_Status__c</field>
-            </layoutItems>
-            <layoutItems>
-                <behavior>Readonly</behavior>
-                <field>Tax_Exemption_Id__c</field>
-            </layoutItems>
-            <!--
-                Sits next to the exemption id it corresponds to. The id is what
-                the buyer typed; this is the certificate record that evidences
-                it, and the link is the difference between a claim and proof.
-            -->
-            <layoutItems>
-                <behavior>Readonly</behavior>
-                <field>Tax_Exemption_Certificate__c</field>
-            </layoutItems>
-            <!--
-                Blank on every card and bank payment. Present only where no
-                processor issued a reference - a cheque - and it is the only
-                unique key such a transaction has.
-            -->
-            <layoutItems>
-                <behavior>Readonly</behavior>
-                <field>Manual_Reference__c</field>
             </layoutItems>
             <layoutItems>
                 <behavior>Edit</behavior>
