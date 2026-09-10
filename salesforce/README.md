@@ -6,18 +6,8 @@ centrally elsewhere, move these files there and leave a pointer behind.
 
 **Status:** fully deployed to production (`Refuge International`, org
 `00D4x0000050OIqEAM`) and working end to end, verified against a real paid
-order. `Times_Redeemed__c` is maintained by a DLRS rollup - see below.
-
-All five permission sets are assigned. `Tax_Exemption_Manager` went to the
-three active System Administrators (Dani Ruhr, Matt Reynolds, Micah Palmquist),
-which is what makes the Pending Certificates and Past 90 Days list views visible
-at all - a System Administrator profile does not cover field-level security any
-more than Modify All Data does, so before that assignment the object described
-back with zero custom fields even to an admin.
-
-Anyone else who needs to work the certificate list needs the set adding
-explicitly. Becca Conner has `Discount_Code_Manager` but is not an
-administrator, so she does not have this one.
+order. All three permission sets are assigned, and `Times_Redeemed__c` is
+maintained by a DLRS rollup - see below.
 
 Treat a deploy from here as a deliberate decision about production, never a side
 effect of merging a branch. Validate first (`--dry-run`); the first three
@@ -66,180 +56,20 @@ treated as valid everywhere: this is money, and the safe reading of a missing
 scope is no scope. A code that should span campaigns needs a junction object,
 not a blank lookup.
 
-## Tax_Exemption_Certificate__c
-
-A Kentucky Form 51A126 purchase exemption certificate, captured from the buyer
-at order time. It is the evidence behind every order that was not charged sales
-tax, and it is stored against the Account so a repeat buyer is not asked twice.
-
-| Field | Type | What it is for |
-|---|---|---|
-| `Exemption_Id__c` | Text(40), unique, external id | The number the Department of Revenue issued. One record per number. |
-| `Account__c` | Lookup(Account) | The organisation it covers. What makes it reusable. |
-| `Organization_Name__c` | Text(255) | The purchaser as the buyer typed it. |
-| `Organization_Type__c` | Picklist | Which basis for exemption they claimed. |
-| `Signer_Name__c` | Text(121) | Who signed for the organisation. |
-| `Signer_Title__c` | Text(128) | Their role. Optional - the only optional part. |
-| `Signature__c` | Text(121) | The signature as typed. |
-| `Signed_Date__c` | Date | The date on the certificate, as given. |
-| `Status__c` | Picklist | Pending / Complete / Rejected / Expired. |
-| `First_Claimed_On__c` | Date | What Days Outstanding counts from. Set once. |
-| `Days_Outstanding__c` | Formula(Number) | How long a Pending claim has gone unpapered. |
-| `Past_90_Days__c` | Formula(Checkbox) | **The hard flag.** Past Kentucky's window. |
-| `Certificate_File_Attached__c` | Checkbox | Whether a scan is in Files on the record. |
-| `Source__c` | Text(255) | Which form or person it came from. |
-| `Notes__c` | Long Text | Who was chased, what DOR said, why it was rejected. |
-
-### Complete is the only status that justifies an untaxed order
-
-`Pending` means exemption was claimed and the certificate is not finished. Those
-orders **were taxed**. That is the safe direction to be wrong in: refunding
-over-collected tax is an inconvenience, under-collecting it is a debt to the
-Commonwealth that the organisation pays out of its own funds.
-
-The validation rule `Complete_Needs_A_Certificate` enforces it - Complete cannot
-be set without the exemption number, purchaser, type, signer, signature and
-date. A `Signed_Date_Not_In_Future` rule refuses a date that has not happened.
-
-The uploaded scan is **corroboration, not the certificate**. The captured fields
-are themselves a certificate in electronic form, which is what Kentucky accepts,
-so a failed upload never turns a good certificate into a taxed order. That is
-what `Certificate_File_Attached__c` records honestly rather than assuming.
-
-### The two list views that matter, and the chase behind them
-
-`Pending Certificates` is the work queue. `Past 90 Days` is the subset that has
-stopped being a work queue and started being money: Kentucky gives a seller
-ninety days to obtain a certificate, and past that an unsupported exemption is
-the organisation's own tax to pay.
-
-A scheduled flow, **Chase Exemption Certificates Past 90 Days**, runs daily at
-1pm Eastern over every certificate still `Pending` and files one Task per
-certificate that has passed the window. A flag on a list view nobody opens is
-not a control; a task in somebody's queue is.
-
-The task goes to the **Office Staff queue**, not to a person. Staff come and go
-and the work does not, and a task assigned to somebody who has left is a task
-nobody does. Membership is managed in Setup, so who answers for it changes
-without a deploy. It is seeded with the active users holding the Office Staff
-profile.
-
-The flow checks for an open task on the same certificate before creating one, so
-a certificate outstanding for six months has one task, not a hundred and eighty.
-Closing the task without resolving the certificate means a fresh one tomorrow -
-which is the correct behaviour: the liability has not gone anywhere.
-
-`enableActivities` on the object is `true` for this. A chase nobody can see
-against the record it is about is not a chase.
-
-**Deploying the flow does not activate it.** Salesforce requires flow test
-coverage to deploy an *active* flow to production, and without it the version
-lands as `Draft` and is scheduled for nothing — the file in this repo says
-`<status>Active</status>` and the org disagreed. Activate it after deploying,
-either in Setup or by PATCHing `FlowDefinition.Metadata.activeVersionNumber`
-through the Tooling API. Check `CronTrigger` afterwards: an active scheduled flow
-appears there as `Chase_Exemption_Certificates_Past_90_Days-<version>`, and if it
-does not, it is not running.
-
-### Where certificates come from
-
-`POST /api/form/tax-exemption-certificate`, called by the order form **before**
-the buyer is sent to Stripe. That ordering is load-bearing: a certificate
-recorded after payment would leave an untaxed order with nothing behind it if
-the write failed. Anything other than a 200 taxes the order.
-
-The endpoint refuses to overwrite a certificate whose exemption number is
-already on file under a **different** organisation. The number is unique, which
-is what lets a repeat buyer reuse the certificate already there - and without
-that check one public form submission could rewrite another charity's tax
-evidence and repoint it at the wrong account.
-
-The Account link is made only when **exactly one** Account has that exact name.
-A fuzzy match would file one church's exemption against another's, and an
-exemption attached to the wrong organisation is worse than one attached to none:
-the wrong org then appears covered on its next order. Two matches or none means
-staff link it by hand.
-
-### What this does not do
-
-It does not verify the certificate. Nothing calls the Department of Revenue to
-ask whether that number is real or belongs to that organisation. A buyer
-determined to lie can put a complete-looking certificate in and pay no tax - and
-the record is exactly what makes that recoverable: signed, attributed, dated, in
-a list staff work, and rejectable with the tax re-billed. That is how a paper
-51A126 works too.
-
-There is also **no repeat-buyer prefill in the browser**, deliberately. A public
-endpoint that answered "what certificate is on file for this organisation" would
-let anyone read an org's exemption number, signer and address by guessing names.
-Org-level storage here means staff see it on the Account, not that the form
-fills itself in. Doing that safely needs a verified link - a token emailed to
-the organisation - which is not built.
-
 ## Transaction__c
 
-Three fields record what a paid order was discounted by, and seven record the
-sales tax. The payment service sets them all from Stripe metadata; nothing else
-writes them.
+Three fields record what a paid order was discounted by. The payment service
+sets them from Stripe metadata; nothing else writes them.
 
 | Field | Type | What it is for |
 |---|---|---|
 | `Discount_Code__c` | Lookup(Discount_Code__c) | Which code was used. Blank = full price. |
 | `Discount_Percent__c` | Number(3,0) | The percentage applied, recorded at purchase. |
 | `Discount_Amount__c` | Currency | What the discount took off. |
-| `Tax_Base__c` | Currency | What tax was calculated on: subtotal after discount, plus shipping. |
-| `Tax_Amount__c` | Currency | The tax charged. Zero is recorded as zero. |
-| `Tax_Rate__c` | Percent | The rate that applied, recorded at purchase. |
-| `Tax_State__c` | Text(2) | The **destination** state - where it shipped, not where the card is billed. |
-| `Tax_Exemption_Id__c` | Text(40) | The exemption number claimed. |
-| `Tax_Certificate_Status__c` | Picklist | Not Applicable / Pending / Complete / Rejected. |
-| `Tax_Exemption_Certificate__c` | Lookup(Tax_Exemption_Certificate__c) | The certificate the exemption rests on. |
-| `Manual_Reference__c` | Text(64), unique, external id | The key for an order settled outside Stripe. Blank on card and bank payments. |
-
-### Tax is stored as components, and it is not revenue
-
-Base, rate, state and amount are each recorded rather than a single figure,
-because that is what makes tax on a record checkable: base x rate should equal
-amount, and a row where it does not is a row worth looking at. It also means a
-later rate change cannot rewrite what a given buyer was charged.
-
-`Tax_Amount__c` is money held in trust for the Commonwealth. It is inside
-`Amount_Gross__c` because the buyer paid it, but it is **not income**: it belongs
-in a liability account and gets remitted. Never sum it into a revenue figure.
-
-The certificate lookup is resolved by the payment service from the exemption
-**number**, never from the record id the browser sends beside it - that id
-arrived from a public form and could name any certificate in the org. It is a
-`Restrict` lookup: a certificate an order relies on cannot be deleted out from
-under it.
 
 `Discount_Percent__c` is stored rather than read back off the code record on
 purpose: the code's own `Percent_Off__c` can be edited afterwards, and this has
 to keep saying what this buyer was actually charged.
-
-### Manual Reference, and the duplicate check it exists to avoid
-
-`upsertTransactionsRecord` matches an incoming transaction against the Stripe
-unique ids first and, finding none, falls through to **contact plus
-`Amount_Gross__c` plus `Received_At__c`**. On Stripe traffic that fallback never
-fires, because a payment intent or charge id always matches first.
-
-A cheque has no Stripe ids at all. That fallback would be the only duplicate
-check there is, and two $400 cheques from the same church recorded at the same
-moment would silently upsert onto one record — the sort of thing found three
-months later in a reconciliation, if at all.
-
-So `Manual_Reference__c` is the unique key for those orders, and
-`upsertManualTransaction` in the payment service keys on it **and nothing else**,
-never reaching the content-signature fallback. The reference is derived from the
-order form's own reference id, so a resubmission is idempotent and two different
-orders are two records by construction rather than by inference from what they
-happen to cost.
-
-A cheque order lands as `Status__c = pending`, `Source_System__c = Manual`,
-`Payment_Method__c = Check`, with no fee fields set — nobody took a cut of a
-cheque, and leaving them unset lets a report tell "no fee" from "fee not yet
-known". A person moves it off `pending` when the cheque clears.
 
 ### Discount Amount is revenue forgone, not revenue
 
@@ -271,13 +101,7 @@ one of the two write paths.
 | `Discount_Code_Compact` | The highlights panel: code, percent, active, times redeemed. |
 | `Discount_Code_Manager` | Full CRUD plus field access. **Assign this to whoever manages codes.** |
 | `Discount_Code_Integration_Read` | Read only, for the API user `/api/form/discount-code` runs as. |
-| `Discount_Tracking_Integration` | Read codes and certificates, write the discount and tax fields on `Transaction__c`. For the payment service's user. |
-| `Tax_Exemption_Certificate__c` | The object, its 15 fields, 3 list views and 2 validation rules. |
-| `Tax_Exemption_Certificate__c` tab | So the pending list is reachable from the App Launcher. |
-| `Tax_Exemption_Integration` | Create and edit certificates, never delete. For the forms service's user. |
-| `Tax_Exemption_Manager` | Full field access plus the tab. **Assign this to whoever answers for sales tax, or the Pending list is visible to nobody.** |
-| `Office_Staff` queue | Owns the ninety-day chase tasks. Seeded from the Office Staff profile; managed in Setup after that. |
-| `Chase_Exemption_Certificates_Past_90_Days` | The daily scheduled flow that files them. **Activate it after deploying — see below.** |
+| `Discount_Tracking_Integration` | Read codes, write the three `Transaction__c` fields. For the payment service's user. |
 
 ### Deploying it
 
@@ -305,20 +129,9 @@ sf org assign permset --name Discount_Code_Manager --target-org <alias> --on-beh
 # client-credentials flow, which is what /api/form/discount-code runs as.
 sf org assign permset --name Discount_Code_Integration_Read --target-org <alias> --on-behalf-of <api-user>
 
-# The payment service's user, so it can write the discount and the tax onto a
-# transaction. Almost certainly the same API user: it authenticates the same way.
+# The payment service's user, so it can write the discount onto a transaction.
+# Almost certainly the same API user: it authenticates the same way.
 sf org assign permset --name Discount_Tracking_Integration --target-org <alias> --on-behalf-of <api-user>
-
-# The forms service's user, so /api/form/tax-exemption-certificate can record a
-# certificate. Without it every write is dropped in SILENCE - no error, no field
-# written - which is exactly how the discount fields arrived blank on a paid
-# order once already.
-sf org assign permset --name Tax_Exemption_Integration --target-org <alias> --on-behalf-of <api-user>
-
-# Whoever answers for sales tax. Without this the Pending Certificates and Past
-# 90 Days list views exist and are visible to nobody, which is the same as not
-# having them.
-sf org assign permset --name Tax_Exemption_Manager --target-org <alias> --on-behalf-of <user>
 ```
 
 **Deploying fields grants field-level security to nobody** - not to the
@@ -373,24 +186,7 @@ relationship name:
 |---|---|---|
 | Discount Code | `Transaction__c.Discount_Code__c` | What this code sold, newest first |
 | Campaign (Financial, General) | `Discount_Code__c.Campaign__c` | Codes issued against this campaign |
-| Tax Exemption Certificate | `Transaction__c.Tax_Exemption_Certificate__c` | What this certificate exempted, newest first |
-| Stripe Transaction | *(fields, not a list)* | Discount and tax fields, in Summary |
-
-The certificate's related list carries `Tax_Amount__c` on purpose: it should
-read $0.00 on every row. A row where it does not is an order that was taxed and
-pointed at a certificate anyway, which is a contradiction worth seeing without
-having to go looking for it.
-
-The certificate layout follows the same principle as the discount one - **Who Is
-Exempt**, **The Signature**, **Standing**, **Internal**. Signature sits beside
-Signer Name so the two can be read against each other; a certificate where they
-disagree is one to look at before the exemption is relied on. `Days_Outstanding__c`
-and `Past_90_Days__c` are read-only because they are formulas.
-
-Certificates are **not** on the Account layout yet. `Account.Tax_Exemption_Certificates`
-exists as a relationship, so the related list can be added, but the Account
-layout is a heavily used standard layout and adding to it is its own retrieve
-and deploy.
+| Stripe Transaction | *(fields, not a list)* | Discount Code / Percent / Amount, in Summary |
 
 The transaction fields sit in the existing **Summary** section beside
 `Amount_Gross__c` rather than in a section of their own: most transactions carry

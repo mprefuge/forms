@@ -422,12 +422,8 @@ export class SalesforceService {
   /**
    * Create ContentVersion + ContentDocumentLink records for attachments
    * attachments: [{ fileName, contentType, base64 }]
-   *
-   * recordId is whatever the file should hang off. Named for Form__c because
-   * that is what first used it, but ContentDocumentLink does not care - tax
-   * exemption certificates attach their scans through this same method.
    */
-  async createAttachments(recordId: string, attachments: Array<{ fileName: string; contentType?: string; base64: string }>): Promise<string[]> {
+  async createAttachments(formId: string, attachments: Array<{ fileName: string; contentType?: string; base64: string }>): Promise<string[]> {
     const createdLinks: string[] = [];
 
     for (const att of attachments) {
@@ -453,7 +449,7 @@ export class SalesforceService {
       }
 
       const linkRes: any = await this.connection.sobject('ContentDocumentLink').create({
-        LinkedEntityId: recordId,
+        LinkedEntityId: formId,
         ContentDocumentId: contentDocumentId,
         ShareType: 'V',
         Visibility: 'AllUsers',
@@ -759,113 +755,6 @@ export class SalesforceService {
     }
 
     return null;
-  }
-
-  /**
-   * Look up a tax exemption certificate by the exemption number on it.
-   *
-   * Rethrows rather than returning null on a Salesforce failure, for the same
-   * reason getDiscountCodeByCode does: "we could not check" and "there is no
-   * such certificate" lead to opposite decisions here. Swallowing the first as
-   * the second would create a second certificate under a number that already
-   * has one, or overwrite one that could not be read.
-   */
-  async getTaxExemptionCertificateByExemptionId(
-    exemptionId: string,
-    fields: string[] = [
-      'Id',
-      'Name',
-      'Exemption_Id__c',
-      'Organization_Name__c',
-      'Account__c',
-      'Status__c',
-      'First_Claimed_On__c',
-      'Certificate_File_Attached__c',
-    ]
-  ): Promise<Record<string, any> | null> {
-    if (!exemptionId || typeof exemptionId !== 'string') {
-      return null;
-    }
-
-    // The same guard the discount code lookup uses. escapeSoql escapes quotes
-    // and not backslashes, so the alphabet is the boundary, not the escaping.
-    if (!/^[A-Z0-9_-]{1,40}$/.test(exemptionId)) {
-      throw new Error(`Invalid exemption id format: ${exemptionId}`);
-    }
-
-    const safeFields = (fields || []).filter((f) => typeof f === 'string' && f.trim().length > 0);
-    const select = safeFields.length > 0 ? safeFields.join(', ') : 'Id, Exemption_Id__c';
-    const query = `SELECT ${select} FROM Tax_Exemption_Certificate__c WHERE Exemption_Id__c = '${this.escapeSoql(
-      exemptionId
-    )}' LIMIT 1`;
-    const result: any = await this.runQuery(query);
-
-    if (result && result.records && result.records.length > 0) {
-      return result.records[0];
-    }
-
-    return null;
-  }
-
-  /**
-   * Create or update a certificate record and return its id.
-   *
-   * Deliberately not a Salesforce upsert on the external id: an upsert would
-   * happily rewrite whatever is under that exemption number, and the caller
-   * has to be able to look at what is already there and refuse. Two steps, so
-   * that decision belongs to the caller and not to the API.
-   */
-  async saveTaxExemptionCertificate(
-    fields: Record<string, any>,
-    existingId?: string | null
-  ): Promise<string> {
-    const sobject = this.connection.sobject('Tax_Exemption_Certificate__c');
-
-    if (existingId) {
-      const result: any = await sobject.update({ Id: existingId, ...fields });
-      if (!result.success) {
-        throw new Error(
-          `Failed to update Tax_Exemption_Certificate__c: ${result.errors?.join(', ') || 'Unknown error'}`
-        );
-      }
-      return existingId;
-    }
-
-    const result: any = await sobject.create(fields);
-    if (!result.success) {
-      throw new Error(
-        `Failed to create Tax_Exemption_Certificate__c: ${result.errors?.join(', ') || 'Unknown error'}`
-      );
-    }
-    return result.id;
-  }
-
-  /**
-   * The Account whose name is EXACTLY this, and only when exactly one matches.
-   *
-   * Deliberately unhelpful. A fuzzy match here would file one church's
-   * exemption certificate against another church's account, and an exemption
-   * attached to the wrong organisation is worse than one attached to none -
-   * the wrong org then appears to be covered on its next order. Two matches or
-   * none means staff link it by hand, which is a minute of work against a
-   * mistake nobody would think to look for.
-   */
-  async findUniqueAccountIdByName(name: string): Promise<string | null> {
-    try {
-      const trimmed = String(name || '').trim();
-      if (trimmed.length < 2) return null;
-
-      const query = `SELECT Id FROM Account WHERE Name = '${this.escapeSoql(trimmed)}' LIMIT 2`;
-      const result: any = await this.runQuery(query);
-      const records = (result && result.records) || [];
-
-      return records.length === 1 ? String(records[0].Id) : null;
-    } catch (error: any) {
-      // A missing account link is a nuisance; a failed certificate is a taxed
-      // order. This one degrades.
-      console.error(`Account lookup failed for name "${name}":`, error?.message || error);
-      return null;
-    }
   }
 
   /**

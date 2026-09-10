@@ -29,14 +29,6 @@
     <fieldPermissions><editable>false</editable><field>Transaction__c.Discount_Code__c</field><readable>true</readable></fieldPermissions>
     <fieldPermissions><editable>false</editable><field>Transaction__c.Discount_Percent__c</field><readable>true</readable></fieldPermissions>
     <fieldPermissions><editable>false</editable><field>Transaction__c.Discount_Amount__c</field><readable>true</readable></fieldPermissions>
-    <fieldPermissions><editable>false</editable><field>Transaction__c.Tax_Base__c</field><readable>true</readable></fieldPermissions>
-    <fieldPermissions><editable>false</editable><field>Transaction__c.Tax_Amount__c</field><readable>true</readable></fieldPermissions>
-    <fieldPermissions><editable>false</editable><field>Transaction__c.Tax_Rate__c</field><readable>true</readable></fieldPermissions>
-    <fieldPermissions><editable>false</editable><field>Transaction__c.Tax_State__c</field><readable>true</readable></fieldPermissions>
-    <fieldPermissions><editable>false</editable><field>Transaction__c.Tax_Exemption_Id__c</field><readable>true</readable></fieldPermissions>
-    <fieldPermissions><editable>false</editable><field>Transaction__c.Tax_Certificate_Status__c</field><readable>true</readable></fieldPermissions>
-    <fieldPermissions><editable>false</editable><field>Transaction__c.Tax_Exemption_Certificate__c</field><readable>true</readable></fieldPermissions>
-    <fieldPermissions><editable>false</editable><field>Transaction__c.Manual_Reference__c</field><readable>true</readable></fieldPermissions>
     <tabSettings>
         <tab>Discount_Code__c</tab>
         <visibility>Visible</visibility>

@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
-    <fullName>Certificate_File_Attached__c</fullName>
-    <defaultValue>false</defaultValue>
-    <description>Whether the buyer uploaded a scan of their signed 51A126, which lands in Files on this record. The upload is optional: the captured fields are themselves a certificate in electronic form, and the scan is corroboration rather than the thing itself.</description>
-    <inlineHelpText>Ticked when a scanned 51A126 is in Files on this record.</inlineHelpText>
-    <label>Certificate File Attached</label>
-    <type>Checkbox</type>
-</CustomField>
