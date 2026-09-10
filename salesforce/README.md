@@ -8,10 +8,16 @@ centrally elsewhere, move these files there and leave a pointer behind.
 `00D4x0000050OIqEAM`) and working end to end, verified against a real paid
 order. `Times_Redeemed__c` is maintained by a DLRS rollup - see below.
 
-Four of the five permission sets are assigned. **`Tax_Exemption_Manager` is
-assigned to nobody**, which means the Pending Certificates and Past 90 Days list
-views are currently visible to no one - assign it to whoever answers for sales
-tax. Everything the services need is assigned; this is the human half.
+All five permission sets are assigned. `Tax_Exemption_Manager` went to the
+three active System Administrators (Dani Ruhr, Matt Reynolds, Micah Palmquist),
+which is what makes the Pending Certificates and Past 90 Days list views visible
+at all - a System Administrator profile does not cover field-level security any
+more than Modify All Data does, so before that assignment the object described
+back with zero custom fields even to an admin.
+
+Anyone else who needs to work the certificate list needs the set adding
+explicitly. Becca Conner has `Discount_Code_Manager` but is not an
+administrator, so she does not have this one.
 
 Treat a deploy from here as a deliberate decision about production, never a side
 effect of merging a branch. Validate first (`--dry-run`); the first three
