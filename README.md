@@ -339,10 +339,16 @@ Update existing form.
 }
 ```
 
-### GET /api/form/discount-code?code={code}&product={product}
+### GET /api/form/discount-code?code={code}&campaign={campaign}
 
 Check one discount code. Used by order forms that take a percentage off a total,
 starting with the Hospitality Guide order form in `mprefuge/site-assets`.
+
+`campaign` is required, and is the campaign the order will be filed under - the
+same string the order form sends the payment service as `category`. A Salesforce
+id works too. Checking the code against that campaign means it is validated
+against the very record the money lands on, so a code cannot discount a purchase
+it was never issued for.
 
 **Response** (200) for a code that works:
 ```json
@@ -355,9 +361,9 @@ starting with the Hospitality Guide order form in `mprefuge/site-assets`.
 ```
 
 `reason` is one of `not_found`, `inactive`, `not_started`, `expired`,
-`wrong_product`, `fully_redeemed`, `misconfigured`.
+`wrong_campaign`, `fully_redeemed`, `misconfigured`.
 
-Other statuses: `400` if `code` is missing or contains nothing usable, `429` if
+Other statuses: `400` if `code` or `campaign` is missing, `429` if
 the caller has tried more than 30 codes in a minute (with `Retry-After`), `502`
 if Salesforce could not be reached.
 
@@ -389,7 +395,7 @@ Salesforce → Discount Codes → New:
 | Active | ticked |
 | Start Date | blank, or the first day it should work |
 | End Date | the last day it should work, or blank for no expiry |
-| Product | `Hospitality Guide` |
+| Campaign | `Hospitality Guide` |
 | Notes | who it went to, so a leak can be traced |
 
 The buyer can type it however they like - `russellmoore`, `Russell Moore`,
@@ -420,6 +426,10 @@ change it. What it does buy: codes stay secret, they can be retired instantly,
 and the code and percentage actually applied are written to the order record and
 to Stripe metadata, so a reconciliation can catch a total that does not match
 the code it claims.
+
+Once a payment is recorded, the code, percentage and amount also land on
+`Transaction__c` - see [salesforce/README.md](salesforce/README.md). The amount
+is revenue **forgone** and is never part of gross, fee or net.
 
 Making the charged total itself trustworthy means having the payment service
 re-derive the price from the quantity and the code rather than trusting

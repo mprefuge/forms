@@ -732,7 +732,7 @@ export class SalesforceService {
       'Active__c',
       'Start_Date__c',
       'End_Date__c',
-      'Product__c',
+      'Campaign__c',
       'Max_Redemptions__c',
       'Times_Redeemed__c',
     ]

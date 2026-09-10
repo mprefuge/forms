@@ -6,6 +6,8 @@ import {
 } from '../src/services/discountCodeService';
 import { SalesforceService } from '../src/services/salesforceService';
 
+const CAMPAIGN = '701UQ00000m6oRWYAY';
+
 const baseRecord = (overrides: Record<string, any> = {}) => ({
   Id: 'a0X000000000001',
   Name: 'Russell Moore podcast',
@@ -14,7 +16,7 @@ const baseRecord = (overrides: Record<string, any> = {}) => ({
   Active__c: true,
   Start_Date__c: null,
   End_Date__c: null,
-  Product__c: 'hospitality-guide',
+  Campaign__c: '701UQ00000m6oRWYAY',
   Max_Redemptions__c: null,
   Times_Redeemed__c: 0,
   ...overrides,
@@ -72,7 +74,7 @@ describe('evaluateDiscountCode', () => {
   const now = new Date('2026-09-09T15:00:00Z');
 
   it('accepts an active code with no dates', () => {
-    const result = evaluateDiscountCode(baseRecord(), { product: 'hospitality-guide', now });
+    const result = evaluateDiscountCode(baseRecord(), { campaignId: CAMPAIGN, now });
     expect(result).toMatchObject({
       valid: true,
       code: 'RUSSELLMOORE',
@@ -82,7 +84,7 @@ describe('evaluateDiscountCode', () => {
   });
 
   it('refuses a code that does not exist', () => {
-    const result = evaluateDiscountCode(null, { product: 'hospitality-guide', now });
+    const result = evaluateDiscountCode(null, { campaignId: CAMPAIGN, now });
     expect(result.valid).toBe(false);
     expect(result.reason).toBe('not_found');
     expect(result.percentOff).toBeUndefined();
@@ -90,31 +92,31 @@ describe('evaluateDiscountCode', () => {
 
   it('refuses a deactivated code whatever its dates say', () => {
     const record = baseRecord({ Active__c: false, Start_Date__c: '2026-01-01', End_Date__c: '2027-01-01' });
-    const result = evaluateDiscountCode(record, { product: 'hospitality-guide', now });
+    const result = evaluateDiscountCode(record, { campaignId: CAMPAIGN, now });
     expect(result.valid).toBe(false);
     expect(result.reason).toBe('inactive');
   });
 
   it('refuses a code whose start date has not arrived', () => {
     const record = baseRecord({ Start_Date__c: '2026-09-10' });
-    const result = evaluateDiscountCode(record, { product: 'hospitality-guide', now });
+    const result = evaluateDiscountCode(record, { campaignId: CAMPAIGN, now });
     expect(result.valid).toBe(false);
     expect(result.reason).toBe('not_started');
   });
 
   it('accepts a code on its start date', () => {
     const record = baseRecord({ Start_Date__c: '2026-09-09' });
-    expect(evaluateDiscountCode(record, { product: 'hospitality-guide', now }).valid).toBe(true);
+    expect(evaluateDiscountCode(record, { campaignId: CAMPAIGN, now }).valid).toBe(true);
   });
 
   it('accepts a code on its end date, because End Date is inclusive', () => {
     const record = baseRecord({ End_Date__c: '2026-09-09' });
-    expect(evaluateDiscountCode(record, { product: 'hospitality-guide', now }).valid).toBe(true);
+    expect(evaluateDiscountCode(record, { campaignId: CAMPAIGN, now }).valid).toBe(true);
   });
 
   it('refuses a code the day after its end date', () => {
     const record = baseRecord({ End_Date__c: '2026-09-08' });
-    const result = evaluateDiscountCode(record, { product: 'hospitality-guide', now });
+    const result = evaluateDiscountCode(record, { campaignId: CAMPAIGN, now });
     expect(result.valid).toBe(false);
     expect(result.reason).toBe('expired');
   });
@@ -124,7 +126,7 @@ describe('evaluateDiscountCode', () => {
     // the 9th is still good. Comparing UTC dates would have refused it.
     const record = baseRecord({ End_Date__c: '2026-09-09' });
     const result = evaluateDiscountCode(record, {
-      product: 'hospitality-guide',
+      campaignId: CAMPAIGN,
       now: new Date('2026-09-10T03:00:00Z'),
     });
     expect(result.valid).toBe(true);
@@ -132,48 +134,62 @@ describe('evaluateDiscountCode', () => {
 
   it('accepts a Salesforce datetime string in a date field', () => {
     const record = baseRecord({ End_Date__c: '2026-09-09T00:00:00.000+0000' });
-    expect(evaluateDiscountCode(record, { product: 'hospitality-guide', now }).valid).toBe(true);
+    expect(evaluateDiscountCode(record, { campaignId: CAMPAIGN, now }).valid).toBe(true);
   });
 
-  it('refuses a code issued for a different product', () => {
-    const record = baseRecord({ Product__c: 'something-else' });
-    const result = evaluateDiscountCode(record, { product: 'hospitality-guide', now });
+  it('refuses a code issued against a different campaign', () => {
+    const record = baseRecord({ Campaign__c: '701UQ00000OTHER0AAA' });
+    const result = evaluateDiscountCode(record, { campaignId: CAMPAIGN, now });
     expect(result.valid).toBe(false);
-    expect(result.reason).toBe('wrong_product');
+    expect(result.reason).toBe('wrong_campaign');
   });
 
-  it('accepts a code with no product against any product', () => {
-    const record = baseRecord({ Product__c: null });
-    expect(evaluateDiscountCode(record, { product: 'hospitality-guide', now }).valid).toBe(true);
+  it('treats the 15- and 18-character forms of an id as the same campaign', () => {
+    // Which form you get depends on the API that handed it over, and a raw
+    // string comparison would report one record as two.
+    const record = baseRecord({ Campaign__c: '701UQ00000m6oRW' });
+    expect(evaluateDiscountCode(record, { campaignId: CAMPAIGN, now }).valid).toBe(true);
+    const flipped = baseRecord({ Campaign__c: CAMPAIGN });
+    expect(evaluateDiscountCode(flipped, { campaignId: '701UQ00000m6oRW', now }).valid).toBe(true);
   });
 
-  it('matches the product case-insensitively', () => {
-    const record = baseRecord({ Product__c: 'Hospitality-Guide' });
-    expect(evaluateDiscountCode(record, { product: 'hospitality-guide', now }).valid).toBe(true);
+  it('refuses a code with no campaign rather than treating it as valid everywhere', () => {
+    // Campaign__c is required on the object, so a blank one means something
+    // bypassed that. The safe reading of a missing scope is "no scope".
+    const record = baseRecord({ Campaign__c: null });
+    const result = evaluateDiscountCode(record, { campaignId: CAMPAIGN, now });
+    expect(result.valid).toBe(false);
+    expect(result.reason).toBe('wrong_campaign');
+  });
+
+  it('refuses a code when the caller names no campaign at all', () => {
+    const result = evaluateDiscountCode(baseRecord(), { now });
+    expect(result.valid).toBe(false);
+    expect(result.reason).toBe('wrong_campaign');
   });
 
   it('refuses a code that has hit its redemption limit', () => {
     const record = baseRecord({ Max_Redemptions__c: 10, Times_Redeemed__c: 10 });
-    const result = evaluateDiscountCode(record, { product: 'hospitality-guide', now });
+    const result = evaluateDiscountCode(record, { campaignId: CAMPAIGN, now });
     expect(result.valid).toBe(false);
     expect(result.reason).toBe('fully_redeemed');
   });
 
   it('accepts a code with redemptions still left', () => {
     const record = baseRecord({ Max_Redemptions__c: 10, Times_Redeemed__c: 9 });
-    expect(evaluateDiscountCode(record, { product: 'hospitality-guide', now }).valid).toBe(true);
+    expect(evaluateDiscountCode(record, { campaignId: CAMPAIGN, now }).valid).toBe(true);
   });
 
   it('treats a blank redemption limit as no limit', () => {
     const record = baseRecord({ Max_Redemptions__c: null, Times_Redeemed__c: 5000 });
-    expect(evaluateDiscountCode(record, { product: 'hospitality-guide', now }).valid).toBe(true);
+    expect(evaluateDiscountCode(record, { campaignId: CAMPAIGN, now }).valid).toBe(true);
   });
 
   it.each([0, -5, 101, 250, null, undefined, 'abc'])(
     'refuses rather than guesses when Percent Off is %p',
     (percent) => {
       const record = baseRecord({ Percent_Off__c: percent });
-      const result = evaluateDiscountCode(record, { product: 'hospitality-guide', now });
+      const result = evaluateDiscountCode(record, { campaignId: CAMPAIGN, now });
       expect(result.valid).toBe(false);
       expect(result.reason).toBe('misconfigured');
       expect(result.percentOff).toBeUndefined();
@@ -181,13 +197,13 @@ describe('evaluateDiscountCode', () => {
   );
 
   it('accepts the boundary percentages', () => {
-    expect(evaluateDiscountCode(baseRecord({ Percent_Off__c: 1 }), { product: 'hospitality-guide', now }).percentOff).toBe(1);
-    expect(evaluateDiscountCode(baseRecord({ Percent_Off__c: 100 }), { product: 'hospitality-guide', now }).percentOff).toBe(100);
+    expect(evaluateDiscountCode(baseRecord({ Percent_Off__c: 1 }), { campaignId: CAMPAIGN, now }).percentOff).toBe(1);
+    expect(evaluateDiscountCode(baseRecord({ Percent_Off__c: 100 }), { campaignId: CAMPAIGN, now }).percentOff).toBe(100);
   });
 
   it('never returns anything a buyer should not see', () => {
     const record = baseRecord({ Notes__c: 'Issued to Russell Moore, do not share' });
-    const result = evaluateDiscountCode(record, { product: 'hospitality-guide', now });
+    const result = evaluateDiscountCode(record, { campaignId: CAMPAIGN, now });
     expect(Object.keys(result).sort()).toEqual(['code', 'label', 'percentOff', 'valid']);
     expect(JSON.stringify(result)).not.toContain('do not share');
     expect(JSON.stringify(result)).not.toContain('a0X000000000001');
@@ -209,7 +225,7 @@ describe('DiscountCodeService', () => {
     const lookup = jest.fn().mockResolvedValue(baseRecord());
     const { service } = buildService(lookup);
 
-    const result = await service.resolve(' russell moore ', 'hospitality-guide');
+    const result = await service.resolve(' russell moore ', CAMPAIGN);
 
     expect(lookup).toHaveBeenCalledWith('RUSSELLMOORE');
     expect(result.valid).toBe(true);
@@ -220,7 +236,7 @@ describe('DiscountCodeService', () => {
     const lookup = jest.fn();
     const { service } = buildService(lookup);
 
-    const result = await service.resolve('   ', 'hospitality-guide');
+    const result = await service.resolve('   ', CAMPAIGN);
 
     expect(lookup).not.toHaveBeenCalled();
     expect(result.valid).toBe(false);
@@ -231,8 +247,8 @@ describe('DiscountCodeService', () => {
     const lookup = jest.fn().mockResolvedValue(null);
     const { service } = buildService(lookup);
 
-    const first = await service.resolve('NOPE', 'hospitality-guide');
-    const second = await service.resolve('nope', 'hospitality-guide');
+    const first = await service.resolve('NOPE', CAMPAIGN);
+    const second = await service.resolve('nope', CAMPAIGN);
 
     expect(lookup).toHaveBeenCalledTimes(1);
     expect(first.reason).toBe('not_found');
@@ -244,21 +260,21 @@ describe('DiscountCodeService', () => {
     const lookup = jest.fn().mockResolvedValue(baseRecord());
     const { service } = buildService(lookup);
 
-    await service.resolve('RUSSELLMOORE', 'hospitality-guide');
+    await service.resolve('RUSSELLMOORE', CAMPAIGN);
     lookup.mockResolvedValue(baseRecord({ Active__c: false }));
-    const second = await service.resolve('RUSSELLMOORE', 'hospitality-guide');
+    const second = await service.resolve('RUSSELLMOORE', CAMPAIGN);
 
     expect(lookup).toHaveBeenCalledTimes(2);
     expect(second.valid).toBe(false);
     expect(second.reason).toBe('inactive');
   });
 
-  it('keeps the miss cache per product, so a code scoped elsewhere is still checked', async () => {
+  it('keeps the miss cache per campaign, so a code scoped elsewhere is still checked', async () => {
     const lookup = jest.fn().mockResolvedValue(null);
     const { service } = buildService(lookup);
 
-    await service.resolve('NOPE', 'hospitality-guide');
-    await service.resolve('NOPE', 'other-product');
+    await service.resolve('NOPE', CAMPAIGN);
+    await service.resolve('NOPE', '701UQ00000OTHER0AAA');
 
     expect(lookup).toHaveBeenCalledTimes(2);
   });
@@ -269,7 +285,7 @@ describe('DiscountCodeService', () => {
     const lookup = jest.fn().mockRejectedValue(new Error('Salesforce unavailable'));
     const { service } = buildService(lookup);
 
-    await expect(service.resolve('RUSSELLMOORE', 'hospitality-guide')).rejects.toThrow(
+    await expect(service.resolve('RUSSELLMOORE', CAMPAIGN)).rejects.toThrow(
       'Salesforce unavailable'
     );
   });
@@ -326,5 +342,14 @@ describe('SalesforceService.getDiscountCodeByCode', () => {
     await sf.getDiscountCodeByCode('RUSSELLMOORE');
 
     expect(query.mock.calls[0][0]).not.toContain('Notes__c');
+  });
+
+  it('selects the campaign the code is scoped to', async () => {
+    const query = jest.fn().mockResolvedValue({ records: [baseRecord()] });
+    const sf = buildSalesforce(query);
+
+    await sf.getDiscountCodeByCode('RUSSELLMOORE');
+
+    expect(query.mock.calls[0][0]).toContain('Campaign__c');
   });
 });

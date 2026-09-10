@@ -50,7 +50,7 @@ export type DiscountCodeRejection =
   | 'inactive'
   | 'not_started'
   | 'expired'
-  | 'wrong_product'
+  | 'wrong_campaign'
   | 'fully_redeemed'
   | 'misconfigured';
 
@@ -128,19 +128,34 @@ function isBlank(value: unknown): boolean {
 }
 
 /**
- * Decide whether a Discount_Code__c record may be redeemed right now, for this
- * product.
+ * Compare two Salesforce ids.
+ *
+ * The same record has a 15-character case-sensitive id and an 18-character
+ * case-insensitive one, and which of the two you get depends on the API that
+ * handed it over. Comparing the raw strings reports the same record as two
+ * different ones, so both are trimmed to 15 first.
+ */
+function sameSalesforceId(a: string, b: string): boolean {
+  return a.slice(0, 15) === b.slice(0, 15);
+}
+
+/**
+ * Decide whether a Discount_Code__c record may be redeemed right now, against
+ * this campaign.
  *
  * Pure and synchronous, so every branch below is testable without a Salesforce
  * connection - which matters, because these branches decide what a buyer pays.
  *
- * `product` is compared case-insensitively against Product__c. A record with
- * Product__c blank is valid everywhere; that is a deliberate escape hatch for a
- * general-purpose code and not the default.
+ * `campaignId` is the campaign the ORDER will be filed under, and it must match
+ * the campaign the code belongs to. That is the whole point of scoping by
+ * campaign rather than by a product string: the code is checked against the
+ * same record the money lands on, so a code cannot discount a purchase it was
+ * never issued for. Salesforce ids are compared on their first 15 characters,
+ * since the 15- and 18-character forms of the same id are the same record.
  */
 export function evaluateDiscountCode(
   record: Record<string, any> | null,
-  options: { product?: string; now?: Date } = {}
+  options: { campaignId?: string; now?: Date } = {}
 ): DiscountCodeResult {
   const code = normalizeDiscountCode(record?.Code__c);
 
@@ -186,13 +201,17 @@ export function evaluateDiscountCode(
     };
   }
 
-  const wantedProduct = (options.product || '').trim().toLowerCase();
-  const recordProduct = isBlank(record.Product__c) ? '' : String(record.Product__c).trim().toLowerCase();
-  if (recordProduct && wantedProduct && recordProduct !== wantedProduct) {
+  // Campaign__c is required on the object, so a blank one means the record was
+  // created before that constraint or through a path that bypassed it. Either
+  // way an unscoped code is refused rather than treated as valid everywhere:
+  // this is money, and the safe reading of a missing scope is "no scope".
+  const recordCampaign = isBlank(record.Campaign__c) ? '' : String(record.Campaign__c).trim();
+  const wantedCampaign = (options.campaignId || '').trim();
+  if (!recordCampaign || !wantedCampaign || !sameSalesforceId(recordCampaign, wantedCampaign)) {
     return {
       valid: false,
       code,
-      reason: 'wrong_product',
+      reason: 'wrong_campaign',
       message: 'That code cannot be used on this order.',
     };
   }
@@ -253,8 +272,8 @@ export class DiscountCodeService {
     this.salesforceService = salesforceService;
   }
 
-  private cacheKey(code: string, product: string): string {
-    return `${product}|${code}`;
+  private cacheKey(code: string, campaignId: string): string {
+    return `${campaignId}|${code}`;
   }
 
   private rememberMiss(key: string): void {
@@ -281,7 +300,7 @@ export class DiscountCodeService {
    * a code that is simply no good comes back as a result with valid: false, so
    * the caller can tell the two apart.
    */
-  async resolve(rawCode: unknown, product?: string): Promise<DiscountCodeResult> {
+  async resolve(rawCode: unknown, campaignId?: string): Promise<DiscountCodeResult> {
     const code = normalizeDiscountCode(rawCode);
 
     if (!code) {
@@ -293,7 +312,7 @@ export class DiscountCodeService {
       };
     }
 
-    const key = this.cacheKey(code, (product || '').trim().toLowerCase());
+    const key = this.cacheKey(code, (campaignId || '').trim().slice(0, 15));
     if (this.isRememberedMiss(key)) {
       return {
         valid: false,
@@ -304,7 +323,7 @@ export class DiscountCodeService {
     }
 
     const record = await this.salesforceService.getDiscountCodeByCode(code);
-    const result = evaluateDiscountCode(record, { product });
+    const result = evaluateDiscountCode(record, { campaignId });
 
     if (!record) {
       this.rememberMiss(key);

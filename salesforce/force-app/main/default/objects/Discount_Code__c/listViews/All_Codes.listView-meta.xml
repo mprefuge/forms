@@ -5,7 +5,7 @@
     <columns>Code__c</columns>
     <columns>Percent_Off__c</columns>
     <columns>Active__c</columns>
-    <columns>Product__c</columns>
+    <columns>Campaign__c</columns>
     <columns>Start_Date__c</columns>
     <columns>End_Date__c</columns>
     <filterScope>Everything</filterScope>

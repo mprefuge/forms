@@ -1,5 +1,9 @@
 // @ts-nocheck
-import { discountCodeHandler, __resetRateLimit } from '../src/functions/discountCode';
+import {
+  discountCodeHandler,
+  __resetRateLimit,
+  __resetCampaignCache,
+} from '../src/functions/discountCode';
 import { SalesforceService } from '../src/services/salesforceService';
 
 jest.mock('../src/services/salesforceService');
@@ -16,6 +20,8 @@ const buildRequest = (query: Record<string, string>, headers: Record<string, str
 
 const context = { invocationId: 'discount-inv-1', log: jest.fn() };
 
+const CAMPAIGN = '701UQ00000m6oRWYAY';
+
 const parse = (response: any) => JSON.parse(response.body);
 
 const activeRecord = (overrides: Record<string, any> = {}) => ({
@@ -26,7 +32,7 @@ const activeRecord = (overrides: Record<string, any> = {}) => ({
   Active__c: true,
   Start_Date__c: null,
   End_Date__c: null,
-  Product__c: 'hospitality-guide',
+  Campaign__c: CAMPAIGN,
   Max_Redemptions__c: null,
   Times_Redeemed__c: 0,
   ...overrides,
@@ -38,10 +44,12 @@ describe('discount-code endpoint', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     __resetRateLimit();
+    __resetCampaignCache();
 
     mockSf = {
       authenticate: jest.fn().mockResolvedValue(undefined),
       getDiscountCodeByCode: jest.fn().mockResolvedValue(activeRecord()),
+      getCampaignByNameWithFields: jest.fn().mockResolvedValue({ Id: CAMPAIGN }),
     };
     (SalesforceService as jest.MockedClass<any>).mockImplementation(() => mockSf);
 
@@ -55,7 +63,7 @@ describe('discount-code endpoint', () => {
 
   it('returns the discount for a valid code', async () => {
     const response = await discountCodeHandler(
-      buildRequest({ code: 'RUSSELLMOORE', product: 'hospitality-guide' }, { 'x-forwarded-for': '203.0.113.5:41234' }),
+      buildRequest({ code: 'RUSSELLMOORE', campaign: 'Hospitality Guide' }, { 'x-forwarded-for': '203.0.113.5:41234' }),
       context
     );
 
@@ -70,7 +78,7 @@ describe('discount-code endpoint', () => {
 
   it('accepts the code however the buyer typed it', async () => {
     const response = await discountCodeHandler(
-      buildRequest({ code: ' russell moore ', product: 'hospitality-guide' }, { 'x-forwarded-for': '203.0.113.6' }),
+      buildRequest({ code: ' russell moore ', campaign: 'Hospitality Guide' }, { 'x-forwarded-for': '203.0.113.6' }),
       context
     );
 
@@ -82,7 +90,7 @@ describe('discount-code endpoint', () => {
     mockSf.getDiscountCodeByCode.mockResolvedValue(null);
 
     const response = await discountCodeHandler(
-      buildRequest({ code: 'NOPE', product: 'hospitality-guide' }, { 'x-forwarded-for': '203.0.113.7' }),
+      buildRequest({ code: 'NOPE', campaign: 'Hospitality Guide' }, { 'x-forwarded-for': '203.0.113.7' }),
       context
     );
 
@@ -98,7 +106,7 @@ describe('discount-code endpoint', () => {
   });
 
   it('rejects a code that normalizes away to nothing', async () => {
-    const response = await discountCodeHandler(buildRequest({ code: '!!!' }), context);
+    const response = await discountCodeHandler(buildRequest({ code: '!!!', campaign: 'Hospitality Guide' }), context);
 
     expect(response.status).toBe(400);
     expect(mockSf.getDiscountCodeByCode).not.toHaveBeenCalled();
@@ -106,7 +114,7 @@ describe('discount-code endpoint', () => {
 
   it('never lets the response be cached', async () => {
     const response = await discountCodeHandler(
-      buildRequest({ code: 'RUSSELLMOORE' }, { 'x-forwarded-for': '203.0.113.8' }),
+      buildRequest({ code: 'RUSSELLMOORE', campaign: 'Hospitality Guide' }, { 'x-forwarded-for': '203.0.113.8' }),
       context
     );
 
@@ -119,7 +127,7 @@ describe('discount-code endpoint', () => {
     mockSf.getDiscountCodeByCode.mockRejectedValue(new Error('ECONNRESET'));
 
     const response = await discountCodeHandler(
-      buildRequest({ code: 'RUSSELLMOORE' }, { 'x-forwarded-for': '203.0.113.9' }),
+      buildRequest({ code: 'RUSSELLMOORE', campaign: 'Hospitality Guide' }, { 'x-forwarded-for': '203.0.113.9' }),
       context
     );
 
@@ -131,7 +139,7 @@ describe('discount-code endpoint', () => {
     mockSf.authenticate.mockRejectedValue(new Error('Missing Salesforce credentials'));
 
     const response = await discountCodeHandler(
-      buildRequest({ code: 'RUSSELLMOORE' }, { 'x-forwarded-for': '203.0.113.10' }),
+      buildRequest({ code: 'RUSSELLMOORE', campaign: 'Hospitality Guide' }, { 'x-forwarded-for': '203.0.113.10' }),
       context
     );
 
@@ -139,7 +147,7 @@ describe('discount-code endpoint', () => {
   });
 
   it('rate limits one client without affecting another', async () => {
-    const hammer = buildRequest({ code: 'GUESS', product: 'hospitality-guide' }, { 'x-forwarded-for': '198.51.100.1:5000' });
+    const hammer = buildRequest({ code: 'GUESS', campaign: 'Hospitality Guide' }, { 'x-forwarded-for': '198.51.100.1:5000' });
 
     let lastStatus = 200;
     for (let i = 0; i < 31; i++) {
@@ -150,14 +158,14 @@ describe('discount-code endpoint', () => {
     expect(lastStatus).toBe(429);
 
     const other = await discountCodeHandler(
-      buildRequest({ code: 'RUSSELLMOORE', product: 'hospitality-guide' }, { 'x-forwarded-for': '198.51.100.2' }),
+      buildRequest({ code: 'RUSSELLMOORE', campaign: 'Hospitality Guide' }, { 'x-forwarded-for': '198.51.100.2' }),
       context
     );
     expect(other.status).toBe(200);
   });
 
   it('tells a rate-limited caller how long to wait', async () => {
-    const hammer = buildRequest({ code: 'GUESS' }, { 'x-forwarded-for': '198.51.100.3' });
+    const hammer = buildRequest({ code: 'GUESS', campaign: 'Hospitality Guide' }, { 'x-forwarded-for': '198.51.100.3' });
     let response;
     for (let i = 0; i < 31; i++) {
       response = await discountCodeHandler(hammer, context);
@@ -168,7 +176,7 @@ describe('discount-code endpoint', () => {
   });
 
   it('treats a proxy chain by its first entry, not the whole header', async () => {
-    const viaProxy = buildRequest({ code: 'GUESS' }, { 'x-forwarded-for': '198.51.100.4:1111, 10.0.0.1, 10.0.0.2' });
+    const viaProxy = buildRequest({ code: 'GUESS', campaign: 'Hospitality Guide' }, { 'x-forwarded-for': '198.51.100.4:1111, 10.0.0.1, 10.0.0.2' });
     let response;
     for (let i = 0; i < 31; i++) {
       response = await discountCodeHandler(viaProxy, context);
@@ -177,7 +185,7 @@ describe('discount-code endpoint', () => {
 
     // The same client seen through a different proxy hop is still that client.
     const sameClientOtherHop = await discountCodeHandler(
-      buildRequest({ code: 'GUESS' }, { 'x-forwarded-for': '198.51.100.4:2222, 10.9.9.9' }),
+      buildRequest({ code: 'GUESS', campaign: 'Hospitality Guide' }, { 'x-forwarded-for': '198.51.100.4:2222, 10.9.9.9' }),
       context
     );
     expect(sameClientOtherHop.status).toBe(429);
@@ -189,7 +197,7 @@ describe('discount-code endpoint', () => {
     );
 
     const response = await discountCodeHandler(
-      buildRequest({ code: 'RUSSELLMOORE' }, { 'x-forwarded-for': '203.0.113.11' }),
+      buildRequest({ code: 'RUSSELLMOORE', campaign: 'Hospitality Guide' }, { 'x-forwarded-for': '203.0.113.11' }),
       context
     );
 
@@ -197,14 +205,61 @@ describe('discount-code endpoint', () => {
     expect(response.body).not.toContain('do not share');
   });
 
-  it('refuses a code scoped to another product', async () => {
-    mockSf.getDiscountCodeByCode.mockResolvedValue(activeRecord({ Product__c: 'other-thing' }));
+  it('refuses a code scoped to another campaign', async () => {
+    mockSf.getDiscountCodeByCode.mockResolvedValue(
+      activeRecord({ Campaign__c: '701UQ00000OTHER0AAA' })
+    );
 
     const response = await discountCodeHandler(
-      buildRequest({ code: 'RUSSELLMOORE', product: 'hospitality-guide' }, { 'x-forwarded-for': '203.0.113.12' }),
+      buildRequest({ code: 'RUSSELLMOORE', campaign: 'Hospitality Guide' }, { 'x-forwarded-for': '203.0.113.12' }),
       context
     );
 
-    expect(parse(response)).toMatchObject({ valid: false, reason: 'wrong_product' });
+    expect(parse(response)).toMatchObject({ valid: false, reason: 'wrong_campaign' });
+  });
+
+  it('rejects a request that names no campaign', async () => {
+    const response = await discountCodeHandler(buildRequest({ code: 'RUSSELLMOORE' }), context);
+
+    expect(response.status).toBe(400);
+    expect(mockSf.getDiscountCodeByCode).not.toHaveBeenCalled();
+  });
+
+  it('uses a Salesforce id directly without looking the campaign up', async () => {
+    const response = await discountCodeHandler(
+      buildRequest({ code: 'RUSSELLMOORE', campaign: CAMPAIGN }, { 'x-forwarded-for': '203.0.113.13' }),
+      context
+    );
+
+    expect(mockSf.getCampaignByNameWithFields).not.toHaveBeenCalled();
+    expect(parse(response).valid).toBe(true);
+  });
+
+  it('refuses rather than errors when the campaign does not exist', async () => {
+    mockSf.getCampaignByNameWithFields.mockResolvedValue(null);
+
+    const response = await discountCodeHandler(
+      buildRequest({ code: 'RUSSELLMOORE', campaign: 'No Such Campaign' }, { 'x-forwarded-for': '203.0.113.14' }),
+      context
+    );
+
+    expect(response.status).toBe(200);
+    expect(parse(response)).toMatchObject({ valid: false, reason: 'wrong_campaign' });
+    // No point asking Salesforce about a code for a campaign that is not there.
+    expect(mockSf.getDiscountCodeByCode).not.toHaveBeenCalled();
+  });
+
+  it('resolves a campaign name once and reuses it', async () => {
+    // The campaign lookup is a second SOQL query against an org-wide API quota.
+    // Paying it on every code a buyer tries is exactly what the cache avoids.
+    for (let i = 0; i < 3; i++) {
+      await discountCodeHandler(
+        buildRequest({ code: 'RUSSELLMOORE', campaign: 'Hospitality Guide' }, { 'x-forwarded-for': '203.0.113.15' }),
+        context
+      );
+    }
+
+    expect(mockSf.getCampaignByNameWithFields).toHaveBeenCalledTimes(1);
+    expect(mockSf.getDiscountCodeByCode).toHaveBeenCalledTimes(3);
   });
 });

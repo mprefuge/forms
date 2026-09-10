@@ -7,10 +7,16 @@ import { buildSalesforceConfig } from '../shared/salesforceUtils';
 import { getTrimmedFirstQueryValue } from '../shared/queryUtils';
 
 /**
- * GET /api/form/discount-code?code=RUSSELLMOORE&product=hospitality-guide
+ * GET /api/form/discount-code?code=RUSSELLMOORE&campaign=Hospitality%20Guide
  *
- * Answers one question - "may this buyer use this code, and for how much off?" -
- * and nothing else. There is deliberately no route that lists codes: they are
+ * Answers one question - "may this buyer use this code on this campaign, and for
+ * how much off?" - and nothing else.
+ *
+ * `campaign` is required, and it is the campaign the ORDER will be filed under -
+ * the same string the client sends the payment service as `category`, which
+ * becomes Transaction__c.Campaign__c. Checking the code against that means a
+ * code is validated against the very record the money lands on. A Salesforce id
+ * is accepted too, and used directly. There is deliberately no route that lists codes: they are
  * issued to named partners, and the difference between a code and a published
  * sale is that a code is not public.
  *
@@ -104,6 +110,40 @@ export function __resetRateLimit(): void {
   requestLog.clear();
 }
 
+/**
+ * Turn whatever the client called the campaign into its Salesforce id.
+ *
+ * An 15- or 18-character id is used as given. Anything else is looked up by
+ * name, which is what the order forms actually send - they know the campaign as
+ * "Hospitality Guide", the same string the payment service resolves.
+ *
+ * Resolved names are cached for the life of the instance. Campaign names do not
+ * move, and this saves a second SOQL query on every code a buyer tries, against
+ * the same org-wide API quota the rate limit above exists to protect. Misses are
+ * cached too: a typo'd campaign would otherwise cost a query per attempt.
+ */
+const SALESFORCE_ID = /^[a-zA-Z0-9]{15}(?:[a-zA-Z0-9]{3})?$/;
+const campaignIdCache = new Map<string, string | null>();
+
+export function __resetCampaignCache(): void {
+  campaignIdCache.clear();
+}
+
+async function resolveCampaignId(
+  campaign: string,
+  salesforceService: SalesforceService
+): Promise<string | null> {
+  if (SALESFORCE_ID.test(campaign)) return campaign;
+
+  const key = campaign.toLowerCase();
+  if (campaignIdCache.has(key)) return campaignIdCache.get(key) ?? null;
+
+  const record = await salesforceService.getCampaignByNameWithFields(campaign, ['Id']);
+  const id = record && record.Id ? String(record.Id) : null;
+  campaignIdCache.set(key, id);
+  return id;
+}
+
 const JSON_HEADERS = {
   'Content-Type': 'application/json',
   // The answer depends on Salesforce data that staff can change at any moment,
@@ -121,7 +161,7 @@ export async function discountCodeHandler(
 
   try {
     const rawCode = getTrimmedFirstQueryValue(request, ['code', 'discountCode', 'discount_code']);
-    const product = getTrimmedFirstQueryValue(request, ['product']) || '';
+    const campaign = getTrimmedFirstQueryValue(request, ['campaign', 'category']) || '';
     const code = normalizeDiscountCode(rawCode);
 
     if (!code) {
@@ -132,8 +172,19 @@ export async function discountCodeHandler(
       };
     }
 
+    // Required rather than optional. Without it there is nothing to scope the
+    // code against, and a caller who omitted it would get a yes for a code
+    // issued against some other campaign entirely.
+    if (!campaign) {
+      return {
+        status: 400,
+        body: JSON.stringify({ error: 'Missing required query parameter: campaign' }),
+        headers: { ...JSON_HEADERS, 'X-Request-Id': requestId },
+      };
+    }
+
     if (isRateLimited(clientKey(request, reqObj))) {
-      logger.info('Discount code lookup rate limited', { product });
+      logger.info('Discount code lookup rate limited', { campaign });
       return {
         status: 429,
         body: JSON.stringify({
@@ -153,13 +204,34 @@ export async function discountCodeHandler(
     const salesforceService = new SalesforceService(buildSalesforceConfig());
     await salesforceService.authenticate();
 
-    const result = await new DiscountCodeService(salesforceService).resolve(code, product);
+    const campaignId = await resolveCampaignId(campaign, salesforceService);
+
+    // A campaign nobody can find is not an error - it is a code that cannot be
+    // valid, because every code belongs to a campaign and this order belongs to
+    // none. Answered the same way as any other refusal so the caller has one
+    // shape to handle.
+    if (!campaignId) {
+      logger.info('Discount code lookup for an unknown campaign', { code, campaign });
+      return {
+        status: 200,
+        body: JSON.stringify({
+          valid: false,
+          code,
+          reason: 'wrong_campaign',
+          message: 'That code cannot be used on this order.',
+        }),
+        headers: { ...JSON_HEADERS, 'X-Request-Id': requestId },
+      };
+    }
+
+    const result = await new DiscountCodeService(salesforceService).resolve(code, campaignId);
 
     // The code itself is logged: it is not a credential, and knowing which codes
     // are being tried is how a leaked one gets noticed.
     logger.info('Discount code lookup', {
       code,
-      product,
+      campaign,
+      campaignId,
       valid: result.valid,
       reason: result.reason,
     });
