@@ -21,7 +21,6 @@
     <fieldPermissions><editable>true</editable><field>Discount_Code__c.Active__c</field><readable>true</readable></fieldPermissions>
     <fieldPermissions><editable>true</editable><field>Discount_Code__c.Start_Date__c</field><readable>true</readable></fieldPermissions>
     <fieldPermissions><editable>true</editable><field>Discount_Code__c.End_Date__c</field><readable>true</readable></fieldPermissions>
-    <fieldPermissions><editable>true</editable><field>Discount_Code__c.Product__c</field><readable>true</readable></fieldPermissions>
     <fieldPermissions><editable>true</editable><field>Discount_Code__c.Max_Redemptions__c</field><readable>true</readable></fieldPermissions>
     <fieldPermissions><editable>true</editable><field>Discount_Code__c.Times_Redeemed__c</field><readable>true</readable></fieldPermissions>
     <fieldPermissions><editable>true</editable><field>Discount_Code__c.Notes__c</field><readable>true</readable></fieldPermissions>

@@ -97,6 +97,8 @@ one of the two write paths.
 |---|---|
 | `Discount_Code__c` | The object, its 9 fields, 2 list views and 3 validation rules. |
 | `Discount_Code__c` tab | So staff can find it from the App Launcher instead of through Setup. |
+| Page layouts | Discount Code, plus the discount pieces added to Campaign and Stripe Transaction. |
+| `Discount_Code_Compact` | The highlights panel: code, percent, active, times redeemed. |
 | `Discount_Code_Manager` | Full CRUD plus field access. **Assign this to whoever manages codes.** |
 | `Discount_Code_Integration_Read` | Read only, for the API user `/api/form/discount-code` runs as. |
 | `Discount_Tracking_Integration` | Read codes, write the three `Transaction__c` fields. For the payment service's user. |
@@ -161,6 +163,49 @@ are required fields, and Salesforce rejects the whole deploy with *"You cannot
 deploy to a required field"* if you list one. They are always visible to anyone who can see
 the record, so nothing is lost by omitting them - do not "fix" this by adding
 them back.
+
+### Layouts
+
+Salesforce generates a layout for a new object that lists every field in one
+"Information" section in no useful order - Owner beside Percent Off, the
+redemption counter above the dates. The layout here replaces it with sections
+that follow how somebody actually sets a code up: **The Code** (what it is and
+what it applies to), **When It Applies** (the dates), **Usage** (the cap and the
+count), **Internal** (notes, owner).
+
+`Times_Redeemed__c` is **read-only on the layout**. A DLRS rollup owns it, so
+anything typed in is overwritten the next time a paid order touches the code; an
+editable box would only invite someone to "correct" it.
+
+Three related lists tie the objects together, and all of them are named
+`ChildObject.LookupField` in the layout XML - which is how this org already
+writes `Transaction__c.Campaign__c` and `Form__c.Campaign__c`, and **not** the
+relationship name:
+
+| Where | Related list | Shows |
+|---|---|---|
+| Discount Code | `Transaction__c.Discount_Code__c` | What this code sold, newest first |
+| Campaign (Financial, General) | `Discount_Code__c.Campaign__c` | Codes issued against this campaign |
+| Stripe Transaction | *(fields, not a list)* | Discount Code / Percent / Amount, in Summary |
+
+The transaction fields sit in the existing **Summary** section beside
+`Amount_Gross__c` rather than in a section of their own: most transactions carry
+no discount, and an empty Discount panel on 1,400-odd Stripe transactions is
+noise. All three are read-only, because the payment service writes them from
+Stripe metadata at the moment of payment and a hand-edit would quietly disagree
+with what the buyer was charged.
+
+**Campaign coverage is deliberate but not total.** Revenue-generating campaigns
+span three record types - Financial (6), General (7) and Volunteer Campaign (1).
+The related list was added to Financial and General. Volunteer Campaign was left
+alone: it carries one revenue campaign against 45 that are not, and an empty
+Discount Codes card on all 46 is a poor trade. If a code is ever issued against
+a volunteer campaign, add the same related list to `Campaign-Volunteer Campaign`.
+
+**A layout deploy replaces the whole component.** Anything absent from the file
+is removed from the org, so the Campaign and Transaction layouts in this repo are
+the org's own layouts retrieved and edited, never written from scratch. Retrieve
+them again before changing them.
 
 ### If a deploy fails
 

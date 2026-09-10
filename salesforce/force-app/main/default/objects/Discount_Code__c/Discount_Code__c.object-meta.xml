@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
+    <!-- Drives the highlights panel: code, percentage, active, redemptions -
+         the four things somebody scanning a code record wants without scrolling. -->
+    <compactLayoutAssignment>Discount_Code_Compact</compactLayoutAssignment>
     <deploymentStatus>Deployed</deploymentStatus>
     <description>A percentage-off discount code that public order forms can redeem. Staff create and retire codes here; no code change or deploy is needed to add, activate or expire one.</description>
     <enableActivities>false</enableActivities>
