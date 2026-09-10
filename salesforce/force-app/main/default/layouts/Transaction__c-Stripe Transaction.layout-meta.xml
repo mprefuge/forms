@@ -96,6 +96,15 @@
                 <behavior>Readonly</behavior>
                 <field>Tax_Exemption_Certificate__c</field>
             </layoutItems>
+            <!--
+                Blank on every card and bank payment. Present only where no
+                processor issued a reference - a cheque - and it is the only
+                unique key such a transaction has.
+            -->
+            <layoutItems>
+                <behavior>Readonly</behavior>
+                <field>Manual_Reference__c</field>
+            </layoutItems>
             <layoutItems>
                 <behavior>Edit</behavior>
                 <field>Recurring__c</field>

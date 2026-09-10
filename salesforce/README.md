@@ -167,6 +167,7 @@ writes them.
 | `Tax_Exemption_Id__c` | Text(40) | The exemption number claimed. |
 | `Tax_Certificate_Status__c` | Picklist | Not Applicable / Pending / Complete / Rejected. |
 | `Tax_Exemption_Certificate__c` | Lookup(Tax_Exemption_Certificate__c) | The certificate the exemption rests on. |
+| `Manual_Reference__c` | Text(64), unique, external id | The key for an order settled outside Stripe. Blank on card and bank payments. |
 
 ### Tax is stored as components, and it is not revenue
 
@@ -188,6 +189,30 @@ under it.
 `Discount_Percent__c` is stored rather than read back off the code record on
 purpose: the code's own `Percent_Off__c` can be edited afterwards, and this has
 to keep saying what this buyer was actually charged.
+
+### Manual Reference, and the duplicate check it exists to avoid
+
+`upsertTransactionsRecord` matches an incoming transaction against the Stripe
+unique ids first and, finding none, falls through to **contact plus
+`Amount_Gross__c` plus `Received_At__c`**. On Stripe traffic that fallback never
+fires, because a payment intent or charge id always matches first.
+
+A cheque has no Stripe ids at all. That fallback would be the only duplicate
+check there is, and two $400 cheques from the same church recorded at the same
+moment would silently upsert onto one record — the sort of thing found three
+months later in a reconciliation, if at all.
+
+So `Manual_Reference__c` is the unique key for those orders, and
+`upsertManualTransaction` in the payment service keys on it **and nothing else**,
+never reaching the content-signature fallback. The reference is derived from the
+order form's own reference id, so a resubmission is idempotent and two different
+orders are two records by construction rather than by inference from what they
+happen to cost.
+
+A cheque order lands as `Status__c = pending`, `Source_System__c = Manual`,
+`Payment_Method__c = Check`, with no fee fields set — nobody took a cut of a
+cheque, and leaving them unset lets a report tell "no fee" from "fee not yet
+known". A person moves it off `pending` when the cheque clears.
 
 ### Discount Amount is revenue forgone, not revenue
 
