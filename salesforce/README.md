@@ -4,12 +4,10 @@ Metadata for Salesforce objects this service reads. It lives next to the code
 that reads it so the two are edited together; if your org's metadata is managed
 centrally elsewhere, move these files there and leave a pointer behind.
 
-**Status:** `Discount_Code__c` and its first two permission sets are deployed to
-production (`Refuge International`, org `00D4x0000050OIqEAM`) and assigned.
-
-The campaign association - `Campaign__c` on the code, the three `Transaction__c`
-fields, `Discount_Tracking_Integration`, and the removal of `Product__c` - has
-**passed validation but is not yet deployed** (23/23 components, 0 errors).
+**Status:** fully deployed to production (`Refuge International`, org
+`00D4x0000050OIqEAM`) and working end to end, verified against a real paid
+order. All three permission sets are assigned, and `Times_Redeemed__c` is
+maintained by a DLRS rollup - see below.
 
 Treat a deploy from here as a deliberate decision about production, never a side
 effect of merging a branch. Validate first (`--dry-run`); the first three
@@ -32,7 +30,7 @@ without a code change or a deploy.
 | `End_Date__c` | Date | Last day it works, inclusive, US Eastern. Blank = never expires. |
 | `Campaign__c` | Lookup(Campaign), required | The financial campaign this code discounts. Restricted to revenue-generating campaigns. |
 | `Max_Redemptions__c` | Number(6,0) | Paid orders allowed before it stops. Blank = no limit. |
-| `Times_Redeemed__c` | Number(6,0) | Paid orders that have used it. See the caveat below. |
+| `Times_Redeemed__c` | Number(6,0) | Paid orders that have used it. Maintained by a DLRS rollup - see below. |
 | `Notes__c` | Long text | Who it went to and why. Internal only - never sent to a browser. |
 
 Three validation rules stop records that would look fine in a list view and fail
@@ -144,6 +142,15 @@ required fields are always visible) and nothing else. That is what
 `Discount_Code_Manager` is for. This bites every time and is worth re-reading
 before concluding the deploy failed.
 
+**What the missing assignment looks like in the wild**, because it already
+happened once: an order goes through, the buyer is charged the right discounted
+amount, the Stripe metadata carries the code - and `Transaction__c` comes back
+with `Discount_Code__c`, `Discount_Percent__c` and `Discount_Amount__c` all
+blank. No error anywhere, in Salesforce or in the payment service's logs.
+Salesforce drops writes to fields the running user cannot see, silently. If the
+discount fields are empty on a paid order, check this assignment before anything
+else.
+
 `Discount_Code_Integration_Read` grants **read only**. The endpoint looks a code
 up and answers yes or no; it never creates, edits or deletes one, so granting
 more would only widen what a compromised endpoint could reach. `Notes__c` is
@@ -200,20 +207,47 @@ would break production. The shape of the fix is to work out what each
 integration actually needs, express that as its own permission set, and retire
 Full Access from the API user once nothing depends on it.
 
-### Times Redeemed is not maintained automatically - but now it can be
+### Times Redeemed, and the rollup that maintains it
 
-`Max_Redemptions__c` is enforced against `Times_Redeemed__c`, but nothing
-increments `Times_Redeemed__c` yet, so today it is a manual count.
+`Times_Redeemed__c` is maintained by a DLRS rollup named **Discount Code Times
+Redeemed** (`dlrs__LookupRollupSummary__c`, unique name
+`Discount_Code_Times_Redeemed`). Nothing in the order form or the payment
+service touches it.
 
-Now that paid transactions point at the code that was used, the clean fix is a
-DLRS rollup (DLRS is already installed - the `dlrs__` objects are there):
-count `Transaction__c` records where `Discount_Code__c` is this code and the
-status is a paid one, into `Times_Redeemed__c`. That counts *paid* orders, which
-is the whole point - a buyer who reaches the payment page and abandons it must
-not burn a redemption.
+| Setting | Value |
+|---|---|
+| Parent | `Discount_Code__c` |
+| Child | `Transaction__c` |
+| Relationship field | `Discount_Code__c` |
+| Operation | Count of `Amount_Gross__c` |
+| Result field | `Times_Redeemed__c` |
+| Criteria | `transaction_type__c = 'charge' AND Status__c IN ('paid','Deposited')` |
+| Mode | Realtime, System sharing |
 
-A matching rollup of `Discount_Amount__c` onto `Campaign__c` gives the cost of a
-discount programme per campaign. Both are point-and-click; neither needs code.
+Counting from `Transaction__c` rather than from the browser is the whole point:
+a buyer who reaches the payment page and abandons it must not burn a redemption,
+and only the payment record knows what was actually paid. The criteria follow
+the org's existing Transaction rollups, with two deliberate differences: the
+`transaction_type__c = 'charge'` clause keeps payouts and dispute rows out, and
+there is no `Is_Revenue_Campaign__c = false` clause - the giving rollups exclude
+revenue campaigns because a product sale is not a donation, whereas a discount
+code is only ever *on* a revenue campaign, so that clause would zero this out.
+
+A refunded charge becomes `Status__c = 'refunded'` and drops out of the count on
+its own, which is right: a refunded order did not consume a redemption.
+
+Realtime works because `dlrs_TransactionTrigger` is already active on
+`Transaction__c` and already carries ten other rollups. This adds a rollup, not
+a mechanism.
+
+**DLRS only recalculates when a field it watches actually changes** - the
+relationship field, the aggregated field, or a criteria field. So creating the
+rollup does not backfill existing records, and re-saving a record without
+changing any of those fields does nothing. To backfill, use the Calculate button
+on the rollup in the DLRS app, or touch the relationship field.
+
+A matching rollup of `Discount_Amount__c` onto `Campaign__c` would give the cost
+of a discount programme per campaign. Not set up; it is the same shape.
 
 That is deliberate rather than unfinished. The order form hands the buyer to
 Stripe and may never see them again, so a browser-side increment would burn a
