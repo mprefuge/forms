@@ -1,12 +1,20 @@
 # Salesforce metadata
 
-Metadata for Salesforce objects this service reads that do not exist in the org
-yet. It lives next to the code that reads it so the two are edited together; if
-your org's metadata is managed centrally elsewhere, move these files there and
-leave a pointer behind.
+Metadata for Salesforce objects this service reads. It lives next to the code
+that reads it so the two are edited together; if your org's metadata is managed
+centrally elsewhere, move these files there and leave a pointer behind.
 
-Nothing here has been deployed. Deploying is a change to the production org and
-is somebody's deliberate decision, not a side effect of merging this branch.
+**Status:** deployed to production (`Refuge International`, org
+`00D4x0000050OIqEAM`) on 10 September 2026, and
+`Discount_Code_Integration_Read` is assigned to the API integration user.
+`Discount_Code_Manager` is deployed but **not yet assigned to anyone** - see
+"Then assign both permission sets" below, because until it is, the object's
+fields are invisible to every human in the org.
+
+Treat a deploy from here as a deliberate decision about production, never a side
+effect of merging a branch. Validate first (`--dry-run`); the first three
+attempts at this one failed validation, which cost nothing because nothing was
+committed.
 
 ## Discount_Code__c
 
@@ -32,31 +40,101 @@ silently at the till: a percentage outside 1-100, an end date before the start
 date, and a code containing characters the order form strips before it looks the
 code up (so the stored code could never be matched).
 
+### What ships with it
+
+| Component | What it is for |
+|---|---|
+| `Discount_Code__c` | The object, its 9 fields, 2 list views and 3 validation rules. |
+| `Discount_Code__c` tab | So staff can find it from the App Launcher instead of through Setup. |
+| `Discount_Code_Manager` | Full CRUD plus field access. **Assign this to whoever manages codes.** |
+| `Discount_Code_Integration_Read` | Read only, for the API user `/api/form/discount-code` runs as. |
+
 ### Deploying it
 
 ```bash
 sf project deploy start \
   --source-dir salesforce/force-app/main/default/objects/Discount_Code__c \
-  --source-dir salesforce/force-app/main/default/permissionsets/Discount_Code_Integration_Read.permissionset-meta.xml \
+  --source-dir salesforce/force-app/main/default/permissionsets \
+  --source-dir salesforce/force-app/main/default/tabs \
   --target-org <your-org-alias>
 ```
 
-Then assign the permission set to the integration user - the one the Connected
-App authenticates as under the client-credentials flow, which is what
-`/api/form/discount-code` runs as:
+### Then assign both permission sets - this is not optional
 
 ```bash
-sf org assign permset --name Discount_Code_Integration_Read --target-org <your-org-alias>
+# Whoever manages codes. Without this they cannot see the Active tick or the dates.
+sf org assign permset --name Discount_Code_Manager --target-org <alias> --on-behalf-of <user>
+
+# The integration user - the one the Connected App authenticates as under the
+# client-credentials flow, which is what /api/form/discount-code runs as.
+sf org assign permset --name Discount_Code_Integration_Read --target-org <alias> --on-behalf-of <api-user>
 ```
 
-The permission set grants **read only**. The endpoint looks a code up and
-answers yes or no; it never creates, edits or deletes one, so granting more
-would only widen what a compromised endpoint could reach. `Notes__c` is left out
-of it deliberately - the endpoint has no reason to read it.
+**Deploying fields grants field-level security to nobody** - not to the
+deploying admin, not to a System Administrator, not to anyone. `Modify All Data`
+bypasses *object* permissions, not FLS. So immediately after a successful
+deploy, `Active__c`, the dates, `Product__c`, `Max_Redemptions__c`,
+`Times_Redeemed__c` and `Notes__c` are invisible to every user in the org, and
+the object looks broken: you get `Name`, `Code__c` and `Percent_Off__c` (the two
+required fields are always visible) and nothing else. That is what
+`Discount_Code_Manager` is for. This bites every time and is worth re-reading
+before concluding the deploy failed.
 
-Staff who manage codes need ordinary object access through their own profile or
-permission set; that is a normal admin task and is not included here, since it
-depends on which profiles exist in the org.
+`Discount_Code_Integration_Read` grants **read only**. The endpoint looks a code
+up and answers yes or no; it never creates, edits or deletes one, so granting
+more would only widen what a compromised endpoint could reach. `Notes__c` is
+left out of it deliberately - the endpoint has no reason to read it.
+
+Neither permission set names `Code__c` or `Percent_Off__c`. Both are required
+fields, and Salesforce rejects the whole deploy with *"You cannot deploy to a
+required field"* if you list one. They are always visible to anyone who can see
+the record, so nothing is lost by omitting them - do not "fix" this by adding
+them back.
+
+### If a deploy fails
+
+The two that will catch you, both found the hard way deploying this:
+
+- **`description` is capped at 255 characters** on validation rules, permission
+  sets and the object - but 1000 on fields. A long explanation belongs in this
+  README, not in a `<description>`.
+- **A checkbox filter in a list view takes `1` / `0`**, not `true` / `false`
+  (*"Use \"0\" or \"1\""*).
+
+Validate before you deploy (`--dry-run` on the `sf` command above). Both of
+those surface in validation, where they cost nothing.
+
+### The integration user has Modify All Data
+
+Worth knowing before you rely on `Discount_Code_Integration_Read` as a control:
+it currently buys nothing, because the user it is assigned to already has
+everything.
+
+The forms Function App authenticates as **Refuge International API**
+(`api@refugelouisville.onmicrosoft.com`). Its profile, *Salesforce API Only
+System Integrations*, is appropriately narrow - no Modify All Data, no View All
+Data. But the user also holds a permission set called **Full Access**, which
+does have `PermissionsModifyAllData`, and that grants full create/edit/delete on
+all 145 objects in the org - Contact, Account, Opportunity, `Transaction__c`,
+`Form__c`, and `Discount_Code__c`, which it picked up automatically the moment
+the object existed.
+
+This was confirmed by hand: authenticating as that user and creating a
+`Discount_Code__c` record succeeded, despite `Discount_Code_Integration_Read`
+granting read only. The record was deleted immediately.
+
+Every `/api/form` route is `authLevel: anonymous`. So the blast radius of any
+injection or logic bug in that Function App is the entire org, not the one
+object the endpoint reads. For discount codes specifically, it means someone who
+finds a write path can mint themselves a 100% code - the read-only permission
+set does not stop them while Full Access is in play.
+
+Fixing it is not a one-liner and is deliberately **not** done here: Full Access
+is presumably load-bearing for the forms service, the payment-processor sync and
+whatever else uses that user, so removing it without tracing every dependency
+would break production. The shape of the fix is to work out what each
+integration actually needs, express that as its own permission set, and retire
+Full Access from the API user once nothing depends on it.
 
 ### Times Redeemed is not maintained automatically
 

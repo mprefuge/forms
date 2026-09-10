@@ -13,7 +13,7 @@
     <filters>
         <field>Active__c</field>
         <operation>equals</operation>
-        <value>true</value>
+        <value>1</value>
     </filters>
     <label>Active Codes</label>
 </ListView>
