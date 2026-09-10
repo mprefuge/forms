@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>First_Claimed_On__c</fullName>
+    <defaultValue>TODAY()</defaultValue>
+    <description>The date exemption was first claimed under this number. The clock for Days Outstanding runs from here, not from the record's created date, so a certificate re-saved or re-opened later does not quietly reset its own age.</description>
+    <inlineHelpText>When exemption was first claimed. Days Outstanding counts from here.</inlineHelpText>
+    <label>First Claimed On</label>
+    <required>false</required>
+    <trackHistory>true</trackHistory>
+    <type>Date</type>
+</CustomField>

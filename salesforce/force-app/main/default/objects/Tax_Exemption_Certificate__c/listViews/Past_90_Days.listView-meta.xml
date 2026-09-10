@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ListView xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Past_90_Days</fullName>
+    <columns>NAME</columns>
+    <columns>Organization_Name__c</columns>
+    <columns>Account__c</columns>
+    <columns>Exemption_Id__c</columns>
+    <columns>First_Claimed_On__c</columns>
+    <columns>Days_Outstanding__c</columns>
+    <columns>Notes__c</columns>
+    <filterScope>Everything</filterScope>
+    <filters>
+        <field>Past_90_Days__c</field>
+        <operation>equals</operation>
+        <value>1</value>
+    </filters>
+    <label>Past 90 Days</label>
+</ListView>

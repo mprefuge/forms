@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Account__c</fullName>
+    <deleteConstraint>SetNull</deleteConstraint>
+    <description>The organisation the certificate belongs to. This is what makes a certificate reusable: the next order from the same organisation is covered by the certificate already on file. Cleared rather than cascaded if the account goes away, because the certificate is tax evidence and outlives the record it was filed under.</description>
+    <inlineHelpText>The organisation this certificate covers. Their later orders are covered by it too.</inlineHelpText>
+    <label>Account</label>
+    <referenceTo>Account</referenceTo>
+    <relationshipLabel>Tax Exemption Certificates</relationshipLabel>
+    <relationshipName>Tax_Exemption_Certificates</relationshipName>
+    <required>false</required>
+    <trackHistory>true</trackHistory>
+    <type>Lookup</type>
+</CustomField>

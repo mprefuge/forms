@@ -87,6 +87,15 @@
                 <behavior>Readonly</behavior>
                 <field>Tax_Exemption_Id__c</field>
             </layoutItems>
+            <!--
+                Sits next to the exemption id it corresponds to. The id is what
+                the buyer typed; this is the certificate record that evidences
+                it, and the link is the difference between a claim and proof.
+            -->
+            <layoutItems>
+                <behavior>Readonly</behavior>
+                <field>Tax_Exemption_Certificate__c</field>
+            </layoutItems>
             <layoutItems>
                 <behavior>Edit</behavior>
                 <field>Recurring__c</field>

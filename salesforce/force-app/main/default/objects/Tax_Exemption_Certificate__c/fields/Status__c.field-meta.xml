@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Status__c</fullName>
+    <description>Complete is the only status that justifies an untaxed Kentucky order. Pending means exemption was claimed but the certificate is not finished - those orders were taxed. Rejected means it was reviewed and does not hold. Expired means it once did and no longer does.</description>
+    <inlineHelpText>Only Complete justifies an untaxed Kentucky order.</inlineHelpText>
+    <label>Status</label>
+    <required>false</required>
+    <trackHistory>true</trackHistory>
+    <type>Picklist</type>
+    <valueSet>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value><fullName>Pending</fullName><default>true</default><label>Pending</label></value>
+            <value><fullName>Complete</fullName><default>false</default><label>Complete</label></value>
+            <value><fullName>Rejected</fullName><default>false</default><label>Rejected</label></value>
+            <value><fullName>Expired</fullName><default>false</default><label>Expired</label></value>
+        </valueSetDefinition>
+    </valueSet>
+</CustomField>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Source__c</fullName>
+    <description>Where the certificate was captured - which form, or which staff member keyed it in. Worth knowing when a batch of certificates turns out to share a problem.</description>
+    <inlineHelpText>Where this certificate came from.</inlineHelpText>
+    <label>Source</label>
+    <length>255</length>
+    <required>false</required>
+    <type>Text</type>
+</CustomField>

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Signed_Date_Not_In_Future</fullName>
+    <active>true</active>
+    <description>A certificate cannot have been signed on a date that has not happened. A future date is a typo or a fabrication, and either way it is not evidence.</description>
+    <errorConditionFormula>AND(NOT(ISBLANK(Signed_Date__c)), Signed_Date__c &gt; TODAY())</errorConditionFormula>
+    <errorMessage>The signed date cannot be in the future.</errorMessage>
+</ValidationRule>
