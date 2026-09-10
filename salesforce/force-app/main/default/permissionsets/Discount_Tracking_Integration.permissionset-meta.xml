@@ -26,4 +26,10 @@
     <fieldPermissions><editable>true</editable><field>Transaction__c.Discount_Code__c</field><readable>true</readable></fieldPermissions>
     <fieldPermissions><editable>true</editable><field>Transaction__c.Discount_Percent__c</field><readable>true</readable></fieldPermissions>
     <fieldPermissions><editable>true</editable><field>Transaction__c.Discount_Amount__c</field><readable>true</readable></fieldPermissions>
+    <fieldPermissions><editable>true</editable><field>Transaction__c.Tax_Base__c</field><readable>true</readable></fieldPermissions>
+    <fieldPermissions><editable>true</editable><field>Transaction__c.Tax_Amount__c</field><readable>true</readable></fieldPermissions>
+    <fieldPermissions><editable>true</editable><field>Transaction__c.Tax_Rate__c</field><readable>true</readable></fieldPermissions>
+    <fieldPermissions><editable>true</editable><field>Transaction__c.Tax_State__c</field><readable>true</readable></fieldPermissions>
+    <fieldPermissions><editable>true</editable><field>Transaction__c.Tax_Exemption_Id__c</field><readable>true</readable></fieldPermissions>
+    <fieldPermissions><editable>true</editable><field>Transaction__c.Tax_Certificate_Status__c</field><readable>true</readable></fieldPermissions>
 </PermissionSet>

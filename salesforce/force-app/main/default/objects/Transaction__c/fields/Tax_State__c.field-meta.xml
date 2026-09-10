@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Tax_State__c</fullName>
+    <description>The destination state the tax decision was made against - where the order ships, not where the buyer's card is billed. Two-letter code. This is the fact that determines whether tax applies at all, so it is recorded even when the answer was no tax.</description>
+    <inlineHelpText>Destination state used for the tax decision. Where it ships, not where the card bills.</inlineHelpText>
+    <label>Tax State</label>
+    <length>2</length>
+    <required>false</required>
+    <type>Text</type>
+    <unique>false</unique>
+</CustomField>

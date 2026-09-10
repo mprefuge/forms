@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Tax_Exemption_Id__c</fullName>
+    <description>The purchaser's exemption number from their Kentucky Form 51A126, when one was claimed. Present only on an exempt order. Kept on the transaction as well as on the certificate record so an audit of a single sale does not depend on the certificate still being linked.</description>
+    <inlineHelpText>Exemption number from the buyer's Form 51A126, if they claimed exemption.</inlineHelpText>
+    <label>Tax Exemption ID</label>
+    <length>40</length>
+    <required>false</required>
+    <type>Text</type>
+    <unique>false</unique>
+</CustomField>
