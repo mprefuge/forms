@@ -19,6 +19,8 @@ import {
 
 // Ensure sendCode (and its diagnostics) are registered by importing its module so its top-level app.http calls run
 import '../sendCode';
+// Same reason: this module is the app entry point, so a function nobody imports never registers its route.
+import '../discountCode';
 
 // Initialize form registry on startup
 initializeFormRegistry();

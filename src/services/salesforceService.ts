@@ -706,6 +706,58 @@ export class SalesforceService {
   }
 
   /**
+   * Look up a single Discount_Code__c record by its code.
+   *
+   * The caller is responsible for normalizing `code` down to the redeemable
+   * character set first (see normalizeDiscountCode). That is not a nicety here:
+   * this value arrives from an anonymous public endpoint, and escapeSoql only
+   * escapes single quotes, so a value ending in a backslash would escape the
+   * closing quote and let the rest of the string be read as SOQL. A normalized
+   * code cannot contain either character.
+   *
+   * Code__c is unique and case-insensitive in Salesforce, so at most one record
+   * can match. Unlike the Campaign lookups above this rethrows rather than
+   * returning null on error: a discount that silently fails to apply because
+   * Salesforce was unreachable would be charged at full price with no sign that
+   * anything went wrong, and the caller needs to be able to tell "no such code"
+   * from "we could not check".
+   */
+  async getDiscountCodeByCode(
+    code: string,
+    fields: string[] = [
+      'Id',
+      'Name',
+      'Code__c',
+      'Percent_Off__c',
+      'Active__c',
+      'Start_Date__c',
+      'End_Date__c',
+      'Campaign__c',
+      'Max_Redemptions__c',
+      'Times_Redeemed__c',
+    ]
+  ): Promise<Record<string, any> | null> {
+    if (!code || typeof code !== 'string') {
+      return null;
+    }
+
+    if (!/^[A-Z0-9_-]{1,40}$/.test(code)) {
+      throw new Error(`Invalid discount code format: ${code}`);
+    }
+
+    const safeFields = (fields || []).filter((f) => typeof f === 'string' && f.trim().length > 0);
+    const select = safeFields.length > 0 ? safeFields.join(', ') : 'Id, Code__c';
+    const query = `SELECT ${select} FROM Discount_Code__c WHERE Code__c = '${this.escapeSoql(code)}' LIMIT 1`;
+    const result: any = await this.runQuery(query);
+
+    if (result && result.records && result.records.length > 0) {
+      return result.records[0];
+    }
+
+    return null;
+  }
+
+  /**
    * Look up a Campaign by ID and return its information
    * Returns null if not found or on error (graceful degradation)
    */

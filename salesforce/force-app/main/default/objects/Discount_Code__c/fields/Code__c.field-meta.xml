@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Code__c</fullName>
+    <caseSensitive>false</caseSensitive>
+    <description>What the buyer types into the order form, for example RUSSELLMOORE. Letters, numbers, hyphens and underscores only - the order form strips anything else before it looks the code up, so a code containing a space or punctuation can never be redeemed. Matching ignores case.</description>
+    <externalId>true</externalId>
+    <inlineHelpText>The code the buyer types, e.g. RUSSELLMOORE. Letters, numbers, - and _ only. Case does not matter.</inlineHelpText>
+    <label>Code</label>
+    <length>40</length>
+    <required>true</required>
+    <trackHistory>true</trackHistory>
+    <type>Text</type>
+    <unique>true</unique>
+</CustomField>

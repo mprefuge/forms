@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Discount_Code__c</fullName>
+    <deleteConstraint>SetNull</deleteConstraint>
+    <description>The discount code the buyer used, if any. Set by the payment service from Stripe metadata once the payment is recorded. Blank means the order was placed at full price. Together with Campaign__c this is what makes "what did this code sell, and what did it cost us" a report rather than a spreadsheet exercise.</description>
+    <inlineHelpText>The discount code used on this order. Blank means full price.</inlineHelpText>
+    <label>Discount Code</label>
+    <referenceTo>Discount_Code__c</referenceTo>
+    <relationshipLabel>Transactions</relationshipLabel>
+    <relationshipName>Transactions</relationshipName>
+    <required>false</required>
+    <type>Lookup</type>
+</CustomField>

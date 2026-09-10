@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Discount_Amount__c</fullName>
+    <description>Revenue FORGONE on this order - what the discount took off, not money received. It is NOT part of gross, fee or net, and must never be added to them: Amount Gross is what Stripe actually charged, after the discount. Summing this into a revenue figure overstates income. Report it on its own, as the cost of a discount programme.</description>
+    <inlineHelpText>What the discount took off. Revenue forgone, NOT income - never add this to Amount Gross or Amount Net.</inlineHelpText>
+    <label>Discount Amount</label>
+    <precision>18</precision>
+    <required>false</required>
+    <scale>2</scale>
+    <type>Currency</type>
+</CustomField>

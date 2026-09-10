@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">
+    <description>Read-only access to Discount Code records for the forms integration user, which /api/form/discount-code authenticates as. The endpoint only looks codes up, so read is all it needs; more would widen what a compromised endpoint could reach.</description>
+    <hasActivationRequired>false</hasActivationRequired>
+    <label>Discount Code Integration Read</label>
+    <objectPermissions>
+        <allowCreate>false</allowCreate>
+        <allowDelete>false</allowDelete>
+        <allowEdit>false</allowEdit>
+        <allowRead>true</allowRead>
+        <modifyAllRecords>false</modifyAllRecords>
+        <object>Discount_Code__c</object>
+        <viewAllRecords>true</viewAllRecords>
+    </objectPermissions>
+    <!--
+        Code__c and Percent_Off__c are deliberately absent. Both are required
+        fields, and Salesforce refuses field permissions on a required field
+        ("You cannot deploy to a required field") because it is always readable
+        to anyone who can see the record. Adding them back breaks the deploy;
+        leaving them out costs the endpoint nothing, since object read already
+        covers them.
+    -->
+    <fieldPermissions><editable>false</editable><field>Discount_Code__c.Active__c</field><readable>true</readable></fieldPermissions>
+    <fieldPermissions><editable>false</editable><field>Discount_Code__c.Start_Date__c</field><readable>true</readable></fieldPermissions>
+    <fieldPermissions><editable>false</editable><field>Discount_Code__c.End_Date__c</field><readable>true</readable></fieldPermissions>
+    <fieldPermissions><editable>false</editable><field>Discount_Code__c.Product__c</field><readable>true</readable></fieldPermissions>
+    <fieldPermissions><editable>false</editable><field>Discount_Code__c.Max_Redemptions__c</field><readable>true</readable></fieldPermissions>
+    <fieldPermissions><editable>false</editable><field>Discount_Code__c.Times_Redeemed__c</field><readable>true</readable></fieldPermissions>
+</PermissionSet>

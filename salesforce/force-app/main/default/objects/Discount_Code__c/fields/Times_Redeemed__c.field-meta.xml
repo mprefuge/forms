@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Times_Redeemed__c</fullName>
+    <defaultValue>0</defaultValue>
+    <description>How many paid orders have used this code. Only meaningful alongside Max Redemptions. This field is NOT maintained by the order form: a buyer who reaches the payment page and abandons it must not burn a redemption, so counting belongs to the paid-order pipeline, not to the browser. Until that is wired up, treat this as a manual count.</description>
+    <inlineHelpText>Paid orders that used this code. Not updated by the order form - see the field description.</inlineHelpText>
+    <label>Times Redeemed</label>
+    <precision>6</precision>
+    <required>false</required>
+    <scale>0</scale>
+    <trackHistory>true</trackHistory>
+    <type>Number</type>
+    <unique>false</unique>
+</CustomField>

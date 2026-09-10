@@ -339,6 +339,102 @@ Update existing form.
 }
 ```
 
+### GET /api/form/discount-code?code={code}&campaign={campaign}
+
+Check one discount code. Used by order forms that take a percentage off a total,
+starting with the Hospitality Guide order form in `mprefuge/site-assets`.
+
+`campaign` is required, and is the campaign the order will be filed under - the
+same string the order form sends the payment service as `category`. A Salesforce
+id works too. Checking the code against that campaign means it is validated
+against the very record the money lands on, so a code cannot discount a purchase
+it was never issued for.
+
+**Response** (200) for a code that works:
+```json
+{ "valid": true, "code": "RUSSELLMOORE", "percentOff": 25, "label": "Russell Moore podcast" }
+```
+
+**Response** (200) for a code that does not:
+```json
+{ "valid": false, "code": "RUSSELLMOORE", "reason": "expired", "message": "That code has expired." }
+```
+
+`reason` is one of `not_found`, `inactive`, `not_started`, `expired`,
+`wrong_campaign`, `fully_redeemed`, `misconfigured`.
+
+Other statuses: `400` if `code` or `campaign` is missing, `429` if
+the caller has tried more than 30 codes in a minute (with `Retry-After`), `502`
+if Salesforce could not be reached.
+
+That last one matters and is not the same as `valid: false`. "We could not
+check" must never be shown to a buyer as "your code is no good", or somebody
+holding a perfectly good code is quietly charged full price. Callers should say
+"try again", not fall through to the undiscounted total.
+
+There is no endpoint that lists codes, and there will not be one. Codes are
+issued to named partners; a list of them is not public. The response carries the
+percentage and a label and nothing else - no record id, no notes, no redemption
+counts.
+
+## Discount Codes
+
+Codes are `Discount_Code__c` records in Salesforce, so adding, activating and
+expiring them is an ordinary staff job with no deploy involved. The object
+metadata and how to deploy it are in [salesforce/README.md](salesforce/README.md).
+
+### Adding a code
+
+Salesforce → Discount Codes → New:
+
+| Field | Example |
+|---|---|
+| Description | `Russell Moore podcast` |
+| Code | `RUSSELLMOORE` |
+| Percent Off | `25` |
+| Active | ticked |
+| Start Date | blank, or the first day it should work |
+| End Date | the last day it should work, or blank for no expiry |
+| Campaign | `Hospitality Guide` |
+| Notes | who it went to, so a leak can be traced |
+
+The buyer can type it however they like - `russellmoore`, `Russell Moore`,
+` RUSSELLMOORE ` all match. Spaces and punctuation are stripped, and case is
+ignored.
+
+### Switching one off
+
+Untick **Active**. That takes effect on the next attempt; nothing caches a
+working code. Editing dates works too, but unticking is the one to reach for
+when a code has leaked, because it does not depend on what timezone anyone
+thinks it is.
+
+### Dates are Eastern, and both ends are inclusive
+
+A code with End Date 15 October works all day on the 15th and stops at midnight
+Eastern. This is judged against US Eastern time, not the server's clock and not
+the buyer's, and it follows the daylight-saving change rather than assuming a
+fixed offset.
+
+### What this does not do
+
+The discount is applied in the browser and the resulting total is sent to the
+payment service, which accepts the amount it is given. That was already true of
+every form here before discount codes existed - the totals in `event.js` and
+`application.js` work the same way - and validating codes server-side does not
+change it. What it does buy: codes stay secret, they can be retired instantly,
+and the code and percentage actually applied are written to the order record and
+to Stripe metadata, so a reconciliation can catch a total that does not match
+the code it claims.
+
+Once a payment is recorded, the code, percentage and amount also land on
+`Transaction__c` - see [salesforce/README.md](salesforce/README.md). The amount
+is revenue **forgone** and is never part of gross, fee or net.
+
+Making the charged total itself trustworthy means having the payment service
+re-derive the price from the quantity and the code rather than trusting
+`amount`. That is a change in `mprefuge/payment-processor`, not here.
+
 ## Testing
 
 ```bash
@@ -378,10 +474,12 @@ npm test -- --coverage
 ├── src/
 │   ├── functions/
 │   │   ├── createForm/        # Create and retrieve forms
+│   │   ├── discountCode/       # Discount code lookup for order forms
 │   │   ├── sendCode/           # Email verification
 │   │   ├── sendCodeDiagnostics/ # Email diagnostics
 │   │   └── updateForm/         # Update existing forms
 │   ├── services/
+│   │   ├── discountCodeService.ts # Discount code rules and lookup
 │   │   ├── emailService.ts     # Azure Communication Services
 │   │   ├── salesforceService.ts # Salesforce integration
 │   │   └── logger.ts           # Logging utility
@@ -392,6 +490,7 @@ npm test -- --coverage
 │   ├── waiver.js              # Parental waiver form
 │   ├── event.js               # Event registration form
 │   └── *.html                 # Form pages
+├── salesforce/                 # Object metadata this service reads (not deployed)
 ├── tests/                      # Unit tests
 ├── .env.example               # Environment template
 ├── host.json                  # Azure Functions configuration

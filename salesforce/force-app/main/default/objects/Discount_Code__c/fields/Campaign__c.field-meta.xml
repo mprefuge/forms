@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Campaign__c</fullName>
+    <deleteConstraint>Restrict</deleteConstraint>
+    <description>The financial campaign this code discounts. A code is only accepted on an order filed to this same campaign, so a Hospitality Guide code cannot be redeemed against anything else. Restricted to revenue-generating campaigns: a discount on a campaign that takes no money is meaningless.</description>
+    <inlineHelpText>Which campaign this code discounts. Only revenue-generating campaigns can be chosen.</inlineHelpText>
+    <label>Campaign</label>
+    <lookupFilter>
+        <active>true</active>
+        <errorMessage>Pick a revenue-generating campaign. A discount code on a campaign that takes no money has nothing to discount.</errorMessage>
+        <filterItems>
+            <field>Campaign.Revenue_Generating__c</field>
+            <operation>equals</operation>
+            <value>true</value>
+        </filterItems>
+        <isOptional>false</isOptional>
+    </lookupFilter>
+    <referenceTo>Campaign</referenceTo>
+    <relationshipLabel>Discount Codes</relationshipLabel>
+    <relationshipName>Discount_Codes</relationshipName>
+    <required>true</required>
+    <trackHistory>true</trackHistory>
+    <type>Lookup</type>
+</CustomField>

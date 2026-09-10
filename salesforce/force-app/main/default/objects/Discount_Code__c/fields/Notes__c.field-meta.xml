@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Notes__c</fullName>
+    <description>Who this code was issued to and why - the podcast, the partner, the conference. Internal only; nothing here is ever sent to the browser.</description>
+    <inlineHelpText>Who this code went to and why. Internal only.</inlineHelpText>
+    <label>Notes</label>
+    <length>1000</length>
+    <required>false</required>
+    <type>LongTextArea</type>
+    <visibleLines>3</visibleLines>
+</CustomField>
