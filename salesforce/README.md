@@ -106,13 +106,40 @@ are themselves a certificate in electronic form, which is what Kentucky accepts,
 so a failed upload never turns a good certificate into a taxed order. That is
 what `Certificate_File_Attached__c` records honestly rather than assuming.
 
-### The two list views that matter
+### The two list views that matter, and the chase behind them
 
 `Pending Certificates` is the work queue. `Past 90 Days` is the subset that has
 stopped being a work queue and started being money: Kentucky gives a seller
 ninety days to obtain a certificate, and past that an unsupported exemption is
-the organisation's own tax to pay. Nothing automates the chasing yet - the flag
-exists so a person can.
+the organisation's own tax to pay.
+
+A scheduled flow, **Chase Exemption Certificates Past 90 Days**, runs daily at
+1pm Eastern over every certificate still `Pending` and files one Task per
+certificate that has passed the window. A flag on a list view nobody opens is
+not a control; a task in somebody's queue is.
+
+The task goes to the **Office Staff queue**, not to a person. Staff come and go
+and the work does not, and a task assigned to somebody who has left is a task
+nobody does. Membership is managed in Setup, so who answers for it changes
+without a deploy. It is seeded with the active users holding the Office Staff
+profile.
+
+The flow checks for an open task on the same certificate before creating one, so
+a certificate outstanding for six months has one task, not a hundred and eighty.
+Closing the task without resolving the certificate means a fresh one tomorrow -
+which is the correct behaviour: the liability has not gone anywhere.
+
+`enableActivities` on the object is `true` for this. A chase nobody can see
+against the record it is about is not a chase.
+
+**Deploying the flow does not activate it.** Salesforce requires flow test
+coverage to deploy an *active* flow to production, and without it the version
+lands as `Draft` and is scheduled for nothing — the file in this repo says
+`<status>Active</status>` and the org disagreed. Activate it after deploying,
+either in Setup or by PATCHing `FlowDefinition.Metadata.activeVersionNumber`
+through the Tooling API. Check `CronTrigger` afterwards: an active scheduled flow
+appears there as `Chase_Exemption_Certificates_Past_90_Days-<version>`, and if it
+does not, it is not running.
 
 ### Where certificates come from
 
@@ -249,6 +276,8 @@ one of the two write paths.
 | `Tax_Exemption_Certificate__c` tab | So the pending list is reachable from the App Launcher. |
 | `Tax_Exemption_Integration` | Create and edit certificates, never delete. For the forms service's user. |
 | `Tax_Exemption_Manager` | Full field access plus the tab. **Assign this to whoever answers for sales tax, or the Pending list is visible to nobody.** |
+| `Office_Staff` queue | Owns the ninety-day chase tasks. Seeded from the Office Staff profile; managed in Setup after that. |
+| `Chase_Exemption_Certificates_Past_90_Days` | The daily scheduled flow that files them. **Activate it after deploying — see below.** |
 
 ### Deploying it
 
