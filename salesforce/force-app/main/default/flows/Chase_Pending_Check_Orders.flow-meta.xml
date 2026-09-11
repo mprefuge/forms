@@ -161,10 +161,22 @@
             </value>
         </filters>
         <filters>
-            <field>Payment_Method__c</field>
+            <field>transaction_type__c</field>
             <operator>EqualTo</operator>
             <value>
                 <stringValue>Check</stringValue>
+            </value>
+        </filters>
+        <!-- The scope that matters. This org already holds dozens of pending
+             manual checks entered by hand, and they belong to somebody else's
+             process; only an order placed through the Hospitality Guide form
+             carries a Manual Reference. Without this line the first run would
+             file a task on every one of them. -->
+        <filters>
+            <field>Manual_Reference__c</field>
+            <operator>IsNull</operator>
+            <value>
+                <booleanValue>false</booleanValue>
             </value>
         </filters>
         <filters>

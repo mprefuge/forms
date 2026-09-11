@@ -14,10 +14,13 @@
         <operation>equals</operation>
         <value>pending</value>
     </filters>
+    <!-- Days Awaiting Check is blank unless the record is a pending check order
+         from the form, so this filter and the flow's cannot drift apart: both
+         read the same formula. -->
     <filters>
-        <field>Payment_Method__c</field>
-        <operation>equals</operation>
-        <value>Check</value>
+        <field>Days_Awaiting_Check__c</field>
+        <operation>greaterOrEqual</operation>
+        <value>0</value>
     </filters>
     <label>Awaiting a Check</label>
 </ListView>
