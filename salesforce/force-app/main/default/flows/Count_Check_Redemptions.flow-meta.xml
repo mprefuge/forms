@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Flow xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>60.0</apiVersion>
+    <description>Keeps Discount_Code__c.Check_Redemptions__c equal to the number of orders placed with that code and a check promised. An order paid by check creates no Transaction__c anywhere, so Times_Redeemed__c - which rolls up transactions - cannot see it, and a code could be claimed any number of times while the checks were in the post and still read as unredeemed. WHY NOT DLRS, WHICH MAINTAINS EVERY OTHER ROLLUP HERE: every DLRS mode except Developer needs a dlrs_ trigger on the child object, and that trigger fires on EVERY insert, update and delete of Form__c - every submission of every form this org runs, not only Hospitality Guide orders. A counter is not worth putting managed-package code in the path of all of them. This flow only runs on records that carry a discount code. It RECOUNTS rather than incrementing, so it is self-healing: a miscount cannot accumulate, it is corrected by the next order on that code.</description>
+    <environments>Default</environments>
+    <interviewLabel>Count Check Redemptions {!$Flow.CurrentDateTime}</interviewLabel>
+    <label>Count Check Redemptions</label>
+    <processType>AutoLaunchedFlow</processType>
+    <runInMode>SystemModeWithoutSharing</runInMode>
+    <start>
+        <locationX>176</locationX>
+        <locationY>0</locationY>
+        <connector>
+            <targetReference>Get_Check_Orders</targetReference>
+        </connector>
+        <doesRequireRecordChangedToMeetCriteria>false</doesRequireRecordChangedToMeetCriteria>
+        <filterFormula>AND(
+  NOT(ISBLANK({!$Record.Discount_Code__c})),
+  OR(
+    ISNEW(),
+    ISCHANGED({!$Record.Payment_Method__c}),
+    ISCHANGED({!$Record.Discount_Code__c})
+  )
+)</filterFormula>
+        <object>Form__c</object>
+        <recordTriggerType>CreateAndUpdate</recordTriggerType>
+        <triggerType>RecordAfterSave</triggerType>
+    </start>
+    <status>Active</status>
+    <recordLookups>
+        <name>Get_Check_Orders</name>
+        <label>Get every check order on this code</label>
+        <locationX>176</locationX>
+        <locationY>134</locationY>
+        <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
+        <connector>
+            <targetReference>Count_Them</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>Discount_Code__c</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>$Record.Discount_Code__c</elementReference>
+            </value>
+        </filters>
+        <filters>
+            <field>Payment_Method__c</field>
+            <operator>EqualTo</operator>
+            <value>
+                <stringValue>Check</stringValue>
+            </value>
+        </filters>
+        <getFirstRecordOnly>false</getFirstRecordOnly>
+        <object>Form__c</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordLookups>
+    <assignments>
+        <name>Count_Them</name>
+        <label>Count them</label>
+        <locationX>176</locationX>
+        <locationY>254</locationY>
+        <assignmentItems>
+            <assignToReference>checkCount</assignToReference>
+            <operator>AssignCount</operator>
+            <value>
+                <elementReference>Get_Check_Orders</elementReference>
+            </value>
+        </assignmentItems>
+        <connector>
+            <targetReference>Write_The_Count</targetReference>
+        </connector>
+    </assignments>
+    <recordUpdates>
+        <name>Write_The_Count</name>
+        <label>Write the count onto the code</label>
+        <locationX>176</locationX>
+        <locationY>374</locationY>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>Id</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>$Record.Discount_Code__c</elementReference>
+            </value>
+        </filters>
+        <inputAssignments>
+            <field>Check_Redemptions__c</field>
+            <value>
+                <elementReference>checkCount</elementReference>
+            </value>
+        </inputAssignments>
+        <object>Discount_Code__c</object>
+    </recordUpdates>
+    <variables>
+        <name>checkCount</name>
+        <dataType>Number</dataType>
+        <isCollection>false</isCollection>
+        <isInput>false</isInput>
+        <isOutput>false</isOutput>
+        <scale>0</scale>
+    </variables>
+</Flow>

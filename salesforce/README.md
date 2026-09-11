@@ -9,8 +9,10 @@ centrally elsewhere, move these files there and leave a pointer behind.
 order. All three permission sets are assigned, and `Times_Redeemed__c` is
 maintained by a DLRS rollup - see below.
 
-The check-redemption half is **not yet live**: see "Check redemptions" below for
-the one remaining step, which is a click in the DLRS app rather than a deploy.
+The check-redemption half is live too: the four fields are deployed, and the
+**Count Check Redemptions** flow is Active (v1). Existing codes have a null
+`Check_Redemptions__c` rather than 0 - a field default applies only to new
+records - which is why `Total_Redemptions__c` wraps both halves in `NULLVALUE`.
 
 Treat a deploy from here as a deliberate decision about production, never a side
 effect of merging a branch. Validate first (`--dry-run`); the first three
@@ -444,56 +446,76 @@ never handed to Stripe, no money moves through the payment pipeline, and the
 counts transactions, cannot see those orders at all - a code could be claimed
 two hundred times while the checks were in the post and still read as unredeemed.
 
-`Check_Redemptions__c` is the other half, counted from `Form__c`:
+`Check_Redemptions__c` is the other half, counted from `Form__c` by a
+record-triggered flow, **Count Check Redemptions**. `Total_Redemptions__c` adds
+the two, and that is the number `Max_Redemptions__c` is judged against.
 
-| Setting | Value |
+| | |
 |---|---|
-| Unique name | `Discount_Code_Check_Redemptions` |
-| Parent | `Discount_Code__c` |
-| Child | `Form__c` |
-| Relationship field | `Discount_Code__c` |
-| Operation | Count of `Id` |
-| Result field | `Check_Redemptions__c` |
-| Criteria | `Payment_Method__c = 'Check'` |
-| Mode | Realtime, System sharing |
+| Runs on | `Form__c`, after save, create and update |
+| Entry criteria | the record has a `Discount_Code__c`, **and** it is new or `Payment_Method__c` or `Discount_Code__c` just changed |
+| What it does | counts every `Form__c` on that code with `Payment_Method__c = 'Check'`, and writes the count to `Check_Redemptions__c` |
+| Context | System mode without sharing - the count has to be complete regardless of who submitted |
 
-`Total_Redemptions__c` adds the two, and that is the number
-`Max_Redemptions__c` is judged against.
+**It recounts rather than incrementing**, which is what makes it self-healing: a
+miscount cannot accumulate, because the next order on that code overwrites it
+with a fresh count. An incrementing counter drifts and there is no way to tell
+that it has.
 
-**The criteria is what stops double counting.** A card order is already counted
-on the transaction side, so counting it here too would count every paid order
-twice. Which means the office convention matters: **when a check is banked and
-recorded as a `Transaction__c` against the same code, move the order's Payment
-Method off `Check`.** Leave it, and that order is counted on both sides.
+**The `Payment_Method__c = 'Check'` filter is what stops double counting.** A
+card order is already counted on the transaction side, so counting it here too
+would count every paid order twice. Which means the office convention matters:
+**when a check is banked and recorded as a `Transaction__c` against the same
+code, move the order's Payment Method off `Check`.** Leave it, and that order is
+counted on both sides. Moving it also re-fires the flow, so the count corrects
+itself the moment you do.
 
 **Two fields, not one changed field.** `Times_Redeemed__c` was not widened to
-cover checks, because the two halves come from two different objects and a DLRS
-rollup has exactly one child object. Keeping them apart also means each number
-says what it is: money that arrived, and money that was promised.
+cover checks: the two halves come from two different objects, and each number is
+worth being able to read on its own - money that arrived, and money that was
+promised.
 
-#### The one step still outstanding
+### Why this one is a flow when every other rollup here is DLRS
 
-Realtime mode needs a DLRS Apex trigger on the child object. The org has
-`dlrs_TransactionTrigger` and nothing else, so **until a `Form__c` trigger
-exists this rollup is inert and `Check_Redemptions__c` stays zero**.
+DLRS was the obvious choice and it is the wrong one, for a reason worth writing
+down so nobody "fixes" it back.
 
-DLRS generates that trigger itself - this is not a hand-written Apex deploy:
+Every DLRS calculation mode except Developer needs a `dlrs_` Apex trigger on the
+**child** object - Realtime to roll up on save, Scheduled to mark parents dirty.
+The generated trigger is unconditional:
 
-1. Open the **Lookup Rollup Summaries** app, find *Discount Code Check
-   Redemptions*.
-2. **Manage Child Trigger** -> **Deploy**. DLRS deploys `dlrs_FormTrigger` and
-   its test class. This is how `dlrs_TransactionTrigger` got there.
-3. **Calculate** on the rollup, once, to backfill orders placed before the
-   trigger existed.
+```apex
+trigger dlrs_FormTrigger on Form__c
+    (before delete, before insert, before update,
+     after delete, after insert, after undelete, after update)
+{
+    dlrs.RollupService.triggerHandler(Form__c.SObjectType);
+}
+```
 
-Nothing is mis-counted in the meantime - check orders are simply not counted,
-which is exactly the state this section describes fixing. No code currently
-carries a `Max_Redemptions__c`, so nothing is being mis-enforced today either.
+That fires managed-package code on **every insert, update and delete of
+`Form__c`** - every submission of every form this org runs, not only Hospitality
+Guide orders. If DLRS throws, form submissions fail. That is a great deal of
+blast radius to accept for a redemption counter.
 
-**DLRS only recalculates when a field it watches changes** - here, the
-`Discount_Code__c` lookup or `Payment_Method__c`. An order that switches from
-Card to Check after a failed payment does move `Payment_Method__c`, so it is
-picked up; a record edited in some other way is not.
+The flow runs only on records that carry a discount code, and nothing else on
+`Form__c` changes shape. `Transaction__c` is the opposite case: the trigger is
+already there and already carries eleven rollups, so DLRS costs nothing extra
+and `Times_Redeemed__c` stays where it is.
+
+### What the flow does not catch
+
+It fires on create and on a change to `Payment_Method__c` or `Discount_Code__c`.
+Two gaps follow, both harmless in practice and both self-correcting:
+
+- **A deleted order.** Deleting a `Form__c` does not re-fire the flow, so the
+  count stays one high until the next order on that code recounts. Orders are
+  not routinely deleted.
+- **An order re-pointed to a different code by hand.** The new code is recounted;
+  the old one keeps its old number until something else touches it.
+
+Neither can compound, because every run is a fresh count rather than an
+adjustment.
 
 ### Where the two new `Form__c` fields come from
 
@@ -523,9 +545,15 @@ that far; notes and redemption counts stay in Salesforce.
 
 ### Enforcing a limit
 
-`Max_Redemptions__c` is blank on every code today, which means no limit. Once
-the trigger above is in place, setting it enforces against
-`Total_Redemptions__c` - both paid orders and promised checks.
+`Max_Redemptions__c` is blank on all fourteen code records today, which means no
+limit. Setting one now enforces against `Total_Redemptions__c` - paid orders and
+promised checks together.
 
-A blank limit means no limit, which is honest; a limit that is never counted
-against is not. So do not set one until the trigger is deployed.
+The service reads the largest of the counts it can see rather than trusting the
+formula alone. Field-level security is per permission set and a query omits what
+the running user cannot see, so the raw counts are still a floor; refusing a code
+sooner is the right way to be wrong about money.
+
+A cap is **per window**, not per code. `RUSSELLMOORE` at 25% and `RUSSELLMOORE`
+at 15% are two records with two counts, so a limit of fifty on each is a hundred
+orders, not fifty.
