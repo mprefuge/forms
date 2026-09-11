@@ -189,7 +189,7 @@
         <fields>Active__c</fields>
         <fields>Start_Date__c</fields>
         <fields>End_Date__c</fields>
-        <fields>Times_Redeemed__c</fields>
+        <fields>Total_Redemptions__c</fields>
         <relatedList>Discount_Code__c.Campaign__c</relatedList>
         <sortField>Code__c</sortField>
         <sortOrder>Asc</sortOrder>

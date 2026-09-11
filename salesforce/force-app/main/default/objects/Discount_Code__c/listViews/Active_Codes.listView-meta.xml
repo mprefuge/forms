@@ -8,7 +8,7 @@
     <columns>Start_Date__c</columns>
     <columns>End_Date__c</columns>
     <columns>Max_Redemptions__c</columns>
-    <columns>Times_Redeemed__c</columns>
+    <columns>Total_Redemptions__c</columns>
     <filterScope>Everything</filterScope>
     <filters>
         <field>Active__c</field>

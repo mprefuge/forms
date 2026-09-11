@@ -35,9 +35,39 @@ without a code change or a deploy.
 | `End_Date__c` | Date | Last day it works, inclusive, US Eastern. Blank = never expires. |
 | `Campaign__c` | Lookup(Campaign), required | The financial campaign this code discounts. Restricted to revenue-generating campaigns. |
 | `Max_Redemptions__c` | Number(6,0) | Orders allowed before it stops, judged on `Total_Redemptions__c`. Blank = no limit. |
-| `Times_Redeemed__c` | Number(6,0) | Orders that have been **paid**. Maintained by a DLRS rollup - see below. |
-| `Check_Redemptions__c` | Number(18,0) | Orders placed with a **check promised** and not yet banked. Maintained by a second DLRS rollup - see below. |
-| `Total_Redemptions__c` | Formula (Number) | `Times_Redeemed__c + Check_Redemptions__c`. What the cap is actually judged on. |
+| `Times_Redeemed__c` | Number(6,0), label **Paid Redemptions** | Orders that have been **paid**. Maintained by a DLRS rollup - see below. |
+| `Check_Redemptions__c` | Number(18,0), label **Check Redemptions** | Orders placed with a **check promised** and not yet banked. Maintained by a flow - see below. |
+| `Total_Redemptions__c` | Formula (Number), label **Total Redemptions** | `Times_Redeemed__c + Check_Redemptions__c`. **This is the redemption count** - what the cap is judged on and what staff should read. |
+
+### "Times Redeemed" was the wrong name, and it cost an afternoon
+
+`Times_Redeemed__c` used to be labelled **Times Redeemed**, and it was the
+number on the compact layout, on the Active Codes list view and on both Campaign
+related lists. It counts `Transaction__c`, so a check order - which creates no
+transaction and may never create one - is invisible to it.
+
+The result was exactly what the name invited: a real order came in on
+RUSSELLMOORE, the code page said `Times Redeemed: 0`, and the reasonable
+conclusion was that redemption counting was broken. It was not. The wrong field
+was simply the prominent one.
+
+So the label is now **Paid Redemptions**, "Times Redeemed" no longer exists as a
+label anywhere, and `Total_Redemptions__c` took its place on the compact layout,
+the list view, both Campaign related lists, and the top of the Counts section on
+the Discount Code layout.
+
+The API names did **not** change. Renaming `Times_Redeemed__c` would break the
+DLRS rollup that writes it, the endpoint's SELECT, and any report built on it -
+and a field whose label and API name disagree is a smaller trap than a
+half-finished rename. If you are reading SOQL: `Times_Redeemed__c` is the paid
+half, `Total_Redemptions__c` is the answer.
+
+**A redemption is an order that completed, not a payment that settled.** For a
+check order that is the moment the buyer reaches the confirmation panel. For a
+card order the buyer leaves for Stripe and never returns to this site, so the
+only evidence the order completed is the payment - which is why the card half
+is still counted from `Transaction__c`, and why an abandoned checkout correctly
+burns nothing.
 | `Notes__c` | Long text | Who it went to and why. Internal only - never sent to a browser. |
 
 Three validation rules stop records that would look fine in a list view and fail

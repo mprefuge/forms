@@ -2,9 +2,9 @@
 <CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>Times_Redeemed__c</fullName>
     <defaultValue>0</defaultValue>
-    <description>How many paid orders have used this code. Only meaningful alongside Max Redemptions. This field is NOT maintained by the order form: a buyer who reaches the payment page and abandons it must not burn a redemption, so counting belongs to the paid-order pipeline, not to the browser. Until that is wired up, treat this as a manual count.</description>
-    <inlineHelpText>Paid orders that used this code. Not updated by the order form - see the field description.</inlineHelpText>
-    <label>Times Redeemed</label>
+    <description>Orders on this code that were PAID - maintained by the Discount Code Times Redeemed rollup over Transaction__c. It was called "Times Redeemed", and that name cost an afternoon: a check order is a redemption and creates no Transaction__c, so this sat at zero while real orders came in and the code looked unused. It is one half of the answer. Total Redemptions is the answer.</description>
+    <inlineHelpText>Orders on this code whose payment has settled. Read Total Redemptions for how many times the code has actually been used - a check order is a redemption too, and it never appears here.</inlineHelpText>
+    <label>Paid Redemptions</label>
     <precision>6</precision>
     <required>false</required>
     <scale>0</scale>
