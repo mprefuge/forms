@@ -72,14 +72,29 @@
         </layoutColumns>
         <layoutColumns>
             <!--
-                Read-only on purpose: a DLRS rollup owns this field, counting
-                paid transactions. Anything typed in here is overwritten the
-                next time a paid order touches the code, so an editable box
-                would only invite somebody to "correct" it and be puzzled.
+                All three read-only on purpose: each is maintained by something
+                else - a DLRS rollup over Transaction__c, a flow over Form__c,
+                and a formula. Anything typed in here is overwritten the next
+                time an order touches the code, so an editable box would only
+                invite somebody to "correct" it and be puzzled.
+
+                TOTAL FIRST, because it is the one that answers the question
+                people bring to this page. Paid Redemptions sat at the top of
+                this section under the name "Times Redeemed" and read zero
+                while real check orders were coming in, which is exactly the
+                wrong thing for the most prominent number on the page to do.
             -->
             <layoutItems>
                 <behavior>Readonly</behavior>
+                <field>Total_Redemptions__c</field>
+            </layoutItems>
+            <layoutItems>
+                <behavior>Readonly</behavior>
                 <field>Times_Redeemed__c</field>
+            </layoutItems>
+            <layoutItems>
+                <behavior>Readonly</behavior>
+                <field>Check_Redemptions__c</field>
             </layoutItems>
         </layoutColumns>
         <style>TwoColumnsLeftToRight</style>

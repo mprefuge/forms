@@ -2,7 +2,7 @@
 <CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>Max_Redemptions__c</fullName>
     <description>How many paid orders may use this code before it stops working. Leave blank for no limit. Checked against Times Redeemed, which is only incremented once an order is actually paid - see the Discount Codes section of the forms README for how that counting is wired up.</description>
-    <inlineHelpText>How many paid orders may use this code. Leave blank for no limit.</inlineHelpText>
+    <inlineHelpText>Leave blank for no limit. Measured against Total Redemptions - paid orders and promised checks together - and it is per date window, not per code.</inlineHelpText>
     <label>Max Redemptions</label>
     <precision>6</precision>
     <required>false</required>

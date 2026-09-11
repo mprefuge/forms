@@ -4,6 +4,6 @@
     <fields>Code__c</fields>
     <fields>Percent_Off__c</fields>
     <fields>Active__c</fields>
-    <fields>Times_Redeemed__c</fields>
+    <fields>Total_Redemptions__c</fields>
     <label>Discount Code Compact</label>
 </CompactLayout>

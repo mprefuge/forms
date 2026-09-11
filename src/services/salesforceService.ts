@@ -19,6 +19,21 @@ export interface FormData {
   RecordType?: string;
 }
 
+/**
+ * Is this the error Salesforce returns for a field the query may not select?
+ *
+ * INVALID_FIELD covers both a field that does not exist and one the running user
+ * has no field-level security on - a query cannot tell those apart, and neither
+ * can this. Matched on the error code first and on the message only as a
+ * fallback, because the message wording is not a contract.
+ */
+function isMissingFieldError(error: any): boolean {
+  const code = String(error?.errorCode || error?.name || '');
+  if (code === 'INVALID_FIELD' || code === 'INVALID_FIELD_FOR_INSERT_UPDATE') return true;
+  const message = String(error?.message || '');
+  return /No such column|INVALID_FIELD/i.test(message);
+}
+
 export class SalesforceService {
   private connection: Connection;
   private config: SalesforceServiceConfig;
@@ -760,14 +775,28 @@ export class SalesforceService {
       'Campaign__c',
       'Max_Redemptions__c',
       'Times_Redeemed__c',
-      // The two halves of the redemption count. Times_Redeemed__c counts orders
-      // that were PAID (it rolls up Transaction__c); Check_Redemptions__c counts
-      // orders placed with a check promised but not yet banked. A cap has to be
-      // judged on both, or a partner code with a limit of fifty could be claimed
-      // two hundred times while the checks were in the post.
-      'Check_Redemptions__c',
-      'Total_Redemptions__c',
-    ]
+    ],
+    /**
+     * Fields the answer is BETTER for having and still correct without.
+     *
+     * They are queried separately from the list above because a SOQL query is
+     * filtered by field-level security: a field the running user cannot read
+     * comes back as "No such column", and that rejects the WHOLE query, not just
+     * the column. So one field missing an FLS grant takes the entire discount
+     * endpoint down with a 502 - which is exactly what happened the first time
+     * Check_Redemptions__c was added to the list above and granted to the wrong
+     * permission set. The buyer loses the discount box; the cause is invisible
+     * from the browser.
+     *
+     * These two are the halves of the redemption count. Times_Redeemed__c counts
+     * orders that were PAID (it rolls up Transaction__c); Check_Redemptions__c
+     * counts orders placed with a check promised but not yet banked. A cap wants
+     * both - a partner code limited to fifty could otherwise be claimed two
+     * hundred times while the checks were in the post - but a cap judged on the
+     * paid count alone is still a floor, and a code that works is worth more than
+     * a cap that is exactly right.
+     */
+    optionalFields: string[] = ['Check_Redemptions__c', 'Total_Redemptions__c']
   ): Promise<Record<string, any>[]> {
     if (!code || typeof code !== 'string') {
       return [];
@@ -777,17 +806,44 @@ export class SalesforceService {
       throw new Error(`Invalid discount code format: ${code}`);
     }
 
-    const safeFields = (fields || []).filter((f) => typeof f === 'string' && f.trim().length > 0);
-    const select = safeFields.length > 0 ? safeFields.join(', ') : 'Id, Code__c';
-    // Bounded, because this is reached from an anonymous endpoint and a code
-    // repeated hundreds of times would otherwise be a way to make it do work.
-    // Twenty-five windows is more history than any real code will have.
-    const query =
-      `SELECT ${select} FROM Discount_Code__c WHERE Code__c = '${this.escapeSoql(code)}' ` +
-      `ORDER BY Start_Date__c DESC NULLS LAST LIMIT 25`;
-    const result: any = await this.runQuery(query);
+    const clean = (list: string[]) =>
+      (list || []).filter((f) => typeof f === 'string' && f.trim().length > 0);
+    const core = clean(fields);
+    const optional = clean(optionalFields);
 
-    return result && Array.isArray(result.records) ? result.records : [];
+    const run = async (selected: string[]): Promise<Record<string, any>[]> => {
+      const select = selected.length > 0 ? selected.join(', ') : 'Id, Code__c';
+      // Bounded, because this is reached from an anonymous endpoint and a code
+      // repeated hundreds of times would otherwise be a way to make it do work.
+      // Twenty-five windows is more history than any real code will have.
+      const query =
+        `SELECT ${select} FROM Discount_Code__c WHERE Code__c = '${this.escapeSoql(code)}' ` +
+        `ORDER BY Start_Date__c DESC NULLS LAST LIMIT 25`;
+      const result: any = await this.runQuery(query);
+      return result && Array.isArray(result.records) ? result.records : [];
+    };
+
+    if (optional.length === 0) {
+      return run(core);
+    }
+
+    try {
+      return await run([...core, ...optional]);
+    } catch (error: any) {
+      // Only a field-shaped rejection is retried. Anything else - a bad session,
+      // a row lock, the org being down - is a real failure and has to stay one:
+      // answering "no such code" because Salesforce was unreachable would charge
+      // the buyer full price for a code that is perfectly good.
+      if (!isMissingFieldError(error)) throw error;
+
+      console.warn(
+        'Discount_Code__c query dropped optional fields the running user cannot read ' +
+        `(${optional.join(', ')}). Grant field-level security to the integration ` +
+        'permission set. Redemption caps are judged on the fields that remain until then. ' +
+        `Salesforce said: ${error?.message || error}`
+      );
+      return run(core);
+    }
   }
 
   /**
