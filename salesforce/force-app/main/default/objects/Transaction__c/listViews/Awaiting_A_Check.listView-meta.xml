@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ListView xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Awaiting_A_Check</fullName>
+    <columns>NAME</columns>
+    <columns>Billing_Name__c</columns>
+    <columns>Amount_Gross__c</columns>
+    <columns>Days_Awaiting_Check__c</columns>
+    <columns>Manual_Reference__c</columns>
+    <columns>Check_Chase_Task_Created__c</columns>
+    <columns>CREATED_DATE</columns>
+    <filterScope>Everything</filterScope>
+    <filters>
+        <field>Status__c</field>
+        <operation>equals</operation>
+        <value>pending</value>
+    </filters>
+    <filters>
+        <field>Payment_Method__c</field>
+        <operation>equals</operation>
+        <value>Check</value>
+    </filters>
+    <label>Awaiting a Check</label>
+</ListView>

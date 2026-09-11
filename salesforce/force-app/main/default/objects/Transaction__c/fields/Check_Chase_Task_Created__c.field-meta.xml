@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Check_Chase_Task_Created__c</fullName>
+    <defaultValue>false</defaultValue>
+    <description>Set by the Chase Pending Check Orders flow when it files the follow-up task, and read by that same flow to decide whether to file one. It is what makes the chase happen once rather than every night: the flow cannot ask "have I already done this" any other way, and a task closed by somebody who did not get the check would otherwise be replaced by a new one the next morning. Untick it by hand to have the flow chase again.</description>
+    <inlineHelpText>Ticked once the office has been asked to chase this check. Untick to have the nightly flow ask again.</inlineHelpText>
+    <label>Check Chase Task Created</label>
+    <trackHistory>true</trackHistory>
+    <type>Checkbox</type>
+</CustomField>
