@@ -12,8 +12,17 @@ import { SalesforceService } from './salesforceService';
  *
  *   1. It never hands the browser anything but the answer for the one code that
  *      was asked about. There is no endpoint that lists codes, and the reply
- *      carries no record id, no notes, no redemption counts. Codes are given to
- *      named partners, and a list of them is not a thing to publish.
+ *      carries no notes and no redemption counts. Codes are given to named
+ *      partners, and a list of them is not a thing to publish.
+ *
+ *      The one exception is the record id of the window that was matched, which
+ *      IS returned, and only when the code is redeemable. It is there so the
+ *      order can be filed against the exact window whose price it was quoted -
+ *      a code may now have several, and a buyer who applies a code at 25% and
+ *      submits after midnight must still be counted against the 25% window, not
+ *      against the one that took over while they were typing. The id is opaque
+ *      and useless without the code it belongs to, which the caller had to know
+ *      to get this far.
  *
  *   2. Dates are judged in US Eastern time, not UTC and not the buyer's clock.
  *      Salesforce Date fields are date-only, and "expires 15 October" means the
@@ -62,6 +71,12 @@ export interface DiscountCodeResult {
   percentOff?: number;
   /** The record's Name - a human label such as "Russell Moore podcast". Present only when valid. */
   label?: string;
+  /**
+   * The id of the Discount_Code__c window that was matched. Present only when
+   * valid, so an order can be filed against the window it was actually priced
+   * from. See the note at the top of this file.
+   */
+  id?: string;
   /** Why the code was refused. Present only when invalid. */
   reason?: DiscountCodeRejection;
   /** A sentence a buyer can act on. Present only when invalid. */
@@ -137,6 +152,30 @@ function isBlank(value: unknown): boolean {
  */
 function sameSalesforceId(a: string, b: string): boolean {
   return a.slice(0, 15) === b.slice(0, 15);
+}
+
+/**
+ * How many times this code has been claimed, counting both halves.
+ *
+ * Total_Redemptions__c is the formula that adds them up: Times_Redeemed__c,
+ * which rolls up the transactions that actually settled, plus
+ * Check_Redemptions__c, which counts orders placed with a check promised and
+ * not yet banked. A check order creates no transaction anywhere, so without the
+ * second half a code capped at fifty could be claimed any number of times while
+ * the checks were in the post.
+ *
+ * The larger of the values present wins rather than the formula alone. The
+ * formula field can be absent from a record - field-level security is per
+ * permission set, and a describe or a query simply omits what the running user
+ * cannot see - and in that case the raw count is still a floor. Taking the
+ * larger can only refuse a code sooner, never later, which is the direction to
+ * err in when the alternative is giving money away.
+ */
+function countRedemptions(record: Record<string, any>): number {
+  const candidates = [record.Total_Redemptions__c, record.Times_Redeemed__c, record.Check_Redemptions__c]
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value));
+  return candidates.length > 0 ? Math.max(...candidates) : 0;
 }
 
 /**
@@ -218,8 +257,7 @@ export function evaluateDiscountCode(
 
   const maxRedemptions = Number(record.Max_Redemptions__c);
   if (Number.isFinite(maxRedemptions) && maxRedemptions > 0) {
-    const timesRedeemed = Number(record.Times_Redeemed__c) || 0;
-    if (timesRedeemed >= maxRedemptions) {
+    if (countRedemptions(record) >= maxRedemptions) {
       return {
         valid: false,
         code,
@@ -252,6 +290,7 @@ export function evaluateDiscountCode(
     // charged.
     percentOff: Math.round(percentOff),
     label: typeof record.Name === 'string' && record.Name.trim() ? record.Name.trim() : undefined,
+    id: typeof record.Id === 'string' && record.Id.trim() ? record.Id.trim() : undefined,
   };
 }
 

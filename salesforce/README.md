@@ -9,6 +9,11 @@ centrally elsewhere, move these files there and leave a pointer behind.
 order. All three permission sets are assigned, and `Times_Redeemed__c` is
 maintained by a DLRS rollup - see below.
 
+The check-redemption half is live too: the four fields are deployed, and the
+**Count Check Redemptions** flow is Active (v1). Existing codes have a null
+`Check_Redemptions__c` rather than 0 - a field default applies only to new
+records - which is why `Total_Redemptions__c` wraps both halves in `NULLVALUE`.
+
 Treat a deploy from here as a deliberate decision about production, never a side
 effect of merging a branch. Validate first (`--dry-run`); the first three
 attempts at this one failed validation, which cost nothing because nothing was
@@ -29,8 +34,10 @@ without a code change or a deploy.
 | `Start_Date__c` | Date | First day it works, inclusive, US Eastern. Blank = works now. |
 | `End_Date__c` | Date | Last day it works, inclusive, US Eastern. Blank = never expires. |
 | `Campaign__c` | Lookup(Campaign), required | The financial campaign this code discounts. Restricted to revenue-generating campaigns. |
-| `Max_Redemptions__c` | Number(6,0) | Paid orders allowed before it stops. Blank = no limit. |
-| `Times_Redeemed__c` | Number(6,0) | Paid orders that have used it. Maintained by a DLRS rollup - see below. |
+| `Max_Redemptions__c` | Number(6,0) | Orders allowed before it stops, judged on `Total_Redemptions__c`. Blank = no limit. |
+| `Times_Redeemed__c` | Number(6,0) | Orders that have been **paid**. Maintained by a DLRS rollup - see below. |
+| `Check_Redemptions__c` | Number(18,0) | Orders placed with a **check promised** and not yet banked. Maintained by a second DLRS rollup - see below. |
+| `Total_Redemptions__c` | Formula (Number) | `Times_Redeemed__c + Check_Redemptions__c`. What the cap is actually judged on. |
 | `Notes__c` | Long text | Who it went to and why. Internal only - never sent to a browser. |
 
 Three validation rules stop records that would look fine in a list view and fail
@@ -431,19 +438,122 @@ on the rollup in the DLRS app, or touch the relationship field.
 A matching rollup of `Discount_Amount__c` onto `Campaign__c` would give the cost
 of a discount programme per campaign. Not set up; it is the same shape.
 
-That is deliberate rather than unfinished. The order form hands the buyer to
-Stripe and may never see them again, so a browser-side increment would burn a
-redemption every time somebody reached the payment page and changed their mind.
-Counting belongs to whatever learns that an order was actually **paid** - the
-Stripe webhook pipeline in `mprefuge/payment-processor`.
+### Check redemptions, and why they need a second rollup
 
-Two ways to close it when you want the limit enforced for real:
+An order paid by check creates **no `Transaction__c` anywhere**. The buyer is
+never handed to Stripe, no money moves through the payment pipeline, and the
+`Form__c` record is the only trace of the order. So `Times_Redeemed__c`, which
+counts transactions, cannot see those orders at all - a code could be claimed
+two hundred times while the checks were in the post and still read as unredeemed.
 
-- Add a `Discount_Code__c` lookup to `Form__c`, and roll up paid orders with
-  DLRS (already installed in the org - the `dlrs__` objects are there). Point
-  and click, no code.
-- Or increment it from the paid-order handler in the payment service.
+`Check_Redemptions__c` is the other half, counted from `Form__c` by a
+record-triggered flow, **Count Check Redemptions**. `Total_Redemptions__c` adds
+the two, and that is the number `Max_Redemptions__c` is judged against.
 
-Until then, leave `Max_Redemptions__c` blank on codes you are not policing by
-hand. A blank limit means no limit, which is honest; a limit that is never
-counted against is not.
+| | |
+|---|---|
+| Runs on | `Form__c`, after save, create and update |
+| Entry criteria | the record has a `Discount_Code__c`, **and** it is new or `Payment_Method__c` or `Discount_Code__c` just changed |
+| What it does | counts every `Form__c` on that code with `Payment_Method__c = 'Check'`, and writes the count to `Check_Redemptions__c` |
+| Context | System mode without sharing - the count has to be complete regardless of who submitted |
+
+**It recounts rather than incrementing**, which is what makes it self-healing: a
+miscount cannot accumulate, because the next order on that code overwrites it
+with a fresh count. An incrementing counter drifts and there is no way to tell
+that it has.
+
+**The `Payment_Method__c = 'Check'` filter is what stops double counting.** A
+card order is already counted on the transaction side, so counting it here too
+would count every paid order twice. Which means the office convention matters:
+**when a check is banked and recorded as a `Transaction__c` against the same
+code, move the order's Payment Method off `Check`.** Leave it, and that order is
+counted on both sides. Moving it also re-fires the flow, so the count corrects
+itself the moment you do.
+
+**Two fields, not one changed field.** `Times_Redeemed__c` was not widened to
+cover checks: the two halves come from two different objects, and each number is
+worth being able to read on its own - money that arrived, and money that was
+promised.
+
+### Why this one is a flow when every other rollup here is DLRS
+
+DLRS was the obvious choice and it is the wrong one, for a reason worth writing
+down so nobody "fixes" it back.
+
+Every DLRS calculation mode except Developer needs a `dlrs_` Apex trigger on the
+**child** object - Realtime to roll up on save, Scheduled to mark parents dirty.
+The generated trigger is unconditional:
+
+```apex
+trigger dlrs_FormTrigger on Form__c
+    (before delete, before insert, before update,
+     after delete, after insert, after undelete, after update)
+{
+    dlrs.RollupService.triggerHandler(Form__c.SObjectType);
+}
+```
+
+That fires managed-package code on **every insert, update and delete of
+`Form__c`** - every submission of every form this org runs, not only Hospitality
+Guide orders. If DLRS throws, form submissions fail. That is a great deal of
+blast radius to accept for a redemption counter.
+
+The flow runs only on records that carry a discount code, and nothing else on
+`Form__c` changes shape. `Transaction__c` is the opposite case: the trigger is
+already there and already carries eleven rollups, so DLRS costs nothing extra
+and `Times_Redeemed__c` stays where it is.
+
+### What the flow does not catch
+
+It fires on create and on a change to `Payment_Method__c` or `Discount_Code__c`.
+Two gaps follow, both harmless in practice and both self-correcting:
+
+- **A deleted order.** Deleting a `Form__c` does not re-fire the flow, so the
+  count stays one high until the next order on that code recounts. Orders are
+  not routinely deleted.
+- **An order re-pointed to a different code by hand.** The new code is recounted;
+  the old one keeps its old number until something else touches it.
+
+Neither can compound, because every run is a fresh count rather than an
+adjustment.
+
+### Where the two new `Form__c` fields come from
+
+| Field | Type | Written by |
+|---|---|---|
+| `Form__c.Payment_Method__c` | Picklist (Card, Check), restricted | The order form, on every submission. |
+| `Form__c.Discount_Code__c` | Lookup(`Discount_Code__c`), delete constraint **Restrict**, related list **Orders** | The order form, when a code was applied. |
+
+**Restrict, not Set Null.** A code that has been used cannot be deleted out from
+under its orders. Set Null would blank the link on every order the code ever
+discounted, and the reason an order was charged less than list price is not a
+thing to lose by accident - it would also silently drop those orders out of
+`Check_Redemptions__c`. Retire a code by unticking `Active__c`, which stops it
+immediately and keeps the history.
+
+The lookup points at the **window**, not at the code string. `Code__c` is no
+longer unique - one code may carry several date windows at different
+percentages - so an order has to be filed against the window whose price it was
+actually quoted. The discount endpoint returns that window's id when it accepts
+a code, and the form echoes it back on submission. Re-resolving the string at
+submission time instead would count a buyer who applied at 25% and submitted
+after midnight against the 15% window.
+
+That id is the only internal value the discount endpoint returns. It is opaque
+and useless without the code it belongs to, which the caller had to know to get
+that far; notes and redemption counts stay in Salesforce.
+
+### Enforcing a limit
+
+`Max_Redemptions__c` is blank on all fourteen code records today, which means no
+limit. Setting one now enforces against `Total_Redemptions__c` - paid orders and
+promised checks together.
+
+The service reads the largest of the counts it can see rather than trusting the
+formula alone. Field-level security is per permission set and a query omits what
+the running user cannot see, so the raw counts are still a floor; refusing a code
+sooner is the right way to be wrong about money.
+
+A cap is **per window**, not per code. `RUSSELLMOORE` at 25% and `RUSSELLMOORE`
+at 15% are two records with two counts, so a limit of fifty on each is a hundred
+orders, not fifty.

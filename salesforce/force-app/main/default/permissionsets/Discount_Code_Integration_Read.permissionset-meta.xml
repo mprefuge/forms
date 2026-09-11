@@ -25,4 +25,12 @@
     <fieldPermissions><editable>false</editable><field>Discount_Code__c.End_Date__c</field><readable>true</readable></fieldPermissions>
     <fieldPermissions><editable>false</editable><field>Discount_Code__c.Max_Redemptions__c</field><readable>true</readable></fieldPermissions>
     <fieldPermissions><editable>false</editable><field>Discount_Code__c.Times_Redeemed__c</field><readable>true</readable></fieldPermissions>
+    <!-- The forms service writes both of these when it records an order: the
+         code the buyer used, and whether they are paying by card or by check.
+         Without the write the order saves with them blank and the Check
+         Redemptions rollup counts nothing - silently, the way a missing FLS
+         always fails. -->
+    <fieldPermissions><editable>true</editable><field>Form__c.Discount_Code__c</field><readable>true</readable></fieldPermissions>
+    <fieldPermissions><editable>true</editable><field>Form__c.Payment_Method__c</field><readable>true</readable></fieldPermissions>
+    <fieldPermissions><editable>false</editable><field>Discount_Code__c.Total_Redemptions__c</field><readable>true</readable></fieldPermissions>
 </PermissionSet>
