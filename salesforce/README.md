@@ -81,7 +81,7 @@ arrives.
 | Field | Type | What it is for |
 |---|---|---|
 | `Manual_Reference__c` | Text(64), unique, external id | The record's only unique key for a transaction that never went through a processor. |
-| `Days_Awaiting_Check__c` | Formula(Number) | Whole days since the order was placed, while it is a pending check. Blank otherwise. |
+| `Days_Awaiting_Check__c` | Formula(Number) | Whole days since the order was placed, while it is a pending check **from this form**. Blank otherwise. |
 | `Check_Chase_Task_Created__c` | Checkbox | Whether the office has already been asked to chase it. |
 
 **`Manual_Reference__c` is the whole point of that path.** The ordinary upsert
@@ -96,6 +96,31 @@ inference from what they happen to cost.
 The reference is minted by the browser as `HG-YYMMDD-XXXXXX`, short enough for a
 buyer to copy onto the check. It is the same id the card path sends Stripe as
 `client_reference_id`.
+
+#### The record is shaped the way the org already shapes a check
+
+Not the way this code would have invented. Every one of the 131 manual
+transactions already in the org carries the **Manual Transaction** record type
+and `transaction_type__c = 'Check'`, and not one of them uses
+`Payment_Type__c` — so neither does this.
+
+Leaving `RecordTypeId` unset is how the first check order came out as a
+**Donation**: Salesforce falls back to the running user's default, and that made
+it the only Donation-typed record among 4,893. The handler now resolves the
+record type by name.
+
+The buyer's **Contact** is linked, and their organisation's **Account** when one
+was named — found if they exist, created if not. The forms service does not
+create a contact for this form, so looking one up and giving up left the office
+with an order they could not trace to a person.
+
+#### Manual Reference is also what scopes the chase
+
+`Days_Awaiting_Check__c` and the flow's entry filter both require it to be
+non-blank. The org holds **77 pending manual checks entered by hand**, which
+belong to somebody else's process; only an order placed through the form carries
+a reference. Without that clause the flow's first run would have filed a task on
+every one of them.
 
 #### What a pending check deliberately does NOT carry
 
@@ -114,8 +139,9 @@ field default. There is no money to post until somebody banks the check.
 #### The seven-day chase
 
 `Chase_Pending_Check_Orders` is a scheduled flow, daily at 1pm Eastern. It looks
-at every transaction that is still `pending`, still `Check`, and not yet marked
-chased; where `Days_Awaiting_Check__c` has reached 7 it files one Task to the
+at every transaction that is still `pending`, still `transaction_type__c = Check`,
+carries a `Manual_Reference__c`, and is not yet marked chased; where
+`Days_Awaiting_Check__c` has reached 7 it files one Task to the
 **Office Staff queue** - `WhatId` the transaction, `WhoId` the buyer, so the task
 opens with their phone and email on it - and ticks `Check_Chase_Task_Created__c`.
 
@@ -134,9 +160,14 @@ acts on.
 - The queue deploys with **no members**. A queue with no members is a task nobody
   sees. Seed it from Setup, or by creating `GroupMember` rows.
 - The flow deploys as **Draft** whatever `<status>` says, because production
-  requires flow test coverage to deploy one active. Activate it afterwards and
-  check `FlowDefinition.ActiveVersionId` is set - the deploy result will say
-  Succeeded either way.
+  requires flow test coverage to deploy one active. Activate it afterwards - the
+  deploy result will say Succeeded either way.
+
+  On a **re-deploy** this is sharper than it looks. A changed flow lands as a new
+  version, still Draft, and the OLD version stays Active — so
+  `FlowDefinition.ActiveVersionId` is set and everything looks fine while the
+  version actually running is the one you just replaced. Check that
+  `ActiveVersionId` matches the *latest* version, not merely that it is set.
 
 ### Discount Amount is revenue forgone, not revenue
 

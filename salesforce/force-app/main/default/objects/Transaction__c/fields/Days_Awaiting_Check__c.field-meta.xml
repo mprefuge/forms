@@ -1,10 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>Days_Awaiting_Check__c</fullName>
-    <description>Whole days since this order was placed, for a pending order being paid by check, and blank for everything else. Deliberately measured from Created Date and NOT from Received At: nothing has been received, which is the entire point of the pending status, and Received At stays empty until a person banks the check. Used by the Chase Pending Check Orders flow to decide when a week has passed, and by the Awaiting a Check list view so the same number the flow acts on is the one the office can see.</description>
+    <description>Whole days since this order was placed, for a pending order from the Hospitality Guide form being paid by check, and blank for everything else. Manual Reference is what scopes it: the org already holds dozens of pending manual checks entered by hand, and only an order placed through the form carries a reference. Deliberately measured from Created Date and NOT from Received At: nothing has been received, which is the entire point of the pending status, and Received At stays empty until a person banks the check. The Chase Pending Check Orders flow and the Awaiting a Check list view both read this, so the number the flow acts on is the one the office can see.</description>
     <externalId>false</externalId>
     <formula>IF(
-  AND(ISPICKVAL(Status__c, &quot;pending&quot;), Payment_Method__c = &quot;Check&quot;),
+  AND(
+    ISPICKVAL(Status__c, &quot;pending&quot;),
+    ISPICKVAL(transaction_type__c, &quot;Check&quot;),
+    NOT(ISBLANK(Manual_Reference__c))
+  ),
   FLOOR(NOW() - CreatedDate),
   NULL
 )</formula>
