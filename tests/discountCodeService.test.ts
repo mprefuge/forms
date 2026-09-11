@@ -2,6 +2,7 @@ import {
   normalizeDiscountCode,
   currentDateInDiscountTimezone,
   evaluateDiscountCode,
+  selectDiscountCode,
   DiscountCodeService,
 } from '../src/services/discountCodeService';
 import { SalesforceService } from '../src/services/salesforceService';
@@ -217,12 +218,12 @@ describe('DiscountCodeService', () => {
       clientId: 'id',
       clientSecret: 'secret',
     });
-    (sf as any).getDiscountCodeByCode = lookup;
+    (sf as any).getDiscountCodesByCode = lookup;
     return { service: new DiscountCodeService(sf), lookup };
   };
 
   it('normalizes before it queries, so the buyer can type it however they like', async () => {
-    const lookup = jest.fn().mockResolvedValue(baseRecord());
+    const lookup = jest.fn().mockResolvedValue([baseRecord()]);
     const { service } = buildService(lookup);
 
     const result = await service.resolve(' russell moore ', CAMPAIGN);
@@ -244,7 +245,7 @@ describe('DiscountCodeService', () => {
   });
 
   it('caches a miss so repeated guesses do not each spend a Salesforce API call', async () => {
-    const lookup = jest.fn().mockResolvedValue(null);
+    const lookup = jest.fn().mockResolvedValue([]);
     const { service } = buildService(lookup);
 
     const first = await service.resolve('NOPE', CAMPAIGN);
@@ -257,11 +258,11 @@ describe('DiscountCodeService', () => {
   });
 
   it('never caches a hit, so unticking Active takes effect immediately', async () => {
-    const lookup = jest.fn().mockResolvedValue(baseRecord());
+    const lookup = jest.fn().mockResolvedValue([baseRecord()]);
     const { service } = buildService(lookup);
 
     await service.resolve('RUSSELLMOORE', CAMPAIGN);
-    lookup.mockResolvedValue(baseRecord({ Active__c: false }));
+    lookup.mockResolvedValue([baseRecord({ Active__c: false })]);
     const second = await service.resolve('RUSSELLMOORE', CAMPAIGN);
 
     expect(lookup).toHaveBeenCalledTimes(2);
@@ -270,7 +271,7 @@ describe('DiscountCodeService', () => {
   });
 
   it('keeps the miss cache per campaign, so a code scoped elsewhere is still checked', async () => {
-    const lookup = jest.fn().mockResolvedValue(null);
+    const lookup = jest.fn().mockResolvedValue([]);
     const { service } = buildService(lookup);
 
     await service.resolve('NOPE', CAMPAIGN);
@@ -291,7 +292,150 @@ describe('DiscountCodeService', () => {
   });
 });
 
-describe('SalesforceService.getDiscountCodeByCode', () => {
+describe('selectDiscountCode', () => {
+  // The case this exists for: one partner, one code, a different offer each
+  // month. Both records are real and both stay in Salesforce.
+  const september = () =>
+    baseRecord({ Percent_Off__c: 25, Start_Date__c: '2026-09-01', End_Date__c: '2026-09-30' });
+  const october = () =>
+    baseRecord({ Percent_Off__c: 15, Start_Date__c: '2026-10-01', End_Date__c: '2026-10-31' });
+
+  // Newest window first, the way the query returns them.
+  const bothWindows = () => [october(), september()];
+
+  it('applies the window the order falls in, not the newest record', () => {
+    const result = selectDiscountCode(bothWindows(), {
+      campaignId: CAMPAIGN,
+      now: new Date('2026-09-11T12:00:00Z'),
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.percentOff).toBe(25);
+  });
+
+  it('applies the next window once the first has ended', () => {
+    const result = selectDiscountCode(bothWindows(), {
+      campaignId: CAMPAIGN,
+      now: new Date('2026-10-11T12:00:00Z'),
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.percentOff).toBe(15);
+  });
+
+  it('honours the last day of a window', () => {
+    const result = selectDiscountCode(bothWindows(), {
+      campaignId: CAMPAIGN,
+      now: new Date('2026-09-30T23:00:00Z'),
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.percentOff).toBe(25);
+  });
+
+  it('is unchanged for a code with only one window', () => {
+    const result = selectDiscountCode([september()], {
+      campaignId: CAMPAIGN,
+      now: new Date('2026-09-11T12:00:00Z'),
+    });
+
+    expect(result).toEqual(
+      evaluateDiscountCode(september(), {
+        campaignId: CAMPAIGN,
+        now: new Date('2026-09-11T12:00:00Z'),
+      })
+    );
+  });
+
+  it('reports a future window rather than an expired one', () => {
+    // Between the two windows. "Expired" would read as "never again" to
+    // somebody holding a code that starts next week.
+    const result = selectDiscountCode(
+      [october(), baseRecord({ Start_Date__c: '2026-08-01', End_Date__c: '2026-08-31' })],
+      { campaignId: CAMPAIGN, now: new Date('2026-09-15T12:00:00Z') }
+    );
+
+    expect(result.valid).toBe(false);
+    expect(result.reason).toBe('not_started');
+  });
+
+  it('reports expired when every window is past', () => {
+    const result = selectDiscountCode(bothWindows(), {
+      campaignId: CAMPAIGN,
+      now: new Date('2026-12-01T12:00:00Z'),
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.reason).toBe('expired');
+  });
+
+  it('prefers a fully-redeemed current window over an expired one', () => {
+    const result = selectDiscountCode(
+      [
+        baseRecord({
+          Start_Date__c: '2026-09-01',
+          End_Date__c: '2026-09-30',
+          Max_Redemptions__c: 5,
+          Times_Redeemed__c: 5,
+        }),
+        baseRecord({ Start_Date__c: '2026-08-01', End_Date__c: '2026-08-31' }),
+      ],
+      { campaignId: CAMPAIGN, now: new Date('2026-09-11T12:00:00Z') }
+    );
+
+    expect(result.valid).toBe(false);
+    expect(result.reason).toBe('fully_redeemed');
+  });
+
+  it('skips an inactive window and uses a live one', () => {
+    // Unticking Active on one year's record must not take the code down.
+    const result = selectDiscountCode(
+      [
+        baseRecord({ Active__c: false, Start_Date__c: '2026-09-05', End_Date__c: '2026-09-20' }),
+        september(),
+      ],
+      { campaignId: CAMPAIGN, now: new Date('2026-09-11T12:00:00Z') }
+    );
+
+    expect(result.valid).toBe(true);
+    expect(result.percentOff).toBe(25);
+  });
+
+  it('picks the later-starting window when two overlap, rather than an arbitrary one', () => {
+    // Overlapping windows are a data error no validation rule can catch, since
+    // Salesforce cannot compare across records. The behaviour still has to be
+    // defined: newest window wins, every time.
+    const overlapping = [
+      baseRecord({ Percent_Off__c: 15, Start_Date__c: '2026-09-10', End_Date__c: '2026-09-30' }),
+      baseRecord({ Percent_Off__c: 25, Start_Date__c: '2026-09-01', End_Date__c: '2026-09-30' }),
+    ];
+
+    for (let i = 0; i < 3; i++) {
+      const result = selectDiscountCode(overlapping, {
+        campaignId: CAMPAIGN,
+        now: new Date('2026-09-11T12:00:00Z'),
+      });
+      expect(result.percentOff).toBe(15);
+    }
+  });
+
+  it('treats no records the same as no code', () => {
+    const result = selectDiscountCode([], { campaignId: CAMPAIGN });
+    expect(result).toMatchObject({ valid: false, reason: 'not_found' });
+  });
+
+  it('refuses a window belonging to another campaign even when its dates fit', () => {
+    const result = selectDiscountCode(
+      [baseRecord({ Campaign__c: '701UQ00000OTHER0AAA', Start_Date__c: '2026-09-01', End_Date__c: '2026-09-30' })],
+      { campaignId: CAMPAIGN, now: new Date('2026-09-11T12:00:00Z') }
+    );
+
+    expect(result.valid).toBe(false);
+    expect(result.reason).toBe('wrong_campaign');
+  });
+});
+
+describe('SalesforceService.getDiscountCodesByCode', () => {
   const buildSalesforce = (queryMock: jest.Mock) => {
     const sf = new SalesforceService({
       loginUrl: 'https://login.salesforce.com',
@@ -302,23 +446,28 @@ describe('SalesforceService.getDiscountCodeByCode', () => {
     return sf;
   };
 
-  it('queries Discount_Code__c by code and returns the record', async () => {
+  it('queries Discount_Code__c by code and returns every window', async () => {
     const query = jest.fn().mockResolvedValue({ records: [baseRecord()] });
     const sf = buildSalesforce(query);
 
-    const record = await sf.getDiscountCodeByCode('RUSSELLMOORE');
+    const records = await sf.getDiscountCodesByCode('RUSSELLMOORE');
 
     expect(query).toHaveBeenCalledTimes(1);
     const soql = query.mock.calls[0][0];
     expect(soql).toContain('FROM Discount_Code__c');
     expect(soql).toContain("Code__c = 'RUSSELLMOORE'");
-    expect(soql).toContain('LIMIT 1');
-    expect(record).toMatchObject({ Code__c: 'RUSSELLMOORE' });
+    // Newest window first, and bounded - the code is no longer unique, so a
+    // LIMIT 1 here would pick an arbitrary year's offer.
+    expect(soql).toContain('ORDER BY Start_Date__c DESC NULLS LAST');
+    expect(soql).toContain('LIMIT 25');
+    expect(soql).not.toContain('LIMIT 1 ');
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({ Code__c: 'RUSSELLMOORE' });
   });
 
-  it('returns null when no code matches', async () => {
+  it('returns an empty list when no code matches', async () => {
     const sf = buildSalesforce(jest.fn().mockResolvedValue({ records: [] }));
-    expect(await sf.getDiscountCodeByCode('NOPE')).toBeNull();
+    expect(await sf.getDiscountCodesByCode('NOPE')).toEqual([]);
   });
 
   it('refuses to build a query from a code outside the redeemable character set', async () => {
@@ -327,11 +476,11 @@ describe('SalesforceService.getDiscountCodeByCode', () => {
     const query = jest.fn();
     const sf = buildSalesforce(query);
 
-    await expect(sf.getDiscountCodeByCode("X' OR Id != null--")).rejects.toThrow(
+    await expect(sf.getDiscountCodesByCode("X' OR Id != null--")).rejects.toThrow(
       'Invalid discount code format'
     );
-    await expect(sf.getDiscountCodeByCode('EVIL\\')).rejects.toThrow('Invalid discount code format');
-    await expect(sf.getDiscountCodeByCode('lowercase')).rejects.toThrow('Invalid discount code format');
+    await expect(sf.getDiscountCodesByCode('EVIL\\')).rejects.toThrow('Invalid discount code format');
+    await expect(sf.getDiscountCodesByCode('lowercase')).rejects.toThrow('Invalid discount code format');
     expect(query).not.toHaveBeenCalled();
   });
 
@@ -339,7 +488,7 @@ describe('SalesforceService.getDiscountCodeByCode', () => {
     const query = jest.fn().mockResolvedValue({ records: [baseRecord()] });
     const sf = buildSalesforce(query);
 
-    await sf.getDiscountCodeByCode('RUSSELLMOORE');
+    await sf.getDiscountCodesByCode('RUSSELLMOORE');
 
     expect(query.mock.calls[0][0]).not.toContain('Notes__c');
   });
@@ -348,7 +497,7 @@ describe('SalesforceService.getDiscountCodeByCode', () => {
     const query = jest.fn().mockResolvedValue({ records: [baseRecord()] });
     const sf = buildSalesforce(query);
 
-    await sf.getDiscountCodeByCode('RUSSELLMOORE');
+    await sf.getDiscountCodesByCode('RUSSELLMOORE');
 
     expect(query.mock.calls[0][0]).toContain('Campaign__c');
   });

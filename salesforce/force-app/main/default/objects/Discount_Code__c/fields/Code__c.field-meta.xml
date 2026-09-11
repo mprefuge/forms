@@ -2,7 +2,7 @@
 <CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>Code__c</fullName>
     <caseSensitive>false</caseSensitive>
-    <description>What the buyer types into the order form, for example RUSSELLMOORE. Letters, numbers, hyphens and underscores only - the order form strips anything else before it looks the code up, so a code containing a space or punctuation can never be redeemed. Matching ignores case.</description>
+    <description>What the buyer types into the order form, for example RUSSELLMOORE. Letters, numbers, hyphens and underscores only - the order form strips anything else before it looks the code up, so a code containing a space or punctuation can never be redeemed. Matching ignores case. NOT UNIQUE, on purpose: the same code may exist more than once so a partner can keep their code year after year at a different percentage, for example RUSSELLMOORE at 25% for September and 15% for October. The service picks the record whose dates cover the day of the order. Two records with the same code and OVERLAPPING dates are a mistake nothing here can stop - the later-starting one wins - so keep the windows apart.</description>
     <externalId>true</externalId>
     <inlineHelpText>The code the buyer types, e.g. RUSSELLMOORE. Letters, numbers, - and _ only. Case does not matter.</inlineHelpText>
     <label>Code</label>
@@ -10,5 +10,5 @@
     <required>true</required>
     <trackHistory>true</trackHistory>
     <type>Text</type>
-    <unique>true</unique>
+    <unique>false</unique>
 </CustomField>

@@ -48,7 +48,7 @@ describe('discount-code endpoint', () => {
 
     mockSf = {
       authenticate: jest.fn().mockResolvedValue(undefined),
-      getDiscountCodeByCode: jest.fn().mockResolvedValue(activeRecord()),
+      getDiscountCodesByCode: jest.fn().mockResolvedValue([activeRecord()]),
       getCampaignByNameWithFields: jest.fn().mockResolvedValue({ Id: CAMPAIGN }),
     };
     (SalesforceService as jest.MockedClass<any>).mockImplementation(() => mockSf);
@@ -82,12 +82,12 @@ describe('discount-code endpoint', () => {
       context
     );
 
-    expect(mockSf.getDiscountCodeByCode).toHaveBeenCalledWith('RUSSELLMOORE');
+    expect(mockSf.getDiscountCodesByCode).toHaveBeenCalledWith('RUSSELLMOORE');
     expect(parse(response).valid).toBe(true);
   });
 
   it('reports an unknown code as invalid, not as an error', async () => {
-    mockSf.getDiscountCodeByCode.mockResolvedValue(null);
+    mockSf.getDiscountCodesByCode.mockResolvedValue([]);
 
     const response = await discountCodeHandler(
       buildRequest({ code: 'NOPE', campaign: 'Hospitality Guide' }, { 'x-forwarded-for': '203.0.113.7' }),
@@ -109,7 +109,7 @@ describe('discount-code endpoint', () => {
     const response = await discountCodeHandler(buildRequest({ code: '!!!', campaign: 'Hospitality Guide' }), context);
 
     expect(response.status).toBe(400);
-    expect(mockSf.getDiscountCodeByCode).not.toHaveBeenCalled();
+    expect(mockSf.getDiscountCodesByCode).not.toHaveBeenCalled();
   });
 
   it('never lets the response be cached', async () => {
@@ -124,7 +124,7 @@ describe('discount-code endpoint', () => {
   it('answers 502, not a bad-code verdict, when Salesforce cannot be reached', async () => {
     // A buyer holding a good code has to be told to try again. Reporting the
     // code as invalid would charge them full price for a code that works.
-    mockSf.getDiscountCodeByCode.mockRejectedValue(new Error('ECONNRESET'));
+    mockSf.getDiscountCodesByCode.mockRejectedValue(new Error('ECONNRESET'));
 
     const response = await discountCodeHandler(
       buildRequest({ code: 'RUSSELLMOORE', campaign: 'Hospitality Guide' }, { 'x-forwarded-for': '203.0.113.9' }),
@@ -192,9 +192,9 @@ describe('discount-code endpoint', () => {
   });
 
   it('does not leak the record id or internal notes for a valid code', async () => {
-    mockSf.getDiscountCodeByCode.mockResolvedValue(
-      activeRecord({ Notes__c: 'Issued to Russell Moore, do not share' })
-    );
+    mockSf.getDiscountCodesByCode.mockResolvedValue([
+      activeRecord({ Notes__c: 'Issued to Russell Moore, do not share' }),
+    ]);
 
     const response = await discountCodeHandler(
       buildRequest({ code: 'RUSSELLMOORE', campaign: 'Hospitality Guide' }, { 'x-forwarded-for': '203.0.113.11' }),
@@ -206,9 +206,9 @@ describe('discount-code endpoint', () => {
   });
 
   it('refuses a code scoped to another campaign', async () => {
-    mockSf.getDiscountCodeByCode.mockResolvedValue(
-      activeRecord({ Campaign__c: '701UQ00000OTHER0AAA' })
-    );
+    mockSf.getDiscountCodesByCode.mockResolvedValue([
+      activeRecord({ Campaign__c: '701UQ00000OTHER0AAA' }),
+    ]);
 
     const response = await discountCodeHandler(
       buildRequest({ code: 'RUSSELLMOORE', campaign: 'Hospitality Guide' }, { 'x-forwarded-for': '203.0.113.12' }),
@@ -222,7 +222,7 @@ describe('discount-code endpoint', () => {
     const response = await discountCodeHandler(buildRequest({ code: 'RUSSELLMOORE' }), context);
 
     expect(response.status).toBe(400);
-    expect(mockSf.getDiscountCodeByCode).not.toHaveBeenCalled();
+    expect(mockSf.getDiscountCodesByCode).not.toHaveBeenCalled();
   });
 
   it('uses a Salesforce id directly without looking the campaign up', async () => {
@@ -246,7 +246,7 @@ describe('discount-code endpoint', () => {
     expect(response.status).toBe(200);
     expect(parse(response)).toMatchObject({ valid: false, reason: 'wrong_campaign' });
     // No point asking Salesforce about a code for a campaign that is not there.
-    expect(mockSf.getDiscountCodeByCode).not.toHaveBeenCalled();
+    expect(mockSf.getDiscountCodesByCode).not.toHaveBeenCalled();
   });
 
   it('resolves a campaign name once and reuses it', async () => {
@@ -260,6 +260,6 @@ describe('discount-code endpoint', () => {
     }
 
     expect(mockSf.getCampaignByNameWithFields).toHaveBeenCalledTimes(1);
-    expect(mockSf.getDiscountCodeByCode).toHaveBeenCalledTimes(3);
+    expect(mockSf.getDiscountCodesByCode).toHaveBeenCalledTimes(3);
   });
 });

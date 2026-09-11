@@ -715,14 +715,21 @@ export class SalesforceService {
    * closing quote and let the rest of the string be read as SOQL. A normalized
    * code cannot contain either character.
    *
-   * Code__c is unique and case-insensitive in Salesforce, so at most one record
-   * can match. Unlike the Campaign lookups above this rethrows rather than
-   * returning null on error: a discount that silently fails to apply because
-   * Salesforce was unreachable would be charged at full price with no sign that
-   * anything went wrong, and the caller needs to be able to tell "no such code"
-   * from "we could not check".
+   * Code__c is case-insensitive and NO LONGER UNIQUE: the same code may exist
+   * several times so a partner can keep it year after year at a different
+   * percentage - RUSSELLMOORE at 25% through September, 15% through October. So
+   * this returns every match rather than one, and the caller decides which
+   * window covers the order. Ordered by start date, newest first, so a caller
+   * that simply takes the first gets the most recent offer rather than an
+   * arbitrary one.
+   *
+   * Unlike the Campaign lookups above this rethrows rather than returning null
+   * on error: a discount that silently fails to apply because Salesforce was
+   * unreachable would be charged at full price with no sign that anything went
+   * wrong, and the caller needs to be able to tell "no such code" from "we could
+   * not check".
    */
-  async getDiscountCodeByCode(
+  async getDiscountCodesByCode(
     code: string,
     fields: string[] = [
       'Id',
@@ -736,9 +743,9 @@ export class SalesforceService {
       'Max_Redemptions__c',
       'Times_Redeemed__c',
     ]
-  ): Promise<Record<string, any> | null> {
+  ): Promise<Record<string, any>[]> {
     if (!code || typeof code !== 'string') {
-      return null;
+      return [];
     }
 
     if (!/^[A-Z0-9_-]{1,40}$/.test(code)) {
@@ -747,14 +754,15 @@ export class SalesforceService {
 
     const safeFields = (fields || []).filter((f) => typeof f === 'string' && f.trim().length > 0);
     const select = safeFields.length > 0 ? safeFields.join(', ') : 'Id, Code__c';
-    const query = `SELECT ${select} FROM Discount_Code__c WHERE Code__c = '${this.escapeSoql(code)}' LIMIT 1`;
+    // Bounded, because this is reached from an anonymous endpoint and a code
+    // repeated hundreds of times would otherwise be a way to make it do work.
+    // Twenty-five windows is more history than any real code will have.
+    const query =
+      `SELECT ${select} FROM Discount_Code__c WHERE Code__c = '${this.escapeSoql(code)}' ` +
+      `ORDER BY Start_Date__c DESC NULLS LAST LIMIT 25`;
     const result: any = await this.runQuery(query);
 
-    if (result && result.records && result.records.length > 0) {
-      return result.records[0];
-    }
-
-    return null;
+    return result && Array.isArray(result.records) ? result.records : [];
   }
 
   /**
