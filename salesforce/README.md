@@ -23,7 +23,7 @@ without a code change or a deploy.
 | Field | Type | What it is for |
 |---|---|---|
 | `Name` | Text | Friendly label - "Russell Moore podcast". Shown to the buyer when the code is accepted. |
-| `Code__c` | Text(40), unique, external id | What the buyer types. Case-insensitive. Letters, numbers, `-` and `_` only. |
+| `Code__c` | Text(40), external id, **not unique** | What the buyer types. Case-insensitive. Letters, numbers, `-` and `_` only. The same code may appear more than once — see below. |
 | `Percent_Off__c` | Number(3,0) | Whole percent off the order subtotal, 1-100. |
 | `Active__c` | Checkbox | Untick to kill the code immediately, whatever the dates say. |
 | `Start_Date__c` | Date | First day it works, inclusive, US Eastern. Blank = works now. |
@@ -37,6 +37,38 @@ Three validation rules stop records that would look fine in a list view and fail
 silently at the till: a percentage outside 1-100, an end date before the start
 date, and a code containing characters the order form strips before it looks the
 code up (so the stored code could never be matched).
+
+### One code, several windows
+
+`Code__c` is deliberately **not unique**. A partner keeps their code year after
+year while the offer behind it changes, so the same string can exist several
+times with different dates and percentages:
+
+| Code | Percent Off | Start | End |
+|---|---|---|---|
+| `RUSSELLMOORE` | 25 | 2026-09-01 | 2026-09-30 |
+| `RUSSELLMOORE` | 15 | 2026-10-01 | 2026-10-31 |
+
+The service reads **every** record for a code and applies the one whose window
+contains the day of the order — not the newest, and not whichever row Salesforce
+happened to return first. An order placed on 11 September gets 25%; the same code
+on 11 October gets 15%.
+
+`Transaction__c.Discount_Code__c` is resolved the same way, against the date the
+order was placed rather than the moment the webhook ran. Those differ when an
+event is replayed or a bank payment settles late, and on those days the
+difference is the whole question.
+
+**Keep the windows apart.** Two records with the same code and overlapping dates
+are a data error, and nothing in Salesforce can stop it: a validation rule cannot
+compare against other records. The behaviour is still defined rather than
+arbitrary — the later-starting window wins — but defined is not the same as
+correct, and the reporting will credit a window the buyer was never offered.
+
+When a code needs a new rate, **end the old record first**, then create the new
+one starting the following day. Do not edit the percentage on a record that has
+already been redeemed: `Percent_Off__c` is what this year's buyers were charged,
+and changing it rewrites their history.
 
 ### Why the campaign, and not a product name
 

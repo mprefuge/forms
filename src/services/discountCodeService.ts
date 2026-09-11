@@ -264,6 +264,71 @@ export function evaluateDiscountCode(
  * those guesses would otherwise spend. It is not, and is not relied on as, a
  * security control.
  */
+/**
+ * How informative each refusal is about the code the buyer just typed, most
+ * informative first.
+ *
+ * Only consulted when a code has SEVERAL records and not one of them can be
+ * redeemed today - which is the whole reason duplicates exist, since a partner
+ * keeping RUSSELLMOORE year after year will accumulate windows. With a single
+ * record there is one answer and this changes nothing.
+ *
+ * The order is about what a buyer can act on. "Already fully redeemed" and "not
+ * active yet" both describe a window that is current or still to come, so they
+ * beat "expired", which would otherwise be reported from an old window and read
+ * as "never again" to somebody holding a code that starts next week.
+ */
+const REFUSAL_PRIORITY: ReadonlyArray<DiscountCodeRejection> = [
+  'fully_redeemed',
+  'not_started',
+  'expired',
+  'wrong_campaign',
+  'inactive',
+  'misconfigured',
+  'not_found',
+];
+
+/**
+ * Pick the one record that applies, out of every record carrying this code.
+ *
+ * A code is no longer unique: the same string may exist several times with
+ * different dates and percentages, so that a partner can keep their code and
+ * the offer behind it can change. Exactly one of those windows should contain
+ * any given day, and this finds it.
+ *
+ * TWO RECORDS WITH OVERLAPPING WINDOWS ARE A DATA ERROR nothing in Salesforce
+ * can prevent - a validation rule cannot see other records. The behaviour is
+ * still defined rather than arbitrary: records arrive newest-window-first, so
+ * the later-starting one wins. Defined is not the same as correct, which is why
+ * the field help says to keep the windows apart.
+ */
+export function selectDiscountCode(
+  records: ReadonlyArray<Record<string, any>> | null | undefined,
+  options: { campaignId?: string; now?: Date } = {}
+): DiscountCodeResult {
+  const list = Array.isArray(records) ? records : [];
+
+  if (list.length === 0) {
+    return evaluateDiscountCode(null, options);
+  }
+
+  const results = list.map((record) => evaluateDiscountCode(record, options));
+
+  const redeemable = results.find((result) => result.valid);
+  if (redeemable) {
+    return redeemable;
+  }
+
+  for (const reason of REFUSAL_PRIORITY) {
+    const match = results.find((result) => result.reason === reason);
+    if (match) {
+      return match;
+    }
+  }
+
+  return results[0];
+}
+
 export class DiscountCodeService {
   private salesforceService: SalesforceService;
   private negativeCache = new Map<string, number>();
@@ -322,13 +387,13 @@ export class DiscountCodeService {
       };
     }
 
-    const record = await this.salesforceService.getDiscountCodeByCode(code);
-    const result = evaluateDiscountCode(record, { campaignId });
+    const records = await this.salesforceService.getDiscountCodesByCode(code);
+    const result = selectDiscountCode(records, { campaignId });
 
-    if (!record) {
+    if (records.length === 0) {
       this.rememberMiss(key);
-      // evaluateDiscountCode has no code to echo when the record is missing, but
-      // the caller asked about a specific one and should see it back.
+      // selectDiscountCode has no code to echo when nothing matched, but the
+      // caller asked about a specific one and should see it back.
       return { ...result, code };
     }
 
