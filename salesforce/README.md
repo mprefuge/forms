@@ -543,6 +543,41 @@ That id is the only internal value the discount endpoint returns. It is opaque
 and useless without the code it belongs to, which the caller had to know to get
 that far; notes and redemption counts stay in Salesforce.
 
+### The FLS trap this walked into, twice
+
+A SOQL query is filtered by field-level security. A field the running user
+cannot read does not come back null - it comes back as **`No such column`**, and
+that rejects the **whole query**, not the column.
+
+So when `Check_Redemptions__c` was added to the discount endpoint's SELECT and
+granted only to `Discount_Code_Manager`, every discount code stopped working in
+production the moment the code deployed. The endpoint 502'd, the form showed "We
+could not check that code just now", and nothing in the browser pointed at a
+permission set. Field-level security is **not** covered by Modify All Data or by
+the System Administrator profile, so an admin testing in Setup sees a field that
+the integration user cannot query.
+
+Two rules follow:
+
+1. **A field added to a query needs a grant on the permission set the querying
+   user actually holds** - here `Discount_Code_Integration_Read`, assigned to
+   `api@refugelouisville.onmicrosoft.com`. Not the one a human reads it through.
+2. **Deploy the permission set before, or with, the code that selects the
+   field.** They are in two different repos and two different pipelines; that is
+   the whole hazard.
+
+`getDiscountCodesByCode` now also asks for `Check_Redemptions__c` and
+`Total_Redemptions__c` as *optional* fields: on an `INVALID_FIELD` rejection it
+retries without them and logs a warning, so a missing grant costs the exactness
+of a cap rather than the entire discount feature. Only a field-shaped error is
+retried - an expired session or an unreachable org still fails loudly, because
+"we could not check" must never quietly become "that code is no good".
+
+Required fields are the exception to all of this: `Code__c`, `Percent_Off__c`
+and `Campaign__c` carry no `fieldPermissions` entries because Salesforce refuses
+them on a required field ("You cannot deploy to a required field") and treats
+them as always readable.
+
 ### Enforcing a limit
 
 `Max_Redemptions__c` is blank on all fourteen code records today, which means no

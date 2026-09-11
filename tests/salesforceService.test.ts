@@ -269,6 +269,61 @@ describe('SalesforceService - default RecordType behavior', () => {
     expect(result.id).toBe('form-pick');
   });
 
+  it('drops the optional discount fields rather than failing the whole lookup', async () => {
+    // The failure this guards against, which took the discount box down in
+    // production: a SOQL query is filtered by field-level security, so a field
+    // the integration user cannot read comes back as "No such column" and
+    // rejects the ENTIRE query. One missing FLS grant, and every code stops
+    // working with a 502 the buyer sees as "we could not check that code".
+    const sf = new SalesforceService({ loginUrl: 'https://login.salesforce.com', clientId: 'id', clientSecret: 'secret' });
+
+    const runQuery = jest.fn()
+      .mockImplementationOnce(() => {
+        const err: any = new Error("\nSELECT Id, Check_Redemptions__c FROM Discount_Code__c\n^\nERROR at Row:1:Column:12\nNo such column 'Check_Redemptions__c' on entity 'Discount_Code__c'.");
+        err.errorCode = 'INVALID_FIELD';
+        return Promise.reject(err);
+      })
+      .mockResolvedValueOnce({ records: [{ Id: 'a0X000000000001', Code__c: 'RUSSELLMOORE', Percent_Off__c: 25 }] });
+    jest.spyOn(sf as any, 'runQuery').mockImplementation(runQuery as any);
+
+    const records = await sf.getDiscountCodesByCode('RUSSELLMOORE');
+
+    expect(records).toHaveLength(1);
+    expect(records[0].Percent_Off__c).toBe(25);
+    expect(runQuery).toHaveBeenCalledTimes(2);
+    // First attempt asked for them, the retry did not.
+    expect(runQuery.mock.calls[0][0]).toContain('Check_Redemptions__c');
+    expect(runQuery.mock.calls[1][0]).not.toContain('Check_Redemptions__c');
+    expect(runQuery.mock.calls[1][0]).toContain('Percent_Off__c');
+  });
+
+  it('does not retry, or swallow, a lookup failure that is not about a field', async () => {
+    // "We could not check" must never become "that code is no good". A buyer
+    // holding a valid code would be charged full price because Salesforce was
+    // briefly unreachable.
+    const sf = new SalesforceService({ loginUrl: 'https://login.salesforce.com', clientId: 'id', clientSecret: 'secret' });
+
+    const runQuery = jest.fn().mockRejectedValue(Object.assign(new Error('Session expired or invalid'), { errorCode: 'INVALID_SESSION_ID' }));
+    jest.spyOn(sf as any, 'runQuery').mockImplementation(runQuery as any);
+
+    await expect(sf.getDiscountCodesByCode('RUSSELLMOORE')).rejects.toThrow('Session expired');
+    expect(runQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks for the optional fields when they are readable', async () => {
+    const sf = new SalesforceService({ loginUrl: 'https://login.salesforce.com', clientId: 'id', clientSecret: 'secret' });
+    const runQuery = jest.fn().mockResolvedValue({
+      records: [{ Id: 'a0X000000000001', Code__c: 'RUSSELLMOORE', Check_Redemptions__c: 3, Total_Redemptions__c: 5 }],
+    });
+    jest.spyOn(sf as any, 'runQuery').mockImplementation(runQuery as any);
+
+    const records = await sf.getDiscountCodesByCode('RUSSELLMOORE');
+
+    expect(runQuery).toHaveBeenCalledTimes(1);
+    expect(runQuery.mock.calls[0][0]).toContain('Total_Redemptions__c');
+    expect(records[0].Total_Redemptions__c).toBe(5);
+  });
+
   it('skips an allowlisted field the org does not have, rather than losing the order', async () => {
     // The failure this guards against: a field is added to a form's allowlist
     // and shipped before it is deployed - or is deployed but the integration

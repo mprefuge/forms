@@ -32,5 +32,14 @@
          always fails. -->
     <fieldPermissions><editable>true</editable><field>Form__c.Discount_Code__c</field><readable>true</readable></fieldPermissions>
     <fieldPermissions><editable>true</editable><field>Form__c.Payment_Method__c</field><readable>true</readable></fieldPermissions>
+    <!--
+        BOTH halves of the redemption count, not just the total. The endpoint's
+        query names Check_Redemptions__c explicitly, and a SOQL query is filtered
+        by field-level security: a field this user cannot read is rejected as "No
+        such column", which fails the whole query and 502s the endpoint. Granting
+        only the formula looked sufficient and took the discount box down in
+        production until this line existed.
+    -->
+    <fieldPermissions><editable>false</editable><field>Discount_Code__c.Check_Redemptions__c</field><readable>true</readable></fieldPermissions>
     <fieldPermissions><editable>false</editable><field>Discount_Code__c.Total_Redemptions__c</field><readable>true</readable></fieldPermissions>
 </PermissionSet>
