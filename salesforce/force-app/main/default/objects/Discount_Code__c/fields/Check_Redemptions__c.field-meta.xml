@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Check_Redemptions__c</fullName>
+    <defaultValue>0</defaultValue>
+    <description>Orders placed with this code that are being paid by check. Maintained by the Discount Code Check Redemptions rollup over Form__c; do not type in it. These orders have no Transaction__c and never will until somebody banks the check, so Times Redeemed - which counts paid transactions - cannot see them. Use Total Redemptions for the number that means "how many people have used this code".</description>
+    <inlineHelpText>Check orders placed with this code. Maintained by a rollup; do not edit.</inlineHelpText>
+    <label>Check Redemptions</label>
+    <precision>18</precision>
+    <required>false</required>
+    <scale>0</scale>
+    <type>Number</type>
+    <unique>false</unique>
+</CustomField>

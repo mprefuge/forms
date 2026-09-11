@@ -203,11 +203,63 @@ describe('evaluateDiscountCode', () => {
   });
 
   it('never returns anything a buyer should not see', () => {
-    const record = baseRecord({ Notes__c: 'Issued to Russell Moore, do not share' });
+    const record = baseRecord({
+      Notes__c: 'Issued to Russell Moore, do not share',
+      Max_Redemptions__c: 500,
+      Times_Redeemed__c: 118,
+    });
     const result = evaluateDiscountCode(record, { campaignId: CAMPAIGN, now });
-    expect(Object.keys(result).sort()).toEqual(['code', 'label', 'percentOff', 'valid']);
+    // The window's id is the one internal value that does come back, and only
+    // because the order has to be filed against the window it was priced from.
+    // Notes and redemption counts stay where they are.
+    expect(Object.keys(result).sort()).toEqual(['code', 'id', 'label', 'percentOff', 'valid']);
     expect(JSON.stringify(result)).not.toContain('do not share');
-    expect(JSON.stringify(result)).not.toContain('a0X000000000001');
+    expect(JSON.stringify(result)).not.toContain('118');
+  });
+
+  it('carries the id of the window that answered', () => {
+    const result = evaluateDiscountCode(baseRecord(), { campaignId: CAMPAIGN, now });
+    expect(result.id).toBe('a0X000000000001');
+  });
+
+  it('does not carry an id when the code is refused', () => {
+    const result = evaluateDiscountCode(baseRecord({ Active__c: false }), { campaignId: CAMPAIGN, now });
+    expect(result.valid).toBe(false);
+    expect(result.id).toBeUndefined();
+  });
+
+  it('counts a promised check against the cap alongside a settled payment', () => {
+    // Ten orders paid, forty-one placed with a check in the post, cap of fifty.
+    // Judged on the paid count alone this code is nowhere near its limit; judged
+    // honestly it is one past it.
+    const record = baseRecord({
+      Max_Redemptions__c: 50,
+      Times_Redeemed__c: 10,
+      Check_Redemptions__c: 41,
+      Total_Redemptions__c: 51,
+    });
+    expect(evaluateDiscountCode(record, { campaignId: CAMPAIGN, now }).reason).toBe('fully_redeemed');
+  });
+
+  it('falls back to the raw counts when the total formula is not visible', () => {
+    // Field-level security is per permission set and a query simply omits what
+    // the running user cannot see. The larger raw count is still a floor, and
+    // refusing sooner is the right way to be wrong about money.
+    const record = baseRecord({
+      Max_Redemptions__c: 50,
+      Times_Redeemed__c: 60,
+    });
+    expect(evaluateDiscountCode(record, { campaignId: CAMPAIGN, now }).reason).toBe('fully_redeemed');
+  });
+
+  it('still redeems while both halves are under the cap', () => {
+    const record = baseRecord({
+      Max_Redemptions__c: 50,
+      Times_Redeemed__c: 10,
+      Check_Redemptions__c: 12,
+      Total_Redemptions__c: 22,
+    });
+    expect(evaluateDiscountCode(record, { campaignId: CAMPAIGN, now }).valid).toBe(true);
   });
 });
 

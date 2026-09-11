@@ -29,6 +29,12 @@
     <fieldPermissions><editable>false</editable><field>Transaction__c.Discount_Code__c</field><readable>true</readable></fieldPermissions>
     <fieldPermissions><editable>false</editable><field>Transaction__c.Discount_Percent__c</field><readable>true</readable></fieldPermissions>
     <fieldPermissions><editable>false</editable><field>Transaction__c.Discount_Amount__c</field><readable>true</readable></fieldPermissions>
+    <!-- Both maintained by a rollup or derived from one, so read only to
+         everybody. Typing in either would be overwritten on the next run. -->
+    <fieldPermissions><editable>false</editable><field>Discount_Code__c.Check_Redemptions__c</field><readable>true</readable></fieldPermissions>
+    <fieldPermissions><editable>false</editable><field>Discount_Code__c.Total_Redemptions__c</field><readable>true</readable></fieldPermissions>
+    <fieldPermissions><editable>false</editable><field>Form__c.Discount_Code__c</field><readable>true</readable></fieldPermissions>
+    <fieldPermissions><editable>false</editable><field>Form__c.Payment_Method__c</field><readable>true</readable></fieldPermissions>
     <tabSettings>
         <tab>Discount_Code__c</tab>
         <visibility>Visible</visibility>

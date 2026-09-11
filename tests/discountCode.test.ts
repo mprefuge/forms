@@ -73,6 +73,7 @@ describe('discount-code endpoint', () => {
       code: 'RUSSELLMOORE',
       percentOff: 25,
       label: 'Russell Moore podcast',
+      id: 'a0X000000000001',
     });
   });
 
@@ -191,9 +192,13 @@ describe('discount-code endpoint', () => {
     expect(sameClientOtherHop.status).toBe(429);
   });
 
-  it('does not leak the record id or internal notes for a valid code', async () => {
+  it('does not leak internal notes or redemption counts for a valid code', async () => {
     mockSf.getDiscountCodesByCode.mockResolvedValue([
-      activeRecord({ Notes__c: 'Issued to Russell Moore, do not share' }),
+      activeRecord({
+        Notes__c: 'Issued to Russell Moore, do not share',
+        Max_Redemptions__c: 500,
+        Times_Redeemed__c: 118,
+      }),
     ]);
 
     const response = await discountCodeHandler(
@@ -201,8 +206,9 @@ describe('discount-code endpoint', () => {
       context
     );
 
-    expect(response.body).not.toContain('a0X000000000001');
     expect(response.body).not.toContain('do not share');
+    expect(response.body).not.toContain('118');
+    expect(response.body).not.toContain('500');
   });
 
   it('refuses a code scoped to another campaign', async () => {

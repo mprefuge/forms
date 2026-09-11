@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Discount_Code__c</fullName>
+    <deleteConstraint>Restrict</deleteConstraint>
+    <description>Restrict, not SetNull: a code that has been used cannot be deleted out from under its orders. Deleting one would blank this on every order it ever discounted, and the reason an order was charged less than list price is not a thing to lose by accident. Retire a code by unticking Active, which stops it immediately and keeps the history. The discount code record this order was placed with, if any. Set by the order form, which gets the id back from the code check it already runs - not resolved here from the code string, so the record the buyer was quoted a percentage from is the record the order points at. Blank means full price. This is what lets a code be credited for an order that has no Transaction__c yet, which is every order being paid by check.</description>
+    <inlineHelpText>The discount code used on this order. Blank means full price.</inlineHelpText>
+    <label>Discount Code</label>
+    <referenceTo>Discount_Code__c</referenceTo>
+    <relationshipLabel>Orders</relationshipLabel>
+    <relationshipName>Orders</relationshipName>
+    <required>false</required>
+    <type>Lookup</type>
+</CustomField>

@@ -370,10 +370,28 @@ export class SalesforceService {
     if (formConfig) {
       for (const field of allowedFields) {
         if (field === 'RecordTypeId' || field === 'Name' || field === codeFieldName) continue;
-        if (formData[field] !== undefined) {
-          const meta: any = fieldMetaMap.get(field);
-          recordTypeRecord[field] = this.formatFieldValue(meta, formData[field]);
+        if (formData[field] === undefined) continue;
+
+        // A field the org does not have - or that this integration user cannot
+        // see, since a describe is filtered by field-level security - is dropped
+        // rather than sent. Sending it fails the INSERT outright, and the record
+        // that is lost is somebody's order: the buyer, the address and the money
+        // all go with it, to save a column that was never going to be written
+        // anyway. The order is worth more than the column, so the column goes.
+        //
+        // Only ever when the describe actually answered. An empty map means the
+        // describe failed, and dropping every field on that basis would write
+        // blank records in silence.
+        if (fieldMetaMap.size > 0 && !fieldMetaMap.has(field)) {
+          console.warn(
+            `[${requestId}] ${objectName}.${field} is in allowedFields but not visible in the org - ` +
+            `skipping it. Deploy the field, or grant the integration user field-level security on it.`
+          );
+          continue;
         }
+
+        const meta: any = fieldMetaMap.get(field);
+        recordTypeRecord[field] = this.formatFieldValue(meta, formData[field]);
       }
     } else {
       // No FormConfig provided: accept any fields present in formData that appear in the described fields
@@ -742,6 +760,13 @@ export class SalesforceService {
       'Campaign__c',
       'Max_Redemptions__c',
       'Times_Redeemed__c',
+      // The two halves of the redemption count. Times_Redeemed__c counts orders
+      // that were PAID (it rolls up Transaction__c); Check_Redemptions__c counts
+      // orders placed with a check promised but not yet banked. A cap has to be
+      // judged on both, or a partner code with a limit of fifty could be claimed
+      // two hundred times while the checks were in the post.
+      'Check_Redemptions__c',
+      'Total_Redemptions__c',
     ]
   ): Promise<Record<string, any>[]> {
     if (!code || typeof code !== 'string') {

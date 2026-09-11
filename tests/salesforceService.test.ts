@@ -269,6 +269,75 @@ describe('SalesforceService - default RecordType behavior', () => {
     expect(result.id).toBe('form-pick');
   });
 
+  it('skips an allowlisted field the org does not have, rather than losing the order', async () => {
+    // The failure this guards against: a field is added to a form's allowlist
+    // and shipped before it is deployed - or is deployed but the integration
+    // user has no field-level security on it, which a describe cannot tell apart
+    // from absent. Sent anyway, the INSERT fails and the buyer, the address and
+    // the money go with it to save a column that was never going to be written.
+    const sf = new SalesforceService({ loginUrl: 'https://login.salesforce.com', clientId: 'id', clientSecret: 'secret' });
+    jest.spyOn(sf as any, 'getRecordTypeId').mockResolvedValue('rt-general-id');
+    jest.spyOn(sf as any, 'describeFormFields').mockResolvedValue([
+      { name: 'Email__c', type: 'email' },
+    ] as any);
+
+    const createMock = jest.fn().mockResolvedValue({ success: true, id: 'form-missing-field' });
+    (sf as any).connection = {
+      sobject: jest.fn().mockReturnValue({ create: createMock }),
+      query: jest.fn().mockResolvedValue({ records: [] }),
+    } as any;
+
+    const formConfig: any = {
+      salesforce: {
+        objectName: 'Form__c',
+        recordTypeName: 'Registration',
+        allowedFields: ['Email__c', 'Discount_Code__c'],
+        lookupCodeField: 'FormCode__c',
+        codeLength: 5,
+      },
+    };
+
+    const result = await (sf as any).createForm(
+      { Email__c: 'buyer@example.org', Discount_Code__c: 'a0X000000000001' },
+      'req-missing-field',
+      formConfig
+    );
+
+    const createdObj = createMock.mock.calls[0][0];
+    expect(createdObj.Email__c).toBe('buyer@example.org');
+    expect(createdObj.Discount_Code__c).toBeUndefined();
+    expect(result.id).toBe('form-missing-field');
+  });
+
+  it('still writes allowlisted fields when the describe came back empty', async () => {
+    // An empty describe means the describe FAILED, not that the object has no
+    // fields. Dropping everything on that basis would write blank records in
+    // silence, which is worse than an insert that fails loudly.
+    const sf = new SalesforceService({ loginUrl: 'https://login.salesforce.com', clientId: 'id', clientSecret: 'secret' });
+    jest.spyOn(sf as any, 'getRecordTypeId').mockResolvedValue('rt-general-id');
+    jest.spyOn(sf as any, 'describeFormFields').mockResolvedValue([] as any);
+
+    const createMock = jest.fn().mockResolvedValue({ success: true, id: 'form-no-describe' });
+    (sf as any).connection = {
+      sobject: jest.fn().mockReturnValue({ create: createMock }),
+      query: jest.fn().mockResolvedValue({ records: [] }),
+    } as any;
+
+    const formConfig: any = {
+      salesforce: {
+        objectName: 'Form__c',
+        recordTypeName: 'Registration',
+        allowedFields: ['Email__c'],
+        lookupCodeField: 'FormCode__c',
+        codeLength: 5,
+      },
+    };
+
+    await (sf as any).createForm({ Email__c: 'buyer@example.org' }, 'req-no-describe', formConfig);
+
+    expect(createMock.mock.calls[0][0].Email__c).toBe('buyer@example.org');
+  });
+
   it('resolves hyphens to canonical picklist values when creating forms', async () => {
     const sf = new SalesforceService({ loginUrl: 'https://login.salesforce.com', clientId: 'id', clientSecret: 'secret' });
     jest.spyOn(sf as any, 'getRecordTypeId').mockResolvedValue('rt-general-id');
