@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Manual_Reference__c</fullName>
+    <caseSensitive>false</caseSensitive>
+    <description>The unique key for a transaction that never went through a processor - today, an order being paid by check. The payment service upserts on THIS FIELD ALONE for those records, and that is the whole reason it exists: the ordinary upsert matches on the Stripe ids and, finding none, falls back to contact plus amount plus timestamp, which on Stripe traffic never fires but on checks would be the only duplicate guard there is. Two $400 checks from the same church would silently become one record. The reference is stable across resubmissions of the same order, so a retry updates one row and two genuinely different orders are two rows, by construction rather than by inference from what they happen to cost. Blank on every Stripe transaction.</description>
+    <externalId>true</externalId>
+    <inlineHelpText>Unique reference for an order settled outside Stripe. Set by the payment service; do not edit or reuse.</inlineHelpText>
+    <label>Manual Reference</label>
+    <length>64</length>
+    <required>false</required>
+    <trackHistory>true</trackHistory>
+    <type>Text</type>
+    <unique>true</unique>
+</CustomField>

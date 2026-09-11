@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Queue xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Office_Staff</fullName>
+    <!-- A queue rather than a named person, because chasing a check belongs to a
+         role. Staff come and go; the work does not, and a task assigned to
+         somebody who has left is a task nobody does. Membership is managed in
+         Setup, so who answers for it changes without a deploy.
+
+         NOTE: this deploys with NO MEMBERS. The Metadata API will not seed them,
+         and a queue with no members is a task nobody sees - so membership is
+         seeded after the deploy and verified, not assumed. -->
+    <doesSendEmailToMembers>false</doesSendEmailToMembers>
+    <name>Office Staff</name>
+    <queueSobject>
+        <sobjectType>Task</sobjectType>
+    </queueSobject>
+</Queue>

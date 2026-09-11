@@ -71,6 +71,73 @@ sets them from Stripe metadata; nothing else writes them.
 purpose: the code's own `Percent_Off__c` can be edited afterwards, and this has
 to keep saying what this buyer was actually charged.
 
+### Paying by check
+
+An order can be placed without paying online. `POST /api/transaction/check` on
+the payment service writes a **pending** `Transaction__c` and returns; no Stripe
+session is created and no money moves. A person reconciles it when the check
+arrives.
+
+| Field | Type | What it is for |
+|---|---|---|
+| `Manual_Reference__c` | Text(64), unique, external id | The record's only unique key for a transaction that never went through a processor. |
+| `Days_Awaiting_Check__c` | Formula(Number) | Whole days since the order was placed, while it is a pending check. Blank otherwise. |
+| `Check_Chase_Task_Created__c` | Checkbox | Whether the office has already been asked to chase it. |
+
+**`Manual_Reference__c` is the whole point of that path.** The ordinary upsert
+matches on the Stripe ids and, finding none, falls back to contact plus amount
+plus timestamp. On Stripe traffic that fallback never fires. On a check it would
+be the only duplicate guard there is, and two $400 checks from the same church
+would silently become one record. `upsertManualTransaction` keys on this field
+and nothing else, so a resubmission of the same order updates one row and two
+genuinely different orders are two rows - by construction, rather than by
+inference from what they happen to cost.
+
+The reference is minted by the browser as `HG-YYMMDD-XXXXXX`, short enough for a
+buyer to copy onto the check. It is the same id the card path sends Stripe as
+`client_reference_id`.
+
+#### What a pending check deliberately does NOT carry
+
+`Received_At__c` is left empty. Nothing has been received - the check is, at
+best, in the post - and stamping it would put the order into any report that
+sums receipts by date. A person sets it when they bank the check.
+
+`Amount_Fee__c` and `Amount_Net__c` are left empty for the same class of reason:
+nobody has taken a cut of anything yet, and null lets a report tell "no fee" from
+"fee not yet known". Net is never stored as a guess; it is computed from
+components once there are components.
+
+`Sync_to_Quickbooks__c` is written as `false` explicitly rather than left to the
+field default. There is no money to post until somebody banks the check.
+
+#### The seven-day chase
+
+`Chase_Pending_Check_Orders` is a scheduled flow, daily at 1pm Eastern. It looks
+at every transaction that is still `pending`, still `Check`, and not yet marked
+chased; where `Days_Awaiting_Check__c` has reached 7 it files one Task to the
+**Office Staff queue** - `WhatId` the transaction, `WhoId` the buyer, so the task
+opens with their phone and email on it - and ticks `Check_Chase_Task_Created__c`.
+
+The task goes to a queue rather than a person because the work belongs to a role.
+Staff come and go; a task owned by somebody who has left is a task nobody does.
+Membership is managed in Setup, so who answers for it changes without a deploy.
+
+The tick is what makes it happen once instead of every night. To ask again on an
+order that still has not been paid, untick it.
+
+The `Awaiting a Check` list view on Transaction__c shows the same set the flow
+acts on.
+
+**Two things a deploy will not do, and both leave this inert:**
+
+- The queue deploys with **no members**. A queue with no members is a task nobody
+  sees. Seed it from Setup, or by creating `GroupMember` rows.
+- The flow deploys as **Draft** whatever `<status>` says, because production
+  requires flow test coverage to deploy one active. Activate it afterwards and
+  check `FlowDefinition.ActiveVersionId` is set - the deploy result will say
+  Succeeded either way.
+
 ### Discount Amount is revenue forgone, not revenue
 
 `Discount_Amount__c` is what the discount took off. It is **not** money
@@ -102,6 +169,10 @@ one of the two write paths.
 | `Discount_Code_Manager` | Full CRUD plus field access. **Assign this to whoever manages codes.** |
 | `Discount_Code_Integration_Read` | Read only, for the API user `/api/form/discount-code` runs as. |
 | `Discount_Tracking_Integration` | Read codes, write the three `Transaction__c` fields. For the payment service's user. |
+| `Office_Staff` queue | Owns the seven-day check chase task. **Deploys with no members - seed it.** |
+| `Chase_Pending_Check_Orders` | The scheduled flow that files that task. **Deploys as Draft - activate it.** |
+| `Check_Order_Integration` | Write `Manual_Reference__c`. For the payment service's user. |
+| `Check_Order_Handling` | See the check fields and untick the chase flag. For the office. |
 
 ### Deploying it
 

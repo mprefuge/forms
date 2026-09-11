@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">
+    <description>Lets staff work an order waiting on a check: see how long it has waited and its reference, and ask the nightly flow to chase it again. Without it these fields are visible to nobody, System Administrators included, because deploying a field grants no FLS.</description>
+    <hasActivationRequired>false</hasActivationRequired>
+    <label>Check Order Handling</label>
+    <!--
+        Days Awaiting Check is a formula and cannot be editable; Salesforce
+        rejects the deploy outright if it is marked so.
+
+        Check Chase Task Created is editable on purpose. Unticking it is how a
+        person asks for another chase on an order that never got paid, and that
+        is the only control anyone has over the flow short of a deploy.
+    -->
+    <fieldPermissions><editable>false</editable><field>Transaction__c.Manual_Reference__c</field><readable>true</readable></fieldPermissions>
+    <fieldPermissions><editable>false</editable><field>Transaction__c.Days_Awaiting_Check__c</field><readable>true</readable></fieldPermissions>
+    <fieldPermissions><editable>true</editable><field>Transaction__c.Check_Chase_Task_Created__c</field><readable>true</readable></fieldPermissions>
+</PermissionSet>

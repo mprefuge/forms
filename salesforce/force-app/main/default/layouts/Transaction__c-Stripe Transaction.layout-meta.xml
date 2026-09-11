@@ -140,6 +140,10 @@
                 <field>Payment_Method__c</field>
             </layoutItems>
             <layoutItems>
+                <behavior>Readonly</behavior>
+                <field>Manual_Reference__c</field>
+            </layoutItems>
+            <layoutItems>
                 <behavior>Edit</behavior>
                 <field>Payment_Last4__c</field>
             </layoutItems>
@@ -156,6 +160,14 @@
             <layoutItems>
                 <behavior>Edit</behavior>
                 <field>Payment_Brand__c</field>
+            </layoutItems>
+            <layoutItems>
+                <behavior>Readonly</behavior>
+                <field>Days_Awaiting_Check__c</field>
+            </layoutItems>
+            <layoutItems>
+                <behavior>Edit</behavior>
+                <field>Check_Chase_Task_Created__c</field>
             </layoutItems>
             <layoutItems>
                 <behavior>Edit</behavior>

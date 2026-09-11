@@ -1,0 +1,204 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Flow xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>60.0</apiVersion>
+    <decisions>
+        <name>A_Week_Has_Passed</name>
+        <label>A week has passed?</label>
+        <locationX>264</locationX>
+        <locationY>276</locationY>
+        <defaultConnectorLabel>Still inside the week</defaultConnectorLabel>
+        <rules>
+            <name>Yes_A_Week_Has_Passed</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>$Record.Days_Awaiting_Check__c</leftValueReference>
+                <operator>GreaterThanOrEqualTo</operator>
+                <rightValue>
+                    <numberValue>7.0</numberValue>
+                </rightValue>
+            </conditions>
+            <!-- No queue, no task. Creating one anyway would file it to the
+                 running user, which is exactly the named-individual outcome the
+                 queue exists to avoid. -->
+            <conditions>
+                <leftValueReference>Get_Office_Staff_Queue</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Create_Chase_Task</targetReference>
+            </connector>
+            <label>Yes</label>
+        </rules>
+    </decisions>
+    <description>Files one task for the Office Staff queue on every order that has been waiting on a check for a week. Marks the transaction so the same order is asked about once rather than every night; untick Check Chase Task Created to ask again.</description>
+    <environments>Default</environments>
+    <interviewLabel>Chase pending check orders {!$Flow.CurrentDateTime}</interviewLabel>
+    <label>Chase Pending Check Orders</label>
+    <processType>AutoLaunchedFlow</processType>
+    <recordCreates>
+        <name>Create_Chase_Task</name>
+        <label>Create the chase task</label>
+        <locationX>264</locationX>
+        <locationY>492</locationY>
+        <connector>
+            <targetReference>Mark_As_Chased</targetReference>
+        </connector>
+        <inputAssignments>
+            <field>ActivityDate</field>
+            <value>
+                <elementReference>$Flow.CurrentDate</elementReference>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>Description</field>
+            <value>
+                <elementReference>Chase_Task_Body</elementReference>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>OwnerId</field>
+            <value>
+                <elementReference>Get_Office_Staff_Queue.Id</elementReference>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>Priority</field>
+            <value>
+                <stringValue>Normal</stringValue>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>Status</field>
+            <value>
+                <stringValue>Not Started</stringValue>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>Subject</field>
+            <value>
+                <elementReference>Chase_Task_Subject</elementReference>
+            </value>
+        </inputAssignments>
+        <!-- WhoId is the buyer, so the task opens with their phone and email on
+             it rather than sending the office back to the transaction to find
+             them. Left unset when the order was never linked to a contact. -->
+        <inputAssignments>
+            <field>WhoId</field>
+            <value>
+                <elementReference>$Record.Contact__c</elementReference>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>WhatId</field>
+            <value>
+                <elementReference>$Record.Id</elementReference>
+            </value>
+        </inputAssignments>
+        <object>Task</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordCreates>
+    <recordLookups>
+        <name>Get_Office_Staff_Queue</name>
+        <label>Get the Office Staff queue</label>
+        <locationX>264</locationX>
+        <locationY>168</locationY>
+        <assignNullValuesIfNoRecordsFound>true</assignNullValuesIfNoRecordsFound>
+        <connector>
+            <targetReference>A_Week_Has_Passed</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>DeveloperName</field>
+            <operator>EqualTo</operator>
+            <value>
+                <stringValue>Office_Staff</stringValue>
+            </value>
+        </filters>
+        <filters>
+            <field>Type</field>
+            <operator>EqualTo</operator>
+            <value>
+                <stringValue>Queue</stringValue>
+            </value>
+        </filters>
+        <getFirstRecordOnly>true</getFirstRecordOnly>
+        <object>Group</object>
+        <queriedFields>Id</queriedFields>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordLookups>
+    <recordUpdates>
+        <name>Mark_As_Chased</name>
+        <label>Mark the order as chased</label>
+        <locationX>264</locationX>
+        <locationY>600</locationY>
+        <inputAssignments>
+            <field>Check_Chase_Task_Created__c</field>
+            <value>
+                <booleanValue>true</booleanValue>
+            </value>
+        </inputAssignments>
+        <inputReference>$Record</inputReference>
+    </recordUpdates>
+    <start>
+        <locationX>138</locationX>
+        <locationY>0</locationY>
+        <connector>
+            <targetReference>Get_Office_Staff_Queue</targetReference>
+        </connector>
+        <!-- The age test is NOT here. Days Awaiting Check is a formula over
+             NOW(), and a scheduled flow's entry filter cannot be trusted with
+             one; it is checked in the decision instead, where the value is read
+             off the record the flow already has. -->
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>Status__c</field>
+            <operator>EqualTo</operator>
+            <value>
+                <stringValue>pending</stringValue>
+            </value>
+        </filters>
+        <filters>
+            <field>Payment_Method__c</field>
+            <operator>EqualTo</operator>
+            <value>
+                <stringValue>Check</stringValue>
+            </value>
+        </filters>
+        <filters>
+            <field>Check_Chase_Task_Created__c</field>
+            <operator>EqualTo</operator>
+            <value>
+                <booleanValue>false</booleanValue>
+            </value>
+        </filters>
+        <object>Transaction__c</object>
+        <schedule>
+            <frequency>Daily</frequency>
+            <startDate>2026-09-11</startDate>
+            <startTime>13:00:00.000Z</startTime>
+        </schedule>
+        <triggerType>Scheduled</triggerType>
+    </start>
+    <status>Active</status>
+    <textTemplates>
+        <name>Chase_Task_Body</name>
+        <isViewedAsPlainText>true</isViewedAsPlainText>
+        <text>{!$Record.Billing_Name__c} ordered {!$Record.Description__c} on {!$Record.CreatedDate} and said they would pay by check. It is {!$Record.Days_Awaiting_Check__c} days later and the payment is still pending, which means no check has been banked against it.
+
+Amount outstanding: {!$Record.Amount_Gross__c}
+Order reference: {!$Record.Manual_Reference__c}
+Buyer: {!$Record.Billing_Email__c} / {!$Record.Billing_Phone__c}
+
+Checks go to Refuge International, 5590 Bruce Avenue, Louisville, KY 40214, so allow for the post before assuming it was never sent.
+
+If the check has arrived, set Status to paid and fill in Received At - it is deliberately blank until then, so nothing counts this order as money received. If it has not, call or email the buyer. If they have changed their mind, set Status to abandoned rather than deleting the record.</text>
+    </textTemplates>
+    <textTemplates>
+        <name>Chase_Task_Subject</name>
+        <isViewedAsPlainText>true</isViewedAsPlainText>
+        <text>Chase a check: {!$Record.Billing_Name__c} ({!$Record.Days_Awaiting_Check__c} days, {!$Record.Amount_Gross__c})</text>
+    </textTemplates>
+</Flow>

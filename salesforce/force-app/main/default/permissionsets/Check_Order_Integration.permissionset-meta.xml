@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">
+    <description>Lets the payment service record an order paid by check. Assign it to whichever user that service authenticates as: without it the write fails silently, because a newly deployed field is visible to nobody and Modify All Data does not cover FLS.</description>
+    <hasActivationRequired>false</hasActivationRequired>
+    <label>Check Order Integration</label>
+    <!--
+        Manual Reference only. Every other field a check order writes - the
+        amount, the status, the billing detail, the contact and campaign links -
+        already exists and the service already has it from its profile. This
+        permission set exists to add the new field, not to re-grant what works.
+
+        It is NOT granted on Check Chase Task Created or Days Awaiting Check:
+        the service does not write either. The flow sets the first in system
+        context, and the second is a formula.
+    -->
+    <fieldPermissions><editable>true</editable><field>Transaction__c.Manual_Reference__c</field><readable>true</readable></fieldPermissions>
+</PermissionSet>
