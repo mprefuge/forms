@@ -194,7 +194,19 @@
         </schedule>
         <triggerType>Scheduled</triggerType>
     </start>
-    <status>Active</status>
+    <!-- DORMANT, and deployed that way on purpose.
+
+         An order paid by check no longer creates a Transaction__c at all - it is
+         a Form__c submission carrying PaymentMethod "Check" in Custom__c, and
+         nothing else. So the record this flow watches for is never written, and
+         it would never fire even if it were active.
+
+         Kept rather than deleted because it is the whole chase in one file: if
+         the office ever wants it back, it needs a start filter rewritten for
+         Form__c and one activation, not a rebuild. The Office Staff queue and
+         the two helper fields on Transaction__c are still deployed for the same
+         reason. -->
+    <status>Draft</status>
     <textTemplates>
         <name>Chase_Task_Body</name>
         <isViewedAsPlainText>true</isViewedAsPlainText>

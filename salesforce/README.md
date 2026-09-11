@@ -73,10 +73,18 @@ to keep saying what this buyer was actually charged.
 
 ### Paying by check
 
-An order can be placed without paying online. `POST /api/transaction/check` on
-the payment service writes a **pending** `Transaction__c` and returns; no Stripe
-session is created and no money moves. A person reconciles it when the check
-arrives.
+An order can be placed without paying online. It creates **no payment record of
+any kind** — no Stripe session, no `Transaction__c`. It is a `Form__c`
+submission like any other order, carrying `PaymentMethod: "Check"` in
+`Custom__c`, and that is the only trace the order exists. The office learns a
+check is coming from the notification email the submission already sends.
+
+`POST /api/transaction/check` on the payment service, which used to write a
+pending transaction here, has been removed.
+
+The three fields below are still deployed and nothing writes them any more. They
+are kept rather than dropped: `Manual_Reference__c` still carries the key on the
+one transaction created while that endpoint was live.
 
 | Field | Type | What it is for |
 |---|---|---|
@@ -136,38 +144,33 @@ components once there are components.
 `Sync_to_Quickbooks__c` is written as `false` explicitly rather than left to the
 field default. There is no money to post until somebody banks the check.
 
-#### The seven-day chase
+#### The seven-day chase is dormant
 
-`Chase_Pending_Check_Orders` is a scheduled flow, daily at 1pm Eastern. It looks
-at every transaction that is still `pending`, still `transaction_type__c = Check`,
-carries a `Manual_Reference__c`, and is not yet marked chased; where
-`Days_Awaiting_Check__c` has reached 7 it files one Task to the
-**Office Staff queue** - `WhatId` the transaction, `WhoId` the buyer, so the task
-opens with their phone and email on it - and ticks `Check_Chase_Task_Created__c`.
+`Chase_Pending_Check_Orders` exists and is **deactivated**. Both versions are
+Obsolete and no scheduled job remains.
 
-The task goes to a queue rather than a person because the work belongs to a role.
-Staff come and go; a task owned by somebody who has left is a task nobody does.
-Membership is managed in Setup, so who answers for it changes without a deploy.
+An order paid by check no longer creates a `Transaction__c` at all, so the record
+the flow watches for is never written and it would never fire even if it were
+switched on. The `Office_Staff` queue, the `Awaiting a Check` list view and the
+two helper fields are still deployed alongside it.
 
-The tick is what makes it happen once instead of every night. To ask again on an
-order that still has not been paid, untick it.
+None of it was deleted. If the office ever wants the chase back it needs a start
+filter rewritten against `Form__c` and one activation, not a rebuild.
 
-The `Awaiting a Check` list view on Transaction__c shows the same set the flow
-acts on.
+**Two things a deploy will not do, worth keeping written down:**
 
-**Two things a deploy will not do, and both leave this inert:**
-
-- The queue deploys with **no members**. A queue with no members is a task nobody
+- A queue deploys with **no members**. A queue with no members is a task nobody
   sees. Seed it from Setup, or by creating `GroupMember` rows.
-- The flow deploys as **Draft** whatever `<status>` says, because production
-  requires flow test coverage to deploy one active. Activate it afterwards - the
-  deploy result will say Succeeded either way.
+- A flow deploys as **Draft** whatever `<status>` says, because production
+  requires flow test coverage to deploy one active. The deploy result says
+  Succeeded either way.
 
   On a **re-deploy** this is sharper than it looks. A changed flow lands as a new
   version, still Draft, and the OLD version stays Active — so
   `FlowDefinition.ActiveVersionId` is set and everything looks fine while the
   version actually running is the one you just replaced. Check that
   `ActiveVersionId` matches the *latest* version, not merely that it is set.
+
 
 ### Discount Amount is revenue forgone, not revenue
 
@@ -200,8 +203,8 @@ one of the two write paths.
 | `Discount_Code_Manager` | Full CRUD plus field access. **Assign this to whoever manages codes.** |
 | `Discount_Code_Integration_Read` | Read only, for the API user `/api/form/discount-code` runs as. |
 | `Discount_Tracking_Integration` | Read codes, write the three `Transaction__c` fields. For the payment service's user. |
-| `Office_Staff` queue | Owns the seven-day check chase task. **Deploys with no members - seed it.** |
-| `Chase_Pending_Check_Orders` | The scheduled flow that files that task. **Deploys as Draft - activate it.** |
+| `Office_Staff` queue | Owned the check chase task. Still deployed; nothing files into it now. |
+| `Chase_Pending_Check_Orders` | The scheduled flow that filed that task. **Deactivated — nothing creates the record it watched for.** |
 | `Check_Order_Integration` | Write `Manual_Reference__c`. For the payment service's user. |
 | `Check_Order_Handling` | See the check fields and untick the chase flag. For the office. |
 
