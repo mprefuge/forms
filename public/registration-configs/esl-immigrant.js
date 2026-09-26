@@ -31,7 +31,7 @@ window.REGISTRATION_FORM_CONFIGS['ESL Immigrant Form'] = {
       optionFemale: 'Femenino',
     },
   },
-  NotificationEmail: '',
+  NotificationEmail: 'becca@refugeintl.org;micah@refugeintl.org',
   Fields: ['FirstName', 'LastName', 'Email', 'ReceiveUpdates', 'PhoneOptional', 'WhyLearnEnglish', 'OriginAndFirstLanguage', 'HowHeard', 'MentorAvailability', 'Gender'],
   RequiredFields: ['WhyLearnEnglish', 'Gender'],
 };
